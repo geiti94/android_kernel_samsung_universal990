@@ -1,0 +1,18 @@
+
+config ANDROID_TIMED_OUTPUT
+	bool "Timed output class driver"
+	default n
+
+config MOTOR_CS40L2X
+	tristate "motor"
+	default n
+	help
+	  Say Y to enable MOTOR_CS40L2X.
+
+config VIB_NOTIFIER
+	bool "VIB notifier support"
+	default n
+	help
+	  If you say yes here you will get support for
+	  the VBUS status change notification.
+

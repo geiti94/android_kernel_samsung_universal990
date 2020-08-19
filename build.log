@@ -1,0 +1,119 @@
+
+==============================================
+START : FUNC_BUILD_KERNEL
+==============================================
+
+build common config=exynos9830-z3sxxx_nemesis_defconfig 
+build model config=z3sxxx 
+#
+# configuration written to .config
+#
+scripts/kconfig/conf  --syncconfig Kconfig
+kperfmon_DUMMY="CONFIG_KPERFMON is off."
+kperfmon_DUMMY="olog.pb.h file is missing... retrying"
+cp: cannot stat './../../frameworks/base/proto/src/olog.proto': No such file or directory
+kperfmon_DUMMY=""
+cp: cannot stat './../../vendor/samsung/system/libperflog/aprotoc': No such file or directory
+kperfmon_DUMMY=""
+make[2]: ./drivers/kperfmon/aprotoc: Command not found
+kperfmon_DUMMY=""
+cp: cannot stat './drivers/kperfmon/olog.pb.h': No such file or directory
+kperfmon_DUMMY=""
+kperfmon_DUMMY="olog.pb.h file is missing... again"
+kperfmon_DUMMY="perflog.h file is missing."
+cp: cannot stat './../../system/core/liblog/include/log/perflog.h': No such file or directory
+kperfmon_DUMMY=""
+  CALL    scripts/checksyscalls.sh
+  CHK     include/generated/compile.h
+kperfmon_DUMMY="CONFIG_KPERFMON is off."
+kperfmon_DUMMY="olog.pb.h file is missing... retrying"
+  GZIP    kernel/config_data.gz
+cp: cannot stat './../../frameworks/base/proto/src/olog.proto': No such file or directory
+kperfmon_DUMMY=""
+cp: cannot stat './../../vendor/samsung/system/libperflog/aprotoc': No such file or directory
+kperfmon_DUMMY=""
+make[2]: ./drivers/kperfmon/aprotoc: Command not found
+kperfmon_DUMMY=""
+cp: cannot stat './drivers/kperfmon/olog.pb.h': No such file or directory
+kperfmon_DUMMY=""
+kperfmon_DUMMY="olog.pb.h file is missing... again"
+kperfmon_DUMMY="perflog.h file is missing."
+cp: cannot stat './../../system/core/liblog/include/log/perflog.h': No such file or directory
+kperfmon_DUMMY=""
+  AR      drivers/vision/npu/soc/built-in.a
+  UPD     kernel/config_data.h
+  AR      drivers/usb/gadget/function/built-in.a
+  CC      kernel/configs.o
+  AR      drivers/usb/gadget/built-in.a
+  AR      drivers/vision/npu/built-in.a
+  AR      drivers/vision/built-in.a
+  AR      drivers/usb/built-in.a
+  AR      kernel/built-in.a
+  AR      drivers/built-in.a
+  GEN     .version
+  CHK     include/generated/compile.h
+  UPD     include/generated/compile.h
+  CC      init/version.o
+  AR      init/built-in.a
+  AR      built-in.a
+  MODPOST vmlinux.o
+WARNING: modpost: Found 2 section mismatch(es).
+To see full details build your kernel with:
+'make CONFIG_DEBUG_SECTION_MISMATCH=y'
+  KSYM    .tmp_kallsyms1.o
+  KSYM    .tmp_kallsyms2.o
+  LD      vmlinux
+  SORTEX  vmlinux
+  SYSMAP  System.map
+  FIPS : Generating hmac of crypto and updating vmlinux... 
+HMAC for "crypto" module is: b'082d16e0c7c99b4622d8f7ea1ea9888ce8abf1d9bf33da81bc6d8282121bd1ee'
+FIPS integrity procedure has been finished for crypto
+  FIPS : Generating hmac of fmp and updating vmlinux... 
+HMAC for "fmp" module is: b'4916e18923940b0822431180badcd4780f0bd7070fcf1ab6dfa4671a7ed858b0'
+FIPS integrity procedure has been finished for fmp
+  OBJCOPY arch/arm64/boot/Image
+  Building modules, stage 2.
+  MODPOST 0 modules
+  GZIP    arch/arm64/boot/Image.gz
+
+=================================
+END   : FUNC_BUILD_KERNEL
+=================================
+
+[3J[H[2J 
+Android Image Kitchen - RepackImg Script
+by osm0sis @ xda-developers
+ 
+Warning: Overwriting existing files!
+ 
+Packing ramdisk...
+ 
+Using compression: gzip
+ 
+Getting build information...
+kernel = boot.img-zImage
+dtb = boot.img-dtb
+cmdline = androidboot.hardware=exynos990 androidboot.selinux=permissive androidboot.selinux=permissive
+board = SRPSI19B001KU
+base = 10000000
+pagesize = 2048
+kernel_offset = 00008000
+ramdisk_offset = 01000000
+second_offset = 00f00000
+tags_offset = 00000100
+dtb_offset = 00000000
+os_version = 10.0.0
+os_patch_level = 2020-03
+header_version = 2
+hash = sha1
+ 
+Building image...
+ 
+Using format: AOSP
+ 
+Appending footer...
+ 
+Using type: SEAndroid
+ 
+Done!
+Total compile time was 53 seconds
