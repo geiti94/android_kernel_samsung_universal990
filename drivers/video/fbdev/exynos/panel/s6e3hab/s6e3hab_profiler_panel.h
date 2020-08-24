@@ -16,29 +16,37 @@
 static u8 HAB_PROFILE_KEY2_ENABLE[] = { 0xF0, 0x5A, 0x5A };
 static u8 HAB_PROFILE_KEY2_DISABLE[] = { 0xF0, 0xA5, 0xA5 };
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 HAB_PROFILE_KEY3_ENABLE[] = { 0xFC, 0x5A, 0x5A };
 static u8 HAB_PROFILE_KEY3_DISABLE[] = { 0xFC, 0xA5, 0xA5 };
+#endif
 
 static DEFINE_STATIC_PACKET(hab_profile_key2_enable, DSI_PKT_TYPE_WR, HAB_PROFILE_KEY2_ENABLE, 0);
 static DEFINE_STATIC_PACKET(hab_profile_key2_disable, DSI_PKT_TYPE_WR, HAB_PROFILE_KEY2_DISABLE, 0);
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_STATIC_PACKET(hab_profile_key3_enable, DSI_PKT_TYPE_WR, HAB_PROFILE_KEY3_ENABLE, 0);
 static DEFINE_STATIC_PACKET(hab_profile_key3_disable, DSI_PKT_TYPE_WR, HAB_PROFILE_KEY3_DISABLE, 0);
+#endif
 
 static DEFINE_PANEL_KEY(hab_profile_key2_enable, CMD_LEVEL_2,
 	KEY_ENABLE, &PKTINFO(hab_profile_key2_enable));
 static DEFINE_PANEL_KEY(hab_profile_key2_disable, CMD_LEVEL_2,
 	KEY_DISABLE, &PKTINFO(hab_profile_key2_disable));
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_PANEL_KEY(hab_profile_key3_enable, CMD_LEVEL_3,
 	KEY_ENABLE, &PKTINFO(hab_profile_key3_enable));
 static DEFINE_PANEL_KEY(hab_profile_key3_disable, CMD_LEVEL_3,
 	KEY_DISABLE, &PKTINFO(hab_profile_key3_disable));
+#endif
 
 static struct keyinfo KEYINFO(hab_profile_key2_enable);
 static struct keyinfo KEYINFO(hab_profile_key2_disable);
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static struct keyinfo KEYINFO(hab_profile_key3_enable);
 static struct keyinfo KEYINFO(hab_profile_key3_disable);
+#endif
 
 static struct maptbl hab_profiler_maptbl[] = {
 	[PROFILE_WIN_UPDATE_MAP] = DEFINE_0D_MAPTBL(hab_set_self_grid,
@@ -71,11 +79,14 @@ static void *hab_profile_win_update_cmdtbl[] = {
 	&KEYINFO(hab_profile_key2_disable),
 };
 
-static char hab_disable_self_grid[] = {
+/*
+ * NEED TO CHECK by kernel.lee
+ */
+static char HAB_DISABLE_SELF_GRID[] = {
 	0x7C,
 	0x00, 0x00,
 };
-static DEFINE_STATIC_PACKET(hab_disable_self_grid, DSI_PKT_TYPE_WR, HAB_SET_SELF_GRID, 0);
+static DEFINE_STATIC_PACKET(hab_disable_self_grid, DSI_PKT_TYPE_WR, HAB_DISABLE_SELF_GRID, 0);
 
 static void *hab_profile_win_disable_cmdtbl[] = {
 	&KEYINFO(hab_profile_key2_enable),
@@ -83,6 +94,7 @@ static void *hab_profile_win_disable_cmdtbl[] = {
 	&KEYINFO(hab_profile_key2_disable),
 };
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static char HAB_SET_PROFILE_SD_DIGIT[] = {
 	0x75,
 	0x02,
@@ -94,6 +106,7 @@ static char HAB_RESET_PROFILE_SD_DIGIT[] = {
 	0x00,
 };
 static DEFINE_STATIC_PACKET(hab_reset_profile_sd_digit, DSI_PKT_TYPE_WR, HAB_RESET_PROFILE_SD_DIGIT, 0);
+#endif
 
 static char HAB_INIT_PROFILE_FPS[] = {
 	0x80,
@@ -242,7 +255,7 @@ void *hab_profile_fps_mask_enable_cmdtbl[] = {
 };
 
 static struct seqinfo hab_profiler_seqtbl[MAX_PROFILER_SEQ] = {
-	[PROFILE_WIN_UPDATE_SEQ] = SEQINFO_INIT("update_profile_win", hab_profile_win_update_cmdtbl),
+	[PROFILE_WIN_UPDATE_SEQ] = SEQINFO_INIT("update_profile_win", hab_profile_win_update_cmdtbl),
 	[PROFILE_DISABLE_WIN_SEQ] = SEQINFO_INIT("disable_profile_win", hab_profile_win_disable_cmdtbl),
 	[INIT_PROFILE_FPS_SEQ] = SEQINFO_INIT("init_profile_fps", hab_init_profile_fps_cmdtbl),
 	[DISPLAY_PROFILE_FPS_SEQ] = SEQINFO_INIT("display_profile_fps", hab_display_profile_fps_cmdtbl),

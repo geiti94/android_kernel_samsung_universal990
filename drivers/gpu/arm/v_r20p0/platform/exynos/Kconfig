@@ -118,6 +118,13 @@ config MALI_SEC_G3D_PEAK_NOTI
 	help
 	  Choose this option to enable SEC_G3D_PEAK_NOTI in the Mali tTRx DDK.
 
+config MALI_SEC_G3D_PERF_STABLE_PMQOS
+	bool "Enable GPU MALI_SEC_G3D_PERF_STABLE_PMQOS"
+	depends on MALI_SEC_G3D_PEAK_NOTI
+	default n
+	help
+	  Choose this option to enable MALI_SEC_G3D_PERF_STABLE_PMQOS in the Mali tTRx DDK.
+
 config MALI_SEC_JOB_STATUS_CHECK
 	bool "Enable GPU JOB & FENCE STATUS DUMP"
 	depends on MALI_MIDGARD && MALI_RT_PM && MALI_DVFS && (SYNC || SYNC_FILE)
@@ -132,9 +139,30 @@ config MALI_SUSTAINABLE_OPT
 	help
 		Choose this option to enable sustainable optimization in the Mali tTRx DDK.
 
+config MALI_IFPO
+	bool "Enable IFPO(Inter-Frame Power Off)"
+	depends on MALI_MIDGARD && MALI_RT_PM && MALI_DVFS
+	default n
+	help
+		choose this option to enable IFPO Option in the Mali tTRx DDK.
+
+config MALI_DYNAMIC_IFPO
+	bool "Enable Dynamic IFPO Option"
+	depends on MALI_MIDGARD && MALI_RT_PM && MALI_DVFS && MALI_IFPO
+	default y
+	help
+		Choose this option to enable dynamic IFPO Option to set threshold value to control ifpo in the Mali tTRx DDK.
+
 config MALI_CL_PMQOS
 	bool "Enable CL PMQOS Table Option"
 	depends on MALI_MIDGARD && MALI_RT_PM && MALI_DVFS && MALI_PM_QOS
 	default y
 	help
 		Choose this option to enable CL PMOQS Table Option to set threshold value to control ifpo in the Mali tTRx DDK.
+
+config MALI_SEC_GPU_MEM_DUMP
+	bool "Enable GPU MEM DUMP Option"
+	depends on MALI_MIDGARD
+	default y
+	help
+		Choose this option to enable checking GPU_MEM in the Mali tTRx DDK.

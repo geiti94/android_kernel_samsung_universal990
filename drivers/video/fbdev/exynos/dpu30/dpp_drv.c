@@ -417,14 +417,17 @@ static int dpp_check_format(struct dpp_device *dpp, struct dpp_params_info *p)
  */
 static int dpp_check_limitation(struct dpp_device *dpp, struct dpp_params_info *p)
 {
-	int ret;
+	int ret = 0;
 	struct dpp_img_format vi;
 	const struct dpu_fmt *fmt_info = dpu_find_fmt_info(p->format);
 
-	ret = dpp_check_scale_ratio(p);
-	if (ret) {
-		dpp_err("failed to set dpp%d scale information\n", dpp->id);
-		return -EINVAL;
+	if (dpp->id != ODMA_WB) {
+		ret = dpp_check_scale_ratio(p);
+		if (ret) {
+			dpp_err("failed to set dpp%d scale information\n",
+					dpp->id);
+			return -EINVAL;
+		}
 	}
 
 	dpp_select_format(dpp, &vi, p);
@@ -684,7 +687,7 @@ static int dpp_set_config(struct dpp_device *dpp)
 	if (params.wcg_mode != HAL_COLOR_MODE_NATIVE) {
 		ret = dpp_mcd_config_wcg(dpp, &params);
 		if (ret)
-			dpp_err("DPP:ERR:%s:faield to set mcd ip\n", __func__);
+			dpp_err("DPP:ERR:%s:failed to set mcd ip\n", __func__);
 	}
 
 	if (IS_HDR_FMT(params.hdr))
@@ -1127,8 +1130,9 @@ static irqreturn_t dma_irq_handler(int irq, void *priv)
 					ktime_set(0, 0));
 			val = (u32)dpp->dpp_config->config.dpp_parm.comp_src;
 			dpp->d.recovery_cnt++;
-			dpp_info("dma%d recovery start(0x%x).. cnt(%d)\n",
-					dpp->id, irqs, dpp->d.recovery_cnt);
+			dpp_info("dma%d recovery start(0x%x)..[src=%d(1:g2d,2:gpu)], cnt(%d)\n",
+					dpp->id, irqs, val,
+					dpp->d.recovery_cnt);
 			goto irq_end;
 		}
 		if ((irqs & IDMA_READ_SLAVE_ERROR) ||
@@ -1378,7 +1382,7 @@ static int dpp_probe(struct platform_device *pdev)
 	if (IS_SUPPORT_WCG(attr))
 		dpp->attr |= (1 << DPP_ATTR_WCG);
 
-	dpp_info("DPP:INFO:%s:%x attr : %x", __func__, dpp->id, dpp->attr);
+	dpp_info("DPP:INFO:%s:%x attr : %lx", __func__, dpp->id, dpp->attr);
 #if 1
 	print_dpp_restrict(dpp->attr);
 #endif

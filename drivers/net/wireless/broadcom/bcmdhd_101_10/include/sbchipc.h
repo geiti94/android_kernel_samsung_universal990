@@ -5,7 +5,7 @@
  * JTAG, 0/1/2 UARTs, clock frequency control, a watchdog interrupt timer,
  * GPIO interface, extbus, and support for serial and parallel flashes.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -22,7 +22,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_SBCHIPC_H
@@ -891,7 +891,8 @@ typedef volatile struct {
  *   SpmIdle indicates when the one-shot run has completed. After one-shot
  *   completion, spmen needs to be disabled first before enabling again.
  */
-#define SPMCTRL_ALPDIV		0x1ffu
+#define SPMCTRL_ALPDIV_FUNC	0x1ffu
+#define SPMCTRL_ALPDIV_RO	0xfffu
 #define SPMCTRL_ALPDIV_SHIFT	16u
 #define SPMCTRL_ALPDIV_MASK	(0xfffu << SPMCTRL_ALPDIV_SHIFT)
 #define SPMCTRL_RSTSPM		0x1u
@@ -960,8 +961,9 @@ typedef volatile struct {
 #define MONCTRLN_TARGETRO_MASK			(0xffu << MONCTRLN_TARGETRO_SHIFT)
 #define MONCTRLN_TARGETROMAX			64u
 #define MONCTRLN_TARGETROHI			32u
-#define MONCTRLN_TARGETROEXT			0x2u
-#define MONCTRLN_TARGETROHIEXT			0x3u
+#define MONCTRLN_TARGETROEXT_RO			0x0u
+#define MONCTRLN_TARGETROEXT_FUNC		0x2u
+#define MONCTRLN_TARGETROEXT_DFT		0x3u
 #define MONCTRLN_TARGETROEXT_SHIFT		6u
 #define MONCTRLN_TARGETROEXT_MASK		(0x3u << MONCTRLN_TARGETROEXT_SHIFT)
 #define MONCTRLN_MONEN				0x1u
@@ -1145,6 +1147,8 @@ typedef volatile struct {
 
 /* Indicate to BT that WL is scheduling ACL based ble scan grant */
 #define GCI_WL2BT_ACL_BSD_BLE_SCAN_GRNT_MASK 0x8000000
+/* WLAN is awake Indicate to BT */
+#define GCI_WL2BT_2G_AWAKE_MASK	  (1u << 27u)
 
 /* WL Strobe to BT */
 #define GCI_WL_STROBE_BIT_MASK	(0x0020)
@@ -3799,13 +3803,15 @@ typedef volatile struct {
 #define LHL4378_SRBG_REF_SEL_UP_CNT		1u
 #define LHL4378_HPBG_PU_EN_UP_CNT		0
 
+#define	LHL4378_CSR_TRIM_ADJ_CNT_SHIFT		(16u)
+#define	LHL4378_CSR_TRIM_ADJ_CNT_MASK		(0x3Fu << LHL4378_CSR_TRIM_ADJ_CNT_SHIFT)
 #define LHL4378_CSR_TRIM_ADJ_DWN_CNT		0
 #define LHL4378_CSR_TRIM_ADJ_UP_CNT		0
-#define LHL4378_ASR_TRIM_ADJ_DWN_CNT		0
 
 #define	LHL4378_ASR_TRIM_ADJ_CNT_SHIFT		(0u)
 #define	LHL4378_ASR_TRIM_ADJ_CNT_MASK		(0x3Fu << LHL4378_ASR_TRIM_ADJ_CNT_SHIFT)
 #define LHL4378_ASR_TRIM_ADJ_UP_CNT		0
+#define LHL4378_ASR_TRIM_ADJ_DWN_CNT		0
 
 #define LHL4378_PWRSW_EN_DWN_CNT		0
 #define LHL4378_SLB_EN_DWN_CNT			2u
@@ -4243,6 +4249,8 @@ typedef volatile struct {
 #define CC_GCI_CHIPCTRL_24	(24)
 #define CC_GCI_CHIPCTRL_25	(25)
 #define CC_GCI_CHIPCTRL_26	(26)
+#define CC_GCI_CHIPCTRL_27	(27)
+#define CC_GCI_CHIPCTRL_28	(28)
 
 /* GCI chip ctrl SDTC Soft reset */
 #define GCI_CHIP_CTRL_SDTC_SOFT_RESET       (1 << 31)
@@ -4339,6 +4347,8 @@ typedef volatile struct {
 #define CC_GCI_CNCB_SHORT_RESET_PULSE_WIDTH_5G_MASK	(0x1Fu <<\
 				CC_GCI_CNCB_SHORT_RESET_PULSE_WIDTH_5G_NBIT)
 
+#define CC_GCI_CNCB_GLITCH_FILTER_WIDTH_MASK	(0xFFu)
+
 #define CC_GCI_06_JTAG_SEL_SHIFT	4
 #define CC_GCI_06_JTAG_SEL_MASK		(1 << 4)
 
@@ -4357,7 +4367,7 @@ typedef volatile struct {
 #define GPIO_CTRL_REG_COUNT			40
 
 #define XTAL_HQ_SETTING_4387	(0xFFF94D30u)
-#define XTAL_LQ_SETTING_4387	(0xFFF94185u)
+#define XTAL_LQ_SETTING_4387	(0xFFF94380u)
 
 #define CC_GCI_16_BBPLL_CH_CTRL_GRP_PD_TRIG_1_MASK		(0x00000200u)
 #define CC_GCI_16_BBPLL_CH_CTRL_GRP_PD_TRIG_1_SHIFT		(9u)
@@ -4370,6 +4380,10 @@ typedef volatile struct {
 
 #define CC_GCI_20_BBPLL_CH_CTRL_GRP_MASK			(0xFC000000u)
 #define CC_GCI_20_BBPLL_CH_CTRL_GRP_SHIFT			(26u)
+
+/* GCI Chip Ctrl Regs */
+#define GCI_CC28_IHRP_SEL_MASK			(7 << 24)
+#define GCI_CC28_IHRP_SEL_SHIFT			(24u)
 
 /* 30=MACPHY_CLK_MAIN, 29=MACPHY_CLK_AUX, 23=RADIO_PU_MAIN, 22=CORE_RDY_MAIN
  * 20=RADIO_PU_AUX, 18=CORE_RDY_AUX, 14=PWRSW_MAIN, 11=PWRSW_AUX
@@ -4539,7 +4553,8 @@ typedef volatile struct {
 #define	GCI_WAKE_ON_GCI_GPIO8	8
 #define	GCI_WAKE_ON_GCI_SECI_IN	9
 
-#define	PMU_EXT_WAKE_MASK_0_SDIO		(1 << 2)
+#define	PMU_EXT_WAKE_MASK_0_SDIO		(1u << 2u)
+#define	PMU_EXT_WAKE_MASK_0_PCIE_PERST		(1u << 5u)
 
 #define PMU_4362_EXT_WAKE_MASK_0_SDIO		(1u << 1u | 1u << 2u)
 

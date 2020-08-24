@@ -459,6 +459,13 @@ enum sec_battery_wpc_en_ctrl {
 	WPC_EN_CHARGING = 0x4,
 	WPC_EN_TX = 0x8,
 	WPC_EN_MST = 0x10,
+	WPC_EN_FW = 0x20,
+};
+
+enum sec_battery_direct_charging_source_ctrl {
+	SEC_TEST_MODE = 0x1,
+	SEC_SEND_UVDM = 0x2,
+	SEC_STORE_MODE = 0x4,
 };
 
 /* tx_event */
@@ -479,6 +486,10 @@ enum sec_battery_wpc_en_ctrl {
 #define BATT_TX_EVENT_WIRELESS_TX_ETC           0x00004000
 #define BATT_TX_EVENT_WIRELESS_TX_RETRY			0x00008000
 #define BATT_TX_EVENT_WIRELESS_ALL_MASK			0x0000ffff
+#define BATT_TX_EVENT_WIRELESS_TX_ERR			(BATT_TX_EVENT_WIRELESS_TX_FOD | BATT_TX_EVENT_WIRELESS_TX_HIGH_TEMP | \
+	BATT_TX_EVENT_WIRELESS_RX_UNSAFE_TEMP | BATT_TX_EVENT_WIRELESS_RX_CHG_SWITCH | BATT_TX_EVENT_WIRELESS_RX_CS100 | \
+	BATT_TX_EVENT_WIRELESS_TX_OTG_ON | BATT_TX_EVENT_WIRELESS_TX_LOW_TEMP | BATT_TX_EVENT_WIRELESS_TX_SOC_DRAIN | \
+	BATT_TX_EVENT_WIRELESS_TX_CRITICAL_EOC | BATT_TX_EVENT_WIRELESS_TX_CAMERA_ON | BATT_TX_EVENT_WIRELESS_TX_OCP | BATT_TX_EVENT_WIRELESS_TX_MISALIGN | BATT_TX_EVENT_WIRELESS_TX_ETC)
 
 #define SEC_BAT_ERROR_CAUSE_NONE		0x0000
 #define SEC_BAT_ERROR_CAUSE_FG_INIT_FAIL	0x0001
@@ -785,9 +796,6 @@ struct sec_age_data {
 	unsigned int recharge_condition_vcell;
 	unsigned int full_condition_vcell;
 	unsigned int full_condition_soc;
-#if defined(CONFIG_STEP_CHARGING)
-	unsigned int step_charging_condition;
-#endif
 };
 
 #define sec_age_data_t \
@@ -852,6 +860,7 @@ struct sec_battery_platform_data {
 	unsigned int pre_wc_afc_input_current;
 	unsigned int store_mode_afc_input_current;
 	unsigned int store_mode_hv_wireless_input_current;
+	unsigned int store_mode_max_input_power;
 	unsigned int prepare_ta_delay;
 
 	char *pmic_name;
@@ -921,13 +930,13 @@ struct sec_battery_platform_data {
 
 #if defined(CONFIG_STEP_CHARGING)
 	/* step charging */
-	unsigned int *step_charging_condition;
+	unsigned int **step_charging_condition;
 	unsigned int *step_charging_condition_curr;
 	unsigned int *step_charging_current;
 	unsigned int *step_charging_float_voltage;
 #if defined(CONFIG_DIRECT_CHARGING)
 	unsigned int *dc_step_chg_cond_vol;
-	unsigned int *dc_step_chg_cond_soc;
+	unsigned int **dc_step_chg_cond_soc;
 	unsigned int *dc_step_chg_cond_iin;
 	int dc_step_chg_iin_check_cnt;
 
@@ -1340,8 +1349,8 @@ static inline struct power_supply *get_power_supply_by_name(char *name)
 			ret = psy->desc->function##_property(psy, \
 				(enum power_supply_property) (property), &(value)); \
 			if (ret < 0) {	\
-				pr_err("%s: Fail to %s "#function" (%d=>%d)\n", \
-						__func__, name, (property), ret);	\
+				pr_err("%s: Fail to %s "#function" "#property" (%d)\n", \
+						__func__, name, ret);	\
 				value.intval = 0;	\
 			}	\
 		} else {	\

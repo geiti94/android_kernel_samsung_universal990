@@ -483,7 +483,7 @@ static inline int regulator_is_supported_voltage(struct regulator *regulator,
 }
 
 #ifdef CONFIG_SEC_PM
-static inline int regulator_set_short_protection(struct regulator *regulator,
+static inline int regulator_set_short_detection(struct regulator *regulator,
 						 bool enable, int lv_uA)
 {
 	return 0;

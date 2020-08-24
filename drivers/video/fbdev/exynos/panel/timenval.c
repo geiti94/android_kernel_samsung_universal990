@@ -1,9 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * linux/drivers/video/fbdev/exynos/panel/timenval.c
- *
- * Header file for Samsung Common LCD Driver.
- *
- * Copyright (c) 2017 Samsung Electronics
+ * Copyright (c) Samsung Electronics Co., Ltd.
  * Gwanghui Lee <gwanghui.lee@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -12,6 +9,7 @@
  */
 
 #include "timenval.h"
+#include "panel_debug.h"
 
 int timenval_update_snapshot(struct timenval *tnv, int cur_value, struct timespec cur_ts)
 {
@@ -32,7 +30,7 @@ int timenval_update_snapshot(struct timenval *tnv, int cur_value, struct timespe
 	delta_ts = timespec_sub(cur_ts, tnv->last_ts);
 	elapsed_msec = timespec_to_ns(&delta_ts) / NSEC_PER_MSEC;
 	if (elapsed_msec == 0) {
-		pr_debug("%s elapsed_msec 0 msec\n", __func__);
+		panel_dbg("elapsed_msec 0 msec\n");
 		elapsed_msec = 1;
 	}
 
@@ -47,9 +45,9 @@ int timenval_update_snapshot(struct timenval *tnv, int cur_value, struct timespe
 	tnv->last_ts = cur_ts;
 	tnv->last_value = cur_value;
 
-	pr_debug("%s new %d old %d avg %llu (sum %llu, %llu.%03llu sec)\n"
+	panel_dbg("new %d old %d avg %llu (sum %llu, %llu.%03llu sec)\n"
 			"total avg %llu (sum %llu, %llu.%03llu sec) cnt %llu\n",
-			__func__, cur_value, last_value, tnv->avg, tnv->sum,
+			cur_value, last_value, tnv->avg, tnv->sum,
 			tnv->elapsed_msec / 1000, tnv->elapsed_msec % 1000,
 			tnv->total_avg, tnv->total_sum,
 			tnv->total_elapsed_msec / 1000, tnv->total_elapsed_msec % 1000,
@@ -76,7 +74,7 @@ int timenval_update_average(struct timenval *tnv, int cur_value, struct timespec
 	delta_ts = timespec_sub(cur_ts, tnv->last_ts);
 	elapsed_msec = timespec_to_ns(&delta_ts) / NSEC_PER_MSEC;
 	if (elapsed_msec == 0) {
-		pr_debug("%s elapsed_msec 0 msec\n", __func__);
+		panel_dbg("elapsed_msec 0 msec\n");
 		elapsed_msec = 1;
 	}
 
@@ -91,9 +89,9 @@ int timenval_update_average(struct timenval *tnv, int cur_value, struct timespec
 	tnv->last_ts = cur_ts;
 	tnv->last_value = cur_value;
 
-	pr_debug("%s new %d old %d avg %llu (sum %llu, %llu.%03llu sec)\n"
+	panel_dbg("new %d old %d avg %llu (sum %llu, %llu.%03llu sec)\n"
 			"total avg %llu (sum %llu, %llu.%03llu sec) cnt %llu\n",
-			__func__, cur_value, last_value, tnv->avg, tnv->sum,
+			cur_value, last_value, tnv->avg, tnv->sum,
 			tnv->elapsed_msec / 1000, tnv->elapsed_msec % 1000,
 			tnv->total_avg, tnv->total_sum,
 			tnv->total_elapsed_msec / 1000, tnv->total_elapsed_msec % 1000,

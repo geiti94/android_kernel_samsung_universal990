@@ -227,7 +227,7 @@ static void sx9360_initialize_register(struct sx9360_p *data)
 	u8 val = 0;
 	unsigned int idx;
 
-	for (idx = 0; idx < (sizeof(setup_reg) >> 1); idx++) {		
+	for (idx = 0; idx < (unsigned int)(sizeof(setup_reg) >> 1); idx++) {
 		sx9360_i2c_write(data, setup_reg[idx].reg, setup_reg[idx].val);
 		pr_info("[SX9360]: %s - Write Reg: 0x%x Value: 0x%x\n",
 			__func__, setup_reg[idx].reg, setup_reg[idx].val);
@@ -1358,6 +1358,8 @@ static int sx9360_parse_dt(struct sx9360_p *data, struct device *dev)
 			__func__, data->gpio_nirq);
 	}
 
+	if (!sx9360_read_setupreg(dNode, SX9360_REGGNRLCTL2, &val))
+		setup_reg[SX9360_REGGNRLCTL2_REG_IDX].val = (u8)val;
 	if (!sx9360_read_setupreg(dNode, SX9360_REFRESOLUTION, &val))
 		setup_reg[SX9360_REFRESOLUTION_REG_IDX].val = (u8)val;
 	if (!sx9360_read_setupreg(dNode, SX9360_REFAGAINFREQ, &val))
@@ -1370,6 +1372,8 @@ static int sx9360_parse_dt(struct sx9360_p *data, struct device *dev)
 		setup_reg[SX9360_REFGAINRAWFILT_REG_IDX].val = (u8)val;
 	if (!sx9360_read_setupreg(dNode, SX9360_GAINRAWFILT, &val))
 		setup_reg[SX9360_GAINRAWFILT_REG_IDX].val = (u8)val;
+	if (!sx9360_read_setupreg(dNode, SX9360_REGPROXCTRL3, &val))
+		setup_reg[SX9360_REGPROXCTRL3_REG_IDX].val = (u8)val;   
 	if (!sx9360_read_setupreg(dNode, SX9360_HYST, &val))
 		setup_reg[SX9360_HYST_REG_IDX].val = (u8)val;
 	if (!sx9360_read_setupreg(dNode, SX9360_PROXTHRESH, &val))

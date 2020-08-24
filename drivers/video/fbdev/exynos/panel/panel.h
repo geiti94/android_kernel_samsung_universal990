@@ -1,9 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * linux/drivers/video/fbdev/exynos/panel/panel.h
- *
- * Header file for Samsung Common LCD Driver.
- *
- * Copyright (c) 2016 Samsung Electronics
+ * Copyright (c) Samsung Electronics Co., Ltd.
  * Gwanghui Lee <gwanghui.lee@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -18,11 +15,14 @@
 #include <linux/backlight.h>
 #include <linux/spi/spi.h>
 #include <linux/sysfs.h>
+#include <linux/panel_modes.h>
+#include "panel_debug.h"
 #include "panel_bl.h"
 #include "dimming.h"
 #include "panel_dimming.h"
 #include "mdnie.h"
 #include "copr.h"
+#include "panel_vrr.h"
 
 #ifdef CONFIG_PANEL_NOTIFY
 #include <linux/panel_notify.h>
@@ -43,6 +43,8 @@ enum {
 	MAX_MIPI_DSI_CMD_TYPE,
 };
 
+#define STRINGFY(x)	(#x)
+
 #define CONFIG_LCD_HBM_60_STEP
 #define MIPI_DCS_WRITE_GRAM_START			(0x2C)
 #define MIPI_DCS_WRITE_GRAM_CONTINUE		(0x3C)
@@ -58,6 +60,7 @@ enum {
 
 #define CONFIG_SUPPORT_MST
 #define CONFIG_SUPPORT_GRAYSPOT_TEST
+
 #define CONFIG_SUPPORT_SPI_IF_SEL
 
 #define to_panel_device(_m_)	container_of(_m_, struct panel_device, _m_)
@@ -89,14 +92,6 @@ enum {
 
 struct maptbl;
 struct mdnie_info;
-
-struct common_panel_ops {
-	int (*tx_cmds)(struct panel_info *, const void *, int);
-	int (*rx_cmds)(struct panel_info *, u8 *, const void *, int);
-#if CONFIG_OF
-	int (*parse_dt)(const struct device_node *);
-#endif
-};
 
 /*
  * [command types]
@@ -237,9 +232,7 @@ enum {
 	CMD_TYPE_TX_PKT_END = DSI_PKT_TYPE_WR_MEM,
 	CMD_TYPE_RX_PKT_START,
 	SPI_PKT_TYPE_RD = CMD_TYPE_RX_PKT_START,
-#ifdef CONFIG_SUPPORT_DDI_FLASH
 	DSI_PKT_TYPE_RD_POC,
-#endif
 	DSI_PKT_TYPE_RD,
 	CMD_TYPE_RX_PKT_END = DSI_PKT_TYPE_RD,
 	SPI_PKT_TYPE_WR,
@@ -249,6 +242,8 @@ enum {
 	CMD_TYPE_KEY,
 	CMD_TYPE_MAP,
 	CMD_TYPE_DMP,
+	CMD_TYPE_COND_START,
+	CMD_TYPE_COND_END,
 	MAX_CMD_TYPE,
 };
 
@@ -337,6 +332,33 @@ struct ldi_reg_desc {
 	.dirty = (0),										\
 }
 
+enum {
+	NDARR_1D,
+	NDARR_2D,
+	NDARR_3D,
+	NDARR_4D,
+	NDARR_5D,
+	NDARR_6D,
+	NDARR_7D,
+	NDARR_8D,
+	MAX_NDARR,
+};
+
+/*
+ * indices of n-dimension
+ */
+struct maptbl_pos {
+	unsigned int index[MAX_NDARR];
+};
+
+/*
+ * shape of maptbl
+ */
+struct maptbl_shape {
+	unsigned int ndim;	/* n-dimension */
+	unsigned int sz_dim[MAX_NDARR];
+};
+
 struct pkt_update_info {
 	u32 offset;
 	struct maptbl *maptbl;
@@ -345,8 +367,12 @@ struct pkt_update_info {
 	void *pdata;
 };
 
-#define PKT_OPTION_NONE (0)
-#define PKT_OPTION_CHECK_TX_DONE (1 << 0)
+enum {
+	PKT_OPTION_NONE = 0,
+	PKT_OPTION_CHECK_TX_DONE = (1 << 0),
+	PKT_OPTION_SR_ALIGN_12 = (1 << 1),
+	PKT_OPTION_SR_ALIGN_16 = (1 << 2),
+};
 
 struct pktinfo {
 	u32 type;
@@ -389,6 +415,17 @@ struct dumpinfo {
 	char *name;
 	struct resinfo *res;
 	void (*callback)(struct dumpinfo *info);
+};
+
+struct condinfo {
+	u32 type;
+	char *name;
+	bool (*cond)(struct panel_device *);
+};
+
+struct condinfo_cont {
+	struct condinfo start;
+	struct condinfo end;
 };
 
 #define DUMPINFO_INIT(_name_, _res_, _callback_)	\
@@ -491,6 +528,23 @@ DEFINE_PACKET(_name_, _type_, _arr_, _ofs_, _option_, (NULL), (0))
 #define DEFINE_PN_STATIC_PACKET(_name_, _type_, _arr_)			\
 DEFINE_PACKET(PN_CONCAT(__pn_name__, _name_), _type_,	\
 		PN_CONCAT(__PN_NAME__, _arr_), _ofs_, 0, NULL, 0)
+
+#define CONDINFO_S(_name_) (PN_CONCAT(cond_info, _name_)).start
+#define CONDINFO_E(_name_) (PN_CONCAT(cond_info, _name_)).end
+
+#define DEFINE_COND(_name_, _func_)						\
+struct condinfo_cont PN_CONCAT(cond_info, _name_) = {	\
+	.start = {											\
+		.name = (#_name_),								\
+		.type = (CMD_TYPE_COND_START),					\
+		.cond = (void *) _func_,						\
+	},													\
+	.end = { 											\
+		.name = (#_name_),								\
+		.type = (CMD_TYPE_COND_END),					\
+		.cond = NULL,									\
+	},													\
+};
 
 /* structure of mapping table */
 struct maptbl_ops {
@@ -666,6 +720,7 @@ int maptbl_getidx(struct maptbl *tbl);
 void maptbl_copy(struct maptbl *tbl, u8 *dst);
 void maptbl_memcpy(struct maptbl *dst, struct maptbl *src);
 u8 *maptbl_getptr(struct maptbl *tbl);
+int maptbl_fill(struct maptbl *tbl, struct maptbl_pos *pos, u8 *src, size_t n);
 
 enum PANEL_SEQ {
 	PANEL_INIT_SEQ,
@@ -673,6 +728,9 @@ enum PANEL_SEQ {
 	PANEL_RES_INIT_SEQ,
 #ifdef CONFIG_SUPPORT_DIM_FLASH
 	PANEL_DIM_FLASH_RES_INIT_SEQ,
+#endif
+#ifdef CONFIG_SUPPORT_GM2_FLASH
+	PANEL_GM2_FLASH_RES_INIT_SEQ,
 #endif
 	PANEL_MAP_INIT_SEQ,
 	PANEL_DISPLAY_ON_SEQ,
@@ -688,6 +746,9 @@ enum PANEL_SEQ {
 #endif
 	PANEL_HBM_ON_SEQ,
 	PANEL_HBM_OFF_SEQ,
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	PANEL_DISPLAY_MODE_SEQ,
+#endif
 #ifdef CONFIG_SUPPORT_DSU
 	PANEL_DSU_SEQ,
 #endif
@@ -709,6 +770,9 @@ enum PANEL_SEQ {
 	PANEL_GCT_IMG_0_UPDATE_SEQ,
 	PANEL_GCT_IMG_1_UPDATE_SEQ,
 	PANEL_GCT_EXIT_SEQ,
+#endif
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_FAST_DISCHARGE)
+	PANEL_FD_SEQ,
 #endif
 #ifdef CONFIG_SUPPORT_GRAYSPOT_TEST
 	PANEL_GRAYSPOT_ON_SEQ,
@@ -756,6 +820,10 @@ enum PANEL_SEQ {
 #endif
 	PANEL_CHECK_CONDITION_SEQ,
 	PANEL_DIA_ONOFF_SEQ,
+#ifdef CONFIG_SUPPORT_MASK_LAYER
+	PANEL_MASK_LAYER_BEFORE_SEQ,
+	PANEL_MASK_LAYER_AFTER_SEQ,
+#endif
 	PANEL_DUMMY_SEQ,
 	MAX_PANEL_SEQ,
 };
@@ -812,25 +880,28 @@ enum {
 	VRR_AID_4_CYCLE,
 };
 
-struct vrr_vtx {
-	int fps;
-	int mode;
-	int aid_cycle;
-	int vfp;
-	int aor_offset;
-	struct vrr_node *node;
-};
+#define TE_SKIP_TO_DIV(_sw_skip, _hw_skip) \
+	((_sw_skip + 1) * (_hw_skip + 1))
 
-struct vrr_node {
-	struct vrr_vtx *v;
-	int frame_delay;
+struct panel_vrr {
+	u32 fps;
+	u32 base_fps;
+	u32 base_vactive;
+	u32 base_vfp;
+	u32 base_vbp;
+	int te_sel;
+	int te_v_st;
+	int te_v_ed;
+	u32 te_sw_skip_count;
+	u32 te_hw_skip_count;
+	u32 mode;
+	int aid_cycle;
 };
 
 #ifdef CONFIG_PANEL_VRR_BRIDGE
 struct vrr_bridge_step {
-	int fps;
 	int frame_delay;
-	int aid_cycle;
+	struct panel_vrr *vrr;
 };
 
 struct panel_vrr_bridge {
@@ -847,21 +918,6 @@ struct panel_vrr_bridge {
 	int nr_step;
 };
 #endif
-
-struct panel_vrr {
-	u32 def_fps;
-	u32 min_fps;
-	u32 max_fps;
-	u32 base_fps;
-	u32 base_vactive;
-	u32 base_vfp;
-	u32 base_vbp;
-	int te_sel;
-	int te_v_st;
-	int te_v_ed;
-	u32 mode;
-	int aid_cycle;
-};
 
 struct panel_resol {
 	unsigned int w;
@@ -883,12 +939,55 @@ struct panel_mres {
 	struct panel_resol *resol;
 };
 
+#ifdef CONFIG_SUPPORT_MASK_LAYER
+enum {
+	MASK_LAYER_TRIGGER_BEFORE,
+	MASK_LAYER_TRIGGER_AFTER,
+	MASK_LAYER_TRIGGER_MAX,
+};
+
+enum {
+	MASK_LAYER_OFF,
+	MASK_LAYER_ON,
+	MASK_LAYER_MAX,
+};
+
+enum {
+	MASK_LAYER_HOOK_OFF,
+	MASK_LAYER_HOOK_ON,
+	MASK_LAYER_HOOK_MAX,
+};
+
+struct mask_layer_data {
+	u32 trigger_time;
+	u32 req_mask_layer;
+};
+#endif
+
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+struct common_panel_display_mode {
+	char name[PANEL_DISPLAY_MODE_NAME_LEN];
+	struct panel_resol *resol;
+	struct panel_vrr *vrr;
+};
+
+struct common_panel_display_modes {
+	unsigned int num_modes;
+	struct common_panel_display_mode **modes;
+};
+#endif
+
 struct ddi_properties {
 	u32 gpara;
 	bool support_partial_disp;
+	//D2: avoid abnormal screen issue
+	bool ssd_off_lpm_to_normal;
 	u32 cmd_fifo_size;
 	u32 img_fifo_size;
 	bool err_fg_recovery;
+	bool err_fg_powerdown;
+	bool support_vrr;
+	bool support_vrr_lfd;
 };
 
 struct common_panel_info {
@@ -934,6 +1033,12 @@ struct common_panel_info {
 #ifdef CONFIG_SUPPORT_DISPLAY_PROFILER
 	struct profiler_tune *profile_tune;
 #endif
+#ifdef CONFIG_SUPPORT_MAFPC
+	struct mafpc_info *mafpc_info;
+#endif
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	struct common_panel_display_modes *common_panel_modes;
+#endif
 };
 
 enum {
@@ -959,6 +1064,12 @@ enum {
 };
 
 enum {
+	SMOOTH_TRANS_OFF,
+	SMOOTH_TRANS_ON,
+	SMOOTH_TRANS_MAX,
+};
+
+enum {
 	ACL_OPR_OFF,
 	ACL_OPR_03P,
 	ACL_OPR_06P,
@@ -974,6 +1085,12 @@ enum {
 	HLPM_LOW_BR,
 	ALPM_HIGH_BR,
 	HLPM_HIGH_BR,
+};
+
+enum {
+	PANEL_HBM_OFF,
+	PANEL_HBM_ON,
+	MAX_PANEL_HBM,
 };
 
 #ifdef CONFIG_SUPPORT_XTALK_MODE
@@ -1009,13 +1126,13 @@ enum {
 
 enum {
 	GRAM_TEST_OFF,
-	GRAM_TEST_ON
+	GRAM_TEST_ON,
+	GRAM_TEST_SKIPPED,
 };
 #endif
 
 #ifdef CONFIG_SUPPORT_ISC_TUNE_TEST
-enum stm_field_num
-{
+enum stm_field_num {
 	STM_CTRL_EN = 0,
 	STM_MAX_OPT,
 	STM_DEFAULT_OPT,
@@ -1028,21 +1145,6 @@ enum stm_field_num
 	STM_M_THRES,
 	STM_V_THRES,
 	STM_FIELD_MAX
-};
-
-static const char* str_stm_fied[STM_FIELD_MAX] =
-{
-	"stm_ctrl_en=",
-	"stm_max_opt=",
-	"stm_default_opt=",
-	"stm_dim_step=",
-	"stm_frame_period=",
-	"stm_min_sect=",
-	"stm_pixel_period=",
-	"stm_line_period=",
-	"stm_min_move=",
-	"stm_m_thres=",
-	"stm_v_thres="
 };
 #endif
 
@@ -1083,6 +1185,8 @@ struct panel_lut_info {
 	int nr_panel;
 	struct device_node *ddi_node[MAX_PANEL_DDI];
 	int nr_panel_ddi;
+	struct device_node *panel_modes_node[MAX_PANEL_DDI];
+	int nr_panel_modes;
 	struct panel_lut lut[MAX_PANEL_LUT];
 	int nr_lut;
 };
@@ -1095,6 +1199,7 @@ struct panel_properties {
 	u32 cur_alpm_mode;
 	s32 lpm_brightness;
 	u32 lpm_opr;
+	u32 lpm_fps;
 	u32 cur_lpm_opr;
 	u32 mcd_on;
 	u32 mcd_resistance;
@@ -1140,12 +1245,14 @@ struct panel_properties {
 	u8 isc_threshold;
 	u8 stm_field_info[STM_FIELD_MAX];
 #endif
-	u8* gamma_control_buf;
+	u8 *gamma_control_buf;
+	u32 panel_partial_disp;
+	u32 panel_mode;
+	/* resolution */
 	bool mres_updated;
 	u32 mres_mode;
 	u32 xres;
 	u32 yres;
-	u32 panel_partial_disp;
 	/* variable refresh rate */
 	u32 vrr_fps;
 	u32 vrr_mode;
@@ -1162,9 +1269,14 @@ struct panel_properties {
 	u32 vrr_target_aid_cycle;
 	struct panel_vrr_bridge *bridge;
 #endif
+	bool vrr_updated;
+	struct vrr_lfd_info vrr_lfd_info;
 	u32 dia_mode;
 	u32 ub_con_cnt;
 	u32 conn_det_enable;
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_FAST_DISCHARGE)
+	u32 enable_fd;
+#endif
 };
 
 struct panel_info {
@@ -1195,6 +1307,9 @@ struct panel_info {
 	struct panel_dimming_info *panel_dim_info[MAX_PANEL_BL_SUBDEV];
 	int nr_panel_dim_info;
 	struct panel_lut_info lut_info;
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	struct common_panel_display_modes *common_panel_modes;
+#endif
 };
 
 #define __PANEL_ATTR_RO(_name, _mode) __ATTR(_name, _mode,		\
@@ -1205,6 +1320,32 @@ struct panel_info {
 
 #define __PANEL_ATTR_RW(_name, _mode) __ATTR(_name, _mode,		\
 			 PN_CONCAT(_name, show), PN_CONCAT(_name, store))
+
+enum sysfs_arg_type {
+	SYSFS_ARG_TYPE_NONE,
+	SYSFS_ARG_TYPE_S32,
+	SYSFS_ARG_TYPE_U32,
+	SYSFS_ARG_TYPE_STR,
+	MAX_SYSFS_ARG_TYPE,
+};
+
+#define MAX_SYSFS_ARG_NUM		(6)
+#define MAX_SYSFS_ARG_STR_LEN	(32)
+
+struct sysfs_arg {
+	const char *name;
+	unsigned int nargs;
+	enum sysfs_arg_type type;
+};
+
+struct sysfs_arg_out {
+	union {
+		s32 val_s32;
+		u32 val_u32;
+		char val_str[MAX_SYSFS_ARG_STR_LEN];
+	} d[MAX_SYSFS_ARG_NUM];
+	unsigned int nargs;
+};
 
 static inline int search_table_u32(u32 *tbl, u32 sz_tbl, u32 value)
 {
@@ -1235,11 +1376,14 @@ static inline int search_table(void *tbl, int itemsize, u32 sz_tbl, void *value)
 	return -1;
 }
 
+#define disp_div_round(n, m) ((((n) * 10 / (m)) + 5) / 10)
+
 void print_data(char *data, int size);
 void print_maptbl(struct maptbl *tbl);
 int register_common_panel(struct common_panel_info *info);
 struct common_panel_info *find_panel(struct panel_device *panel, u32 id);
 struct device_node *find_panel_ddi_node(struct panel_device *panel, u32 id);
+struct device_node *find_panel_modes_node(struct panel_device *panel, u32 id);
 void print_panel_lut(struct panel_lut_info *lut_info);
 int check_seqtbl_exist(struct panel_info *panel_data, u32 index);
 struct seqinfo *find_panel_seqtbl(struct panel_info *panel_data, char *name);
@@ -1276,9 +1420,15 @@ int panel_verify_tx_packet(struct panel_device *panel, u8 *src, u8 ofs, u8 len);
 int panel_set_key(struct panel_device *panel, int level, bool on);
 struct pktinfo *alloc_static_packet(char *name, u32 type, u8 *data, u32 dlen);
 int check_panel_active(struct panel_device *panel, const char *caller);
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+bool panel_display_mode_is_supported(struct panel_device *panel);
+#endif
 int read_panel_id(struct panel_device *panel, u8 *buf);
 int panel_resource_prepare(struct panel_device *panel);
 void print_panel_resource(struct panel_device *panel);
+int find_sysfs_arg_by_name(struct sysfs_arg *arglist, int nr_arglist, char *s);
+int parse_sysfs_arg(int nargs, enum sysfs_arg_type type,
+		char *s, struct sysfs_arg_out *out);
 #ifdef CONFIG_EXYNOS_DECON_LCD_SYSFS
 int panel_sysfs_probe(struct panel_device *panel);
 #else

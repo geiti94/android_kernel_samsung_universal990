@@ -98,22 +98,29 @@ struct partial_scan_info {
 	u32 scan_el;
 };
 
+enum {
+	AOD_SCENARIO_CLOCK = 0,
+	AOD_SCENARIO_IMAGE,
+	AOD_SCENARIO_MAX,
+};
+
+struct aod_scenario_info {
+	u32 scenario;
+};
+
+
 #define AOD_IOCTL_MAGIC	'S'
 
-#define IOCTL_SELF_MOVE_EN			_IOW(AOD_IOCTL_MAGIC, 1, int)
-#define IOCTL_SELF_MOVE_OFF			_IOW(AOD_IOCTL_MAGIC, 2, int)
+#define IOCTL_SELF_MOVE_EN		_IOW(AOD_IOCTL_MAGIC, 1, int)
+#define IOCTL_SELF_MOVE_OFF		_IOW(AOD_IOCTL_MAGIC, 2, int)
 #define IOCTL_SELF_MOVE_RESET		_IOW(AOD_IOCTL_MAGIC, 3, int)
 
-#define IOCTL_SET_TIME				_IOW(AOD_IOCTL_MAGIC, 11, struct aod_cur_time)
-
-#define IOCTL_SET_ICON				_IOW(AOD_IOCTL_MAGIC, 21, struct self_icon_info)
-
-#define IOCTL_SET_GRID				_IOW(AOD_IOCTL_MAGIC, 31, struct self_grid_info)
-
+#define IOCTL_SET_TIME			_IOW(AOD_IOCTL_MAGIC, 11, struct aod_cur_time)
+#define IOCTL_SET_ICON			_IOW(AOD_IOCTL_MAGIC, 21, struct self_icon_info)
+#define IOCTL_SET_GRID			_IOW(AOD_IOCTL_MAGIC, 31, struct self_grid_info)
 #define IOCTL_SET_ANALOG_CLK		_IOW(AOD_IOCTL_MAGIC, 41, struct analog_clk_info)
-
 #define IOCTL_SET_DIGITAL_CLK		_IOW(AOD_IOCTL_MAGIC, 51, struct digital_clk_info)
-
-#define IOCTL_SET_PARTIAL_HLPM_SCAN _IOW(AOD_IOCTL_MAGIC, 61, struct partial_scan_info)
+#define IOCTL_SET_PARTIAL_HLPM_SCAN 	_IOW(AOD_IOCTL_MAGIC, 61, struct partial_scan_info)
+#define IOCTL_SET_SCENARIO		_IOW(AOD_IOCTL_MAGIC, 71, struct aod_scenario_info)
 #endif //__AOD_DRV_IOCTL_H__
 

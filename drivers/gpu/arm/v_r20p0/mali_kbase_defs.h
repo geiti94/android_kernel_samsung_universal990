@@ -1603,6 +1603,18 @@ struct kbase_device {
 	s8 nr_hw_address_spaces;
 	s8 nr_user_address_spaces;
 
+	int queued_total_job_nr;
+	int in_js_total_job_nr;
+	int hw_complete_job_nr_cnt;
+	int complete_job_nr_cnt;
+	int stop_cnt;
+	int input_job_nr;
+	int output_job_nr;
+	unsigned long long input_job_nr_acc;
+	ktime_t queued_time_tick[2];	/* job queued time, index represents queued_time each threshold */
+	unsigned int queued_threshold[2];
+	ktime_t queued_time[2];
+
 	struct kbase_hwcnt {
 		/* The lock should be used when accessing any of the following members */
 		spinlock_t lock;

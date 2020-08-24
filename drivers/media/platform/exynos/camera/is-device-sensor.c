@@ -489,7 +489,7 @@ int is_sensor_gpio_on(struct is_device_sensor *device)
 		struct exynos_platform_is_module *pdata;
 
 		ret = is_vender_sensor_gpio_on_sel(vender,
-			scenario, &gpio_scenario);
+			scenario, &gpio_scenario, module);
 		if (ret) {
 			clear_bit(IS_MODULE_GPIO_ON, &module->state);
 			merr("is_vender_sensor_gpio_on_sel is fail(%d)",
@@ -596,7 +596,7 @@ int is_sensor_gpio_off(struct is_device_sensor *device)
 			goto p_err;
 		}
 
-		ret = is_vender_sensor_gpio_off(vender, scenario, gpio_scenario);
+		ret = is_vender_sensor_gpio_off(vender, scenario, gpio_scenario, module);
 		if (ret) {
 			merr("is_vender_sensor_gpio_off is fail(%d)", device, ret);
 			goto p_err;

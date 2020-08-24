@@ -2408,8 +2408,8 @@ static int ufshcd_init_clk_gating(struct ufs_hba *hba)
 
 	snprintf(wq_name, ARRAY_SIZE(wq_name), "ufs_clk_gating_%d",
 		 hba->host->host_no);
-	hba->clk_gating.clk_gating_workq = alloc_ordered_workqueue(wq_name,
-							   WQ_MEM_RECLAIM);
+	hba->clk_gating.clk_gating_workq = alloc_ordered_workqueue("%s",
+										WQ_MEM_RECLAIM, wq_name);
 
 	if (!hba->clk_gating.clk_gating_workq) {
 		ret = -ENOMEM;
@@ -3278,11 +3278,20 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 	struct ufshcd_lrb *add_lrbp;
 	int add_tag;
 	int pre_req_err = -EBUSY;
-	int lun = ufshcd_scsi_to_upiu_lun(cmd->device->lun);
+	int lun = 0;
 	int ret;
+
+	if (cmd && cmd->device)
+		lun = ufshcd_scsi_to_upiu_lun(cmd->device->lun);
 #endif
 
 	hba = shost_priv(host);
+
+	if (!cmd || !cmd->request || !hba) {
+		printk("%s: some data have a null pointer. hba: 0x%p: cmd=0x%p, cmd->request=0x%p",
+			__func__, hba, cmd, cmd->request);
+		return -EINVAL;
+	}
 
 	tag = cmd->request->tag;
 	if (!ufshcd_valid_tag(hba, tag)) {
@@ -3372,6 +3381,10 @@ send_orig_cmd:
 	lrbp->lun = ufshcd_scsi_to_upiu_lun(scsi_lun);
 	lrbp->intr_cmd = !ufshcd_is_intr_aggr_allowed(hba) ? true : false;
 	lrbp->req_abort_skip = false;
+
+	/* Only for SCSI */
+	if (cmd)
+		ufshcd_vops_perf_mode(hba, cmd);
 
 	ufshcd_comp_scsi_upiu(hba, lrbp);
 
@@ -3697,8 +3710,13 @@ static inline void ufshcd_init_query(struct ufs_hba *hba,
 	(*request)->upiu_req.selector = selector;
 }
 
+#if defined(CONFIG_UFSFEATURE)
+int ufshcd_query_flag_retry(struct ufs_hba *hba, enum query_opcode opcode,
+			    enum flag_idn idn, bool *flag_res)
+#else
 static int ufshcd_query_flag_retry(struct ufs_hba *hba,
 	enum query_opcode opcode, enum flag_idn idn, bool *flag_res)
+#endif
 {
 	int ret;
 	int retries;
@@ -4708,7 +4726,7 @@ static int ufshcd_memory_alloc(struct ufs_hba *hba)
 	hba->bounce_buffer_addr3 = kmalloc((4096 * 128 * 8), GFP_KERNEL);
 
 	if (hba->bounce_buffer_addr) {
-		dev_err(hba->dev, "ufs bounce_buffer_addr = 0x%llx\n", hba->bounce_buffer_addr);
+		dev_err(hba->dev, "ufs bounce_buffer_addr = 0x%px\n", hba->bounce_buffer_addr);
 		memset(hba->bounce_buffer_addr, 0, (4096 * 128 * 8));
 	} else {
 		dev_err(hba->dev, "ufs bounce_buffer alloc fail\n");
@@ -4716,7 +4734,7 @@ static int ufshcd_memory_alloc(struct ufs_hba *hba)
 	}
 
 	if (hba->bounce_buffer_addr1) {
-		dev_err(hba->dev, "ufs bounce_buffer_addr1 = 0x%llx\n", hba->bounce_buffer_addr1);
+		dev_err(hba->dev, "ufs bounce_buffer_addr1 = 0x%px\n", hba->bounce_buffer_addr1);
 		memset(hba->bounce_buffer_addr1, 0, (4096 * 128 * 8));
 	} else {
 		dev_info(hba->dev, "ufs bounce_buffer1 alloc fail\n");
@@ -4725,7 +4743,7 @@ static int ufshcd_memory_alloc(struct ufs_hba *hba)
 	}
 
 	if (hba->bounce_buffer_addr2) {
-		dev_err(hba->dev, "ufs bounce_buffer_addr2 = 0x%llx\n", hba->bounce_buffer_addr2);
+		dev_err(hba->dev, "ufs bounce_buffer_addr2 = 0x%px\n", hba->bounce_buffer_addr2);
 		memset(hba->bounce_buffer_addr2, 0, (4096 * 128 * 8));
 	} else {
 		dev_err(hba->dev, "ufs bounce_buffer alloc fail\n");
@@ -4735,7 +4753,7 @@ static int ufshcd_memory_alloc(struct ufs_hba *hba)
 	}
 
 	if (hba->bounce_buffer_addr3) {
-		dev_err(hba->dev, "ufs bounce_buffer_addr3 = 0x%llx\n", hba->bounce_buffer_addr3);
+		dev_err(hba->dev, "ufs bounce_buffer_addr3 = 0x%px\n", hba->bounce_buffer_addr3);
 		memset(hba->bounce_buffer_addr3, 0, (4096 * 128 * 8));
 	} else {
 		dev_err(hba->dev, "ufs bounce_buffer3 alloc fail\n");
@@ -10775,7 +10793,7 @@ static void ufs_sec_send_errinfo(void *data)
 {
 	static struct ufs_hba *hba;
 	struct SEC_UFS_counting *err_info;
-	char buf[22];
+	char buf[23];
 
 	if (data) {
 		hba = (struct ufs_hba *)data;

@@ -723,7 +723,7 @@ static int is_resourcemgr_deinit_secure_mem(struct is_resourcemgr *resourcemgr)
 static struct vm_struct is_lib_vm;
 static struct vm_struct is_heap_vm;
 static struct vm_struct is_heap_rta_vm;
-#ifdef CONFIG_UH_RKP
+#if (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP)
 static struct vm_struct is_lib_vm_for_rkp;
 #endif
 #if defined(RESERVED_MEM_IN_DT)
@@ -774,12 +774,13 @@ static int __init is_reserved_mem_setup(struct reserved_mem *rmem)
 
 	BUG_ON(rmem->size < LIB_SIZE);
 
-#ifdef CONFIG_UH_RKP
+#if (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP)
 	memcpy(&is_lib_vm_for_rkp, &is_lib_vm, sizeof(struct vm_struct));
 
 	is_lib_vm_for_rkp.addr = (void *)rounddown((u64)is_lib_vm_for_rkp.addr, SECTION_SIZE);
 	is_lib_vm_for_rkp.size = (u64)roundup(is_lib_vm_for_rkp.size, SECTION_SIZE);
 
+#ifdef CONFIG_UH_RKP
 	rkp_dyn.binary_base = is_lib_vm.phys_addr;
 	rkp_dyn.binary_size = LIB_SIZE;
 	rkp_dyn.type = RKP_DYN_COMMAND_BREAKDOWN_BEFORE_INIT;
@@ -788,6 +789,7 @@ static int __init is_reserved_mem_setup(struct reserved_mem *rmem)
 	if (ret) {
 		err_lib("fail to break-before-init FIMC in EL2");
 	}
+#endif
 	vm_area_add_early(&is_lib_vm_for_rkp);
 #else
 	vm_area_add_early(&is_lib_vm);
@@ -828,12 +830,13 @@ static int __init is_lib_mem_alloc(char *str)
 	is_lib_vm.phys_addr = memblock_alloc(LIB_SIZE, SZ_2M);
 	is_lib_vm.addr = (void *)addr;
 	is_lib_vm.size = LIB_SIZE + PAGE_SIZE;
-#ifdef CONFIG_UH_RKP
+#if (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP)
 	memcpy(&is_lib_vm_for_rkp, &is_lib_vm, sizeof(struct vm_struct));
 
 	is_lib_vm_for_rkp.addr = (void *)rounddown((u64)is_lib_vm_for_rkp.addr, SECTION_SIZE);
 	is_lib_vm_for_rkp.size = (u64)roundup(is_lib_vm_for_rkp.size, SECTION_SIZE);
 
+#ifdef CONFIG_UH_RKP
 	rkp_dyn.binary_base = is_lib_vm.phys_addr;
 	rkp_dyn.binary_size = LIB_SIZE;
 	rkp_dyn.type = RKP_DYN_COMMAND_BREAKDOWN_BEFORE_INIT;
@@ -842,6 +845,7 @@ static int __init is_lib_mem_alloc(char *str)
 	if (ret) {
 		err_lib("fail to break-before-init FIMC in EL2");
 	}
+#endif
 	vm_area_add_early(&is_lib_vm_for_rkp);
 	// vm_area_add_early(&is_lib_vm);
 #else
@@ -1584,6 +1588,7 @@ int is_resourcemgr_probe(struct is_resourcemgr *resourcemgr,
 	/* rsc mutex init */
 	mutex_init(&resourcemgr->rsc_lock);
 	mutex_init(&resourcemgr->sysreg_lock);
+	mutex_init(&resourcemgr->qos_lock);
 
 	/* temperature monitor unit */
 	resourcemgr->tmu_notifier.notifier_call = is_tmu_notifier;
@@ -1761,13 +1766,36 @@ static void is_resource_reset(struct is_resourcemgr *resourcemgr)
 	memset((void *)lic_sram, 0x0, sizeof(struct is_lic_sram));
 }
 
+static int is_resource_phy_power(struct is_core *core, int id, int on)
+{
+	int ret = 0;
+	struct is_device_sensor *sensor;
+	struct v4l2_subdev *subdev;
+	struct is_device_csi *csi;
+
+	sensor = &core->sensor[id];
+	subdev = sensor->subdev_csi;
+	csi = (struct is_device_csi *)v4l2_get_subdevdata(subdev);
+
+	if (on)
+		ret = phy_power_on(csi->phy);
+	else
+		ret = phy_power_off(csi->phy);
+
+	if (ret)
+		err("fail to phy power on/off(%d)", on);
+
+	mdbgd_front("%s(csi %d, %d, %d)\n", csi, __func__, csi->ch, on, ret);
+	return ret;
+}
+
 int is_resource_get(struct is_resourcemgr *resourcemgr, u32 rsc_type)
 {
 	int ret = 0;
 	u32 rsccount;
 	struct is_resource *resource;
 	struct is_core *core;
-	int i;
+	int i, id;
 
 	FIMC_BUG(!resourcemgr);
 	FIMC_BUG(!resourcemgr->private_data);
@@ -1881,52 +1909,20 @@ int is_resource_get(struct is_resourcemgr *resourcemgr, u32 rsc_type)
 	if (atomic_read(&resource->rsccount) == 0) {
 		switch (rsc_type) {
 		case RESOURCE_TYPE_SENSOR0:
-#ifdef CONFIG_PM
-			pm_runtime_get_sync(&resource->pdev->dev);
-#else
-			is_sensor_runtime_resume(&resource->pdev->dev);
-#endif
-			set_bit(IS_RM_SS0_POWER_ON, &resourcemgr->state);
-			break;
 		case RESOURCE_TYPE_SENSOR1:
-#ifdef CONFIG_PM
-			pm_runtime_get_sync(&resource->pdev->dev);
-#else
-			is_sensor_runtime_resume(&resource->pdev->dev);
-#endif
-			set_bit(IS_RM_SS1_POWER_ON, &resourcemgr->state);
-			break;
 		case RESOURCE_TYPE_SENSOR2:
-#ifdef CONFIG_PM
-			pm_runtime_get_sync(&resource->pdev->dev);
-#else
-			is_sensor_runtime_resume(&resource->pdev->dev);
-#endif
-			set_bit(IS_RM_SS2_POWER_ON, &resourcemgr->state);
-			break;
 		case RESOURCE_TYPE_SENSOR3:
-#ifdef CONFIG_PM
-			pm_runtime_get_sync(&resource->pdev->dev);
-#else
-			is_sensor_runtime_resume(&resource->pdev->dev);
-#endif
-			set_bit(IS_RM_SS3_POWER_ON, &resourcemgr->state);
-			break;
 		case RESOURCE_TYPE_SENSOR4:
-#ifdef CONFIG_PM
-			pm_runtime_get_sync(&resource->pdev->dev);
-#else
-			is_sensor_runtime_resume(&resource->pdev->dev);
-#endif
-			set_bit(IS_RM_SS4_POWER_ON, &resourcemgr->state);
-			break;
 		case RESOURCE_TYPE_SENSOR5:
+			id = rsc_type - RESOURCE_TYPE_SENSOR0;
+			is_resource_phy_power(core, id, 1);
 #ifdef CONFIG_PM
+			is_resource_phy_power(core, rsc_type, 1);
 			pm_runtime_get_sync(&resource->pdev->dev);
 #else
 			is_sensor_runtime_resume(&resource->pdev->dev);
 #endif
-			set_bit(IS_RM_SS5_POWER_ON, &resourcemgr->state);
+			set_bit(IS_RM_SS0_POWER_ON + id, &resourcemgr->state);
 			break;
 		case RESOURCE_TYPE_ISCHAIN:
 			if (test_bit(IS_RM_POWER_ON, &resourcemgr->state)) {
@@ -2022,7 +2018,7 @@ p_err:
 
 int is_resource_put(struct is_resourcemgr *resourcemgr, u32 rsc_type)
 {
-	int ret = 0;
+	int id, ret = 0;
 	u32 rsccount;
 	struct is_resource *resource;
 	struct is_core *core;
@@ -2059,52 +2055,19 @@ int is_resource_put(struct is_resourcemgr *resourcemgr, u32 rsc_type)
 	if (atomic_read(&resource->rsccount) == 1) {
 		switch (rsc_type) {
 		case RESOURCE_TYPE_SENSOR0:
-#if defined(CONFIG_PM)
-			pm_runtime_put_sync(&resource->pdev->dev);
-#else
-			is_sensor_runtime_suspend(&resource->pdev->dev);
-#endif
-			clear_bit(IS_RM_SS0_POWER_ON, &resourcemgr->state);
-			break;
 		case RESOURCE_TYPE_SENSOR1:
+		case RESOURCE_TYPE_SENSOR2:
+		case RESOURCE_TYPE_SENSOR3:
+		case RESOURCE_TYPE_SENSOR4:
+		case RESOURCE_TYPE_SENSOR5:
+		id = rsc_type - RESOURCE_TYPE_SENSOR0;
 #if defined(CONFIG_PM)
 			pm_runtime_put_sync(&resource->pdev->dev);
 #else
 			is_sensor_runtime_suspend(&resource->pdev->dev);
 #endif
-			clear_bit(IS_RM_SS1_POWER_ON, &resourcemgr->state);
-			break;
-		case RESOURCE_TYPE_SENSOR2:
-#ifdef CONFIG_PM
-			pm_runtime_put_sync(&resource->pdev->dev);
-#else
-			is_sensor_runtime_suspend(&resource->pdev->dev);
-#endif
-			clear_bit(IS_RM_SS2_POWER_ON, &resourcemgr->state);
-			break;
-		case RESOURCE_TYPE_SENSOR3:
-#ifdef CONFIG_PM
-			pm_runtime_put_sync(&resource->pdev->dev);
-#else
-			is_sensor_runtime_suspend(&resource->pdev->dev);
-#endif
-			clear_bit(IS_RM_SS3_POWER_ON, &resourcemgr->state);
-			break;
-		case RESOURCE_TYPE_SENSOR4:
-#ifdef CONFIG_PM
-			pm_runtime_put_sync(&resource->pdev->dev);
-#else
-			is_sensor_runtime_suspend(&resource->pdev->dev);
-#endif
-			clear_bit(IS_RM_SS4_POWER_ON, &resourcemgr->state);
-			break;
-		case RESOURCE_TYPE_SENSOR5:
-#ifdef CONFIG_PM
-			pm_runtime_put_sync(&resource->pdev->dev);
-#else
-			is_sensor_runtime_suspend(&resource->pdev->dev);
-#endif
-			clear_bit(IS_RM_SS5_POWER_ON, &resourcemgr->state);
+			is_resource_phy_power(core, id, 0);
+			clear_bit(IS_RM_SS0_POWER_ON + id, &resourcemgr->state);
 			break;
 		case RESOURCE_TYPE_ISCHAIN:
 #if !defined(DISABLE_LIB)
@@ -2251,6 +2214,7 @@ int is_resource_ioctl(struct is_resourcemgr *resourcemgr, struct v4l2_control *c
 	FIMC_BUG(!resourcemgr);
 	FIMC_BUG(!ctrl);
 
+	mutex_lock(&resourcemgr->qos_lock);
 	switch (ctrl->id) {
 	/* APOLLO CPU0~3 */
 	case V4L2_CID_IS_DVFS_CLUSTER0:
@@ -2363,6 +2327,7 @@ int is_resource_ioctl(struct is_resourcemgr *resourcemgr, struct v4l2_control *c
 		}
 		break;
 	}
+	mutex_unlock(&resourcemgr->qos_lock);
 
 	return ret;
 }
@@ -2419,6 +2384,8 @@ int is_resource_update_lic_sram(struct is_resourcemgr *resourcemgr, void *device
 
 
 	sensor = ischain->sensor;
+	FIMC_BUG(!sensor);
+
 	lic_sram = &resourcemgr->lic_sram;
 	taa_id = ischain->group_3aa.id - GROUP_ID_3AA0;
 

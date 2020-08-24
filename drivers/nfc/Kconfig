@@ -114,6 +114,13 @@ config SNVM_K250A
 	  LSI snvm driver
 	  This driver provides support for LSI k250a snvm product
 
+config SEC_STAR
+	tristate "LSI star platform"
+	default n
+	help
+	  LSI star platform
+	  This driver provides support for LSI star platform.
+
 config ESE_SECURE_SPI_PORT
 	int "ese spi port number"
 	default	99
@@ -211,4 +218,5 @@ source "drivers/nfc/nxp-nci/Kconfig"
 source "drivers/nfc/s3fwrn5/Kconfig"
 source "drivers/nfc/st95hf/Kconfig"
 source "drivers/nfc/nfc_logger/Kconfig"
+source "drivers/nfc/sec-star/Kconfig"
 endmenu

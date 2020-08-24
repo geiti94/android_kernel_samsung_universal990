@@ -153,6 +153,9 @@ enum flag_idn {
 	QUERY_FLAG_IDN_TW_EN		 		= 0x0E,
 	QUERY_FLAG_IDN_TW_BUF_FLUSH		= 0x0F,
 	QUERY_FLAG_IDN_TW_FLUSH_HIBERN		= 0x10,
+#if defined(CONFIG_UFSHPB)
+	QUERY_FLAG_IDN_HPB_EN				= 0x13,
+#endif
 };
 
 /* Attribute idn for Query requests */

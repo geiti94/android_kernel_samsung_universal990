@@ -35,6 +35,12 @@ static struct acpm_info *exynos_acpm;
 static int acpm_send_data(struct device_node *node, unsigned int check_id,
 		struct ipc_config *config);
 
+extern int register_lcd_status_notifier(struct notifier_block *nb);
+extern int unregister_lcd_status_notifier(struct notifier_block *nb);
+extern unsigned int abox_get_routing_path(void);
+
+struct notifier_block acpm_lcd_nb;
+
 static int handle_dynamic_plugin(struct device_node *node, unsigned int id, unsigned int attach)
 {
 	struct ipc_config config;
@@ -343,6 +349,39 @@ static int acpm_send_data(struct device_node *node, unsigned int check_id,
 	return ret;
 }
 
+static int acpm_lcd_notifier(struct notifier_block *nb,
+				unsigned long action, void *data)
+{
+	struct ipc_config config;
+	int ret = 0;
+	unsigned int cmd[4] = {0, };
+
+	u32 lcd_status = (u32)action;			/* 0: off, 1: on */
+	u32 abox_status = abox_get_routing_path();	/* 3: BT, 4: USB */
+
+	config.cmd = cmd;
+	config.cmd[0] = (1 << ACPM_IPC_PROTOCOL_TEST);
+	config.cmd[0] |= 0x4 << ACPM_IPC_PROTOCOL_ID;
+
+	if (lcd_status == 0 && (abox_status == 3 || abox_status == 4))
+		config.cmd[1] = 1;
+	else
+		config.cmd[1] = 0;
+
+	config.response = true;
+	config.indirection = false;
+
+	ret = acpm_send_data(exynos_acpm->dev->of_node, 4, &config);
+	if (ret) {
+		pr_err("%s, %d ipc send fail\n", __func__, __LINE__);
+		return NOTIFY_BAD;
+	}
+
+	config.cmd = NULL;
+
+	return NOTIFY_OK;
+}
+
 static int acpm_probe(struct platform_device *pdev)
 {
 	struct acpm_info *acpm;
@@ -380,6 +419,14 @@ static int acpm_probe(struct platform_device *pdev)
 	acpm_debugfs_init(acpm);
 
 	exynos_acpm_timer_clear();
+
+	acpm_lcd_nb.notifier_call = acpm_lcd_notifier;
+	ret = register_lcd_status_notifier(&acpm_lcd_nb);
+	if (ret < 0) {
+		pr_err("failed to register lcd_nb(%d)\n", ret);
+		return ret;
+	}
+
 	return ret;
 }
 

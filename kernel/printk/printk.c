@@ -659,7 +659,7 @@ void register_hook_logbuf(void (*func)(const char *buf, size_t size, int fatal))
 EXPORT_SYMBOL(register_hook_logbuf);
 #endif
 
-#if CONFIG_SEC_DEBUG_FIRST2M_LOG
+#ifdef CONFIG_SEC_DEBUG_FIRST2M_LOG
 void (*func_hook_first_kmsg)(const char *buf, size_t size);
 void register_first_kmsg_hook_func(void (*func)(const char *buf, size_t size))
 {

@@ -547,17 +547,29 @@ static const struct file_operations rkp_proc_fops = {
 
 static int __init rkp_test_init(void)
 {
+#ifdef CONFIG_FASTUH_RKP
+	u64 va;
+#else
 	phys_addr_t ret = 0;
+#endif
 
 	if (proc_create("rkp_test", 0444, NULL, &rkp_proc_fops) == NULL) {
 		printk(KERN_ERR "RKP_TEST: Error creating proc entry");
 		return -1;
 	}
+#ifdef CONFIG_FASTUH_RKP
+	va = __get_free_page(GFP_KERNEL | __GFP_ZERO);
+	if (!va)
+		return -1;
+	uh_call(UH_APP_RKP, RKP_ROBUFFER_ALLOC, va, 0, 0, 1);
 
-	uh_call(UH_APP_RKP, RKP_RKP_ROBUFFER_ALLOC, (u64)&ret | (u64)RKP_ROBUFFER_ARG_TEST, 0, 0, 0);
+	ha1 = (u64 *)va;
+	ha2 = (u64 *)(va + 8);
+#else
+	uh_call(UH_APP_RKP, RKP_ROBUFFER_ALLOC, (u64)&ret | (u64)RKP_ROBUFFER_ARG_TEST, 0, 0, 0);
 	ha1 = (u64 *)(__va(ret));
 	ha2 = (u64 *)(__va(ret) + 8);
-
+#endif
 	/*
 	ha1 = (u64 *)(__va(RKP_ROBUF_START)+RKP_ROBUF_SIZE-16);
 	ha2 = (u64 *)(__va(RKP_ROBUF_START)+RKP_ROBUF_SIZE-8);
@@ -568,6 +580,10 @@ static int __init rkp_test_init(void)
 
 static void __exit rkp_test_exit(void)
 {
+#ifdef CONFIG_FASTUH_RKP
+	uh_call(UH_APP_RKP, RKP_ROBUFFER_FREE, (u64)ha1, 0, 0, 1);
+	free_page((unsigned long)ha1);
+#endif
 	remove_proc_entry("rkp_test", NULL);
 }
 

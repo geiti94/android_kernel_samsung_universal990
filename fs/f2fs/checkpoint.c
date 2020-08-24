@@ -1981,7 +1981,7 @@ init_thread:
 		int err = PTR_ERR(ccc->ckpt_task);
 
 		if (need_free) {
-			kfree(ccc);
+			kvfree(ccc);
 			sbi->ccc_info = NULL;
 		}
 		return err;
@@ -2008,7 +2008,7 @@ int f2fs_destroy_checkpoint_cmd_control(struct f2fs_sb_info *sbi, bool free)
 	}
 
 	if (free) {
-		kfree(ccc);
+		kvfree(ccc);
 		sbi->ccc_info = NULL;
 	}
 

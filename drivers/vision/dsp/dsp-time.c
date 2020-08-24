@@ -40,15 +40,15 @@ void dsp_time_print(struct dsp_time *time, const char *f, ...)
 	va_end(args);
 
 	if (len > 0)
-		dsp_info("[%5lu.%03lu ms] %s\n",
+		dsp_info("[%5lu.%06lu ms] %s\n",
 				time->interval.tv_sec * 1000UL +
 				time->interval.tv_nsec / 1000000UL,
-				(time->interval.tv_nsec % 1000000UL) / 1000,
+				(time->interval.tv_nsec % 1000000UL),
 				buf);
 	else
-		dsp_info("[%5lu.%03lu ms] INVALID\n",
+		dsp_info("[%5lu.%06lu ms] INVALID\n",
 				time->interval.tv_sec * 1000UL +
 				time->interval.tv_nsec / 1000000UL,
-				(time->interval.tv_nsec % 1000000UL) / 1000);
+				(time->interval.tv_nsec % 1000000UL));
 	dsp_leave();
 }

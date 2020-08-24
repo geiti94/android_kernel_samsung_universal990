@@ -22,4 +22,10 @@
 
 #define EMS_SCHED_CLASS_MASK	(0x1F)
 
+/* SCHED POLICY */
+#define SCHED_POLICY_EFF	0	/* best efficiency */
+#define SCHED_POLICY_ENERGY	1	/* low energy */
+#define SCHED_POLICY_PERF	2	/* best perf */
+#define NUM_OF_SCHED_POLICY	3
+
 #endif /* __EXYNOS_MOBILE_SCHEDULER__ */

@@ -42,6 +42,9 @@
 #ifdef CONFIG_UH_RKP
 #define __page_aligned_rkp_bss		__section(.rkp_bss.page_aligned) __aligned(PAGE_SIZE)
 #define __rkp_ro				__section(.rkp_ro)
+#elif defined CONFIG_FASTUH_RKP
+#define __page_aligned_rkp_bss		__page_aligned_bss
+#define __rkp_ro				__section(.rkp_ro)
 #else
 #define __page_aligned_rkp_bss		__page_aligned_bss
 #define __rkp_ro

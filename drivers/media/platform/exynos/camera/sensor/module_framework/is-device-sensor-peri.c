@@ -480,7 +480,8 @@ void is_sensor_setting_mode_change(struct is_device_sensor_peri *sensor_peri)
 	is_sensor_peri_s_exposure_time(device, expo);
 
 	is_sensor_peri_s_wb_gains(device, sensor_peri->cis.mode_chg_wb_gains);
-	is_sensor_peri_s_sensor_stats(device, false, NULL, sensor_peri->cis.sensor_stats);
+	is_sensor_peri_s_sensor_stats(device, false, NULL,
+			(void *)(uintptr_t)(sensor_peri->cis.sensor_stats || sensor_peri->cis.lsc_table_status));
 
 	sensor_peri->sensor_interface.cis_itf_ops.request_reset_expo_gain(&sensor_peri->sensor_interface,
 			num_data,
@@ -488,11 +489,6 @@ void is_sensor_setting_mode_change(struct is_device_sensor_peri *sensor_peri)
 			tgain,
 			&again.long_val,
 			&dgain.long_val);
-}
-
-void is_laser_af_work(struct work_struct *data)
-{
-	err("[%s] TO DO\n", __func__);
 }
 
 void is_sensor_flash_fire_work(struct work_struct *data)
@@ -805,12 +801,12 @@ void is_sensor_ois_set_init_work(struct work_struct *data)
 	info("[%s] E\n", __func__);
 
 	sensor_peri = ois->sensor_peri;
-
+#ifdef CAMERA_2ND_OIS
 	/* For dual camera project to  reduce power consumption of ois */
 	ret = CALL_OISOPS(sensor_peri->mcu->ois, ois_set_power_mode, sensor_peri->subdev_mcu);
 	if (ret < 0)
 		err("v4l2_subdev_call(ois_set_power_mode) is fail(%d)", ret);
-
+#endif
 #if defined(CONFIG_CAMERA_USE_INTERNAL_MCU)
 	ret = CALL_OISOPS(sensor_peri->mcu->ois, ois_init, sensor_peri->subdev_mcu);
 	if (ret < 0)
@@ -1759,10 +1755,6 @@ void is_sensor_peri_init_work(struct is_device_sensor_peri *sensor_peri)
 		hrtimer_init(&sensor_peri->actuator->actuator_data.afwindow_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	}
 
-	if (sensor_peri->laser_af) {
-		INIT_WORK(&sensor_peri->laser_af->laser_af_work, is_laser_af_work);
-	}
-
 	/* Init to LTE mode work */
 	INIT_WORK(&sensor_peri->cis.long_term_mode_work, is_sensor_long_term_mode_set_work);
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION_RUNTIME
@@ -1956,6 +1948,7 @@ int is_sensor_peri_s_stream(struct is_device_sensor *device,
 	struct is_cis *cis = NULL;
 	struct is_core *core = NULL;
 	struct is_dual_info *dual_info = NULL;
+	bool skip_sub_device = false;
 
 	FIMC_BUG(!device);
 
@@ -1984,6 +1977,14 @@ int is_sensor_peri_s_stream(struct is_device_sensor *device,
 	FIMC_BUG(!cis);
 	FIMC_BUG(!cis->cis_data);
 
+	dbg_sensor(1, "[%s] on = %d, scene_mode = %d, opening_hint = %d",
+		__func__, on, cis->cis_data->is_data.scene_mode, core->vender.opening_hint);
+
+	if (cis->cis_data->is_data.scene_mode == AA_SCENE_MODE_FAST_AE
+		&& core->vender.opening_hint == IS_OPENING_HINT_FASTEN_AE) {
+		skip_sub_device = true;
+	}
+
 	if (sensor_peri->mcu && sensor_peri->mcu->aperture)
 		mutex_lock(&sensor_peri->mcu->aperture->control_lock);
 
@@ -1994,40 +1995,46 @@ int is_sensor_peri_s_stream(struct is_device_sensor *device,
 	}
 
 	if (on) {
-		if (sensor_peri->mcu && sensor_peri->mcu->ois)
-			schedule_work(&sensor_peri->mcu->ois->ois_set_init_work);
+		if (!skip_sub_device) {
+			if (sensor_peri->mcu && sensor_peri->mcu->ois)
+				schedule_work(&sensor_peri->mcu->ois->ois_set_init_work);
 
 #ifdef USE_AF_SLEEP_MODE
 #if defined(CONFIG_CAMERA_USE_INTERNAL_MCU) && defined(USE_TELE_OIS_AF_COMMON_INTERFACE)
-		if (!(sensor_peri->mcu && sensor_peri->mcu->mcu_ctrl_actuator))
+			if (!(sensor_peri->mcu && sensor_peri->mcu->mcu_ctrl_actuator))
 #endif
-		{
-			if (sensor_peri->actuator && sensor_peri->actuator->actuator_ops) {
-				schedule_work(&sensor_peri->actuator->actuator_active_on);
+			{
+				if (sensor_peri->actuator && sensor_peri->actuator->actuator_ops) {
+					schedule_work(&sensor_peri->actuator->actuator_active_on);
+				}
 			}
-		}
 #endif
+			/* just for auto dual camera mode to reduce power consumption */
+#ifdef USE_OIS_SLEEP_MODE
+			if (sensor_peri->ois)
+				is_sensor_ois_start((struct is_device_sensor *)v4l2_get_subdev_hostdata(subdev_module));
+#endif
+
+			/* set aperture as start value */
+			if (sensor_peri->mcu && sensor_peri->mcu->aperture
+				&& (sensor_peri->mcu->aperture->start_value != sensor_peri->mcu->aperture->cur_value)) {
+				schedule_work(&sensor_peri->mcu->aperture->aperture_set_start_work);
+			}
+
+#ifndef USE_RTA_CONTROL_LASER_AF
+			if (sensor_peri->laser_af && test_bit(IS_SENSOR_LASER_AF_AVAILABLE, &sensor_peri->peri_state)) {
+				if (sensor_peri->laser_af->rs_mode != CAMERA_RANGE_SENSOR_MODE_OFF) {
+					CALL_LASEROPS(sensor_peri->laser_af, set_active, sensor_peri->subdev_laser_af, true);
+				} else {
+					info("[%s] CAMERA_RANGE_SENSOR_MODE_OFF", __func__);
+				}
+			}
+#endif
+		}
 
 		/* If sensor setting @work is queued or executing,
 		   wait for it to finish execution when working s_format */
 		flush_work(&cis->mode_setting_work);
-
-		/* just for auto dual camera mode to reduce power consumption */
-#ifdef USE_OIS_SLEEP_MODE
-		if (sensor_peri->ois)
-			is_sensor_ois_start((struct is_device_sensor *)v4l2_get_subdev_hostdata(subdev_module));
-#endif
-
-		/* set aperture as start value */
-		if (sensor_peri->mcu && sensor_peri->mcu->aperture
-			&& (sensor_peri->mcu->aperture->start_value != sensor_peri->mcu->aperture->cur_value)) {
-			schedule_work(&sensor_peri->mcu->aperture->aperture_set_start_work);
-		}
-
-#ifndef USE_RTA_CONTROL_LASER_AF
-		if (sensor_peri->laser_af && test_bit(IS_SENSOR_LASER_AF_AVAILABLE, &sensor_peri->peri_state))
-			CALL_LASEROPS(sensor_peri->laser_af, set_active, sensor_peri->subdev_laser_af, true);
-#endif
 
 		/* set mode_change or initial exp/gain and stats */
 		is_sensor_setting_mode_change(sensor_peri);
@@ -2035,11 +2042,29 @@ int is_sensor_peri_s_stream(struct is_device_sensor *device,
 		/* Initialize expecting dm from "before stream on value" */
 		is_sensor_init_expecting_dm(device, cis);
 
-		if (sensor_peri->mcu) {
-			if (sensor_peri->mcu->aperture
-				&& (sensor_peri->mcu->aperture->start_value != sensor_peri->mcu->aperture->cur_value)) {
-				flush_work(&sensor_peri->mcu->aperture->aperture_set_start_work);
+		if (!skip_sub_device) {
+			info("[%s] join time E", __func__);
+			if (sensor_peri->mcu) {
+				if (sensor_peri->mcu->aperture
+					&& (sensor_peri->mcu->aperture->start_value != sensor_peri->mcu->aperture->cur_value)) {
+					flush_work(&sensor_peri->mcu->aperture->aperture_set_start_work);
+				}
 			}
+
+			if (sensor_peri->mcu && sensor_peri->mcu->ois)
+				flush_work(&sensor_peri->mcu->ois->ois_set_init_work);
+
+#ifdef USE_AF_SLEEP_MODE
+#if defined(CONFIG_CAMERA_USE_INTERNAL_MCU) && defined(USE_TELE_OIS_AF_COMMON_INTERFACE)
+			if (!(sensor_peri->mcu && sensor_peri->mcu->mcu_ctrl_actuator))
+#endif
+			{
+				if (sensor_peri->actuator && sensor_peri->actuator->actuator_ops) {
+					flush_work(&sensor_peri->actuator->actuator_active_on);
+				}
+			}
+#endif
+			info("[%s] join time X", __func__);
 		}
 
 		if (cis->dual_sync_mode)
@@ -2067,7 +2092,6 @@ int is_sensor_peri_s_stream(struct is_device_sensor *device,
 			if (ret < 0) {
 				err("[%s]: sensor wait stream on fail\n", __func__);
 #ifdef CONFIG_VENDER_MCD
-				CALL_CISOPS(cis, cis_log_status, subdev_cis);
 				is_sensor_gpio_dbg(device);
 				if (cis->cis_ops->cis_recover_stream_on) {
 					ret = CALL_CISOPS(cis, cis_recover_stream_on, subdev_cis);
@@ -2078,33 +2102,22 @@ int is_sensor_peri_s_stream(struct is_device_sensor *device,
 			}
 		}
 
-		if (sensor_peri->mcu && sensor_peri->mcu->ois)
-			flush_work(&sensor_peri->mcu->ois->ois_set_init_work);
-
-#ifdef USE_AF_SLEEP_MODE
-#if defined(CONFIG_CAMERA_USE_INTERNAL_MCU) && defined(USE_TELE_OIS_AF_COMMON_INTERFACE)
-		if (!(sensor_peri->mcu && sensor_peri->mcu->mcu_ctrl_actuator))
-#endif
-		{
-			if (sensor_peri->actuator && sensor_peri->actuator->actuator_ops) {
-				flush_work(&sensor_peri->actuator->actuator_active_on);
-			}
-		}
-#endif
 	} else {
-		/* stream off sequence */
+		if (!skip_sub_device) {
+			/* stream off sequence */
 #ifdef USE_AF_SLEEP_MODE
 #if defined(CONFIG_CAMERA_USE_INTERNAL_MCU) && defined(USE_TELE_OIS_AF_COMMON_INTERFACE)
-		if (!(sensor_peri->mcu && sensor_peri->mcu->mcu_ctrl_actuator))
+			if (!(sensor_peri->mcu && sensor_peri->mcu->mcu_ctrl_actuator))
 #endif
-		{
-			if (sensor_peri->actuator && sensor_peri->actuator->actuator_ops) {
-				schedule_work(&sensor_peri->actuator->actuator_active_off);
+			{
+				if (sensor_peri->actuator && sensor_peri->actuator->actuator_ops) {
+					schedule_work(&sensor_peri->actuator->actuator_active_off);
+				}
 			}
-		}
 #endif
-		if (sensor_peri->mcu && sensor_peri->mcu->ois)
-			schedule_work(&sensor_peri->mcu->ois->ois_set_deinit_work);
+			if (sensor_peri->mcu && sensor_peri->mcu->ois)
+				schedule_work(&sensor_peri->mcu->ois->ois_set_deinit_work);
+		}
 
 		mutex_lock(&cis->control_lock);
 
@@ -2146,15 +2159,32 @@ int is_sensor_peri_s_stream(struct is_device_sensor *device,
 		}
 		mutex_unlock(&cis->control_lock);
 
+		if (!skip_sub_device) {
+			info("[%s] join time E", __func__);
 #ifdef USE_OIS_SLEEP_MODE
-		if (sensor_peri->ois)
-			is_sensor_ois_stop((struct is_device_sensor *)v4l2_get_subdev_hostdata(subdev_module));
+			if (sensor_peri->ois)
+				is_sensor_ois_stop((struct is_device_sensor *)v4l2_get_subdev_hostdata(subdev_module));
 #endif
 
 #ifndef USE_RTA_CONTROL_LASER_AF
-		if (sensor_peri->laser_af && test_bit(IS_SENSOR_LASER_AF_AVAILABLE, &sensor_peri->peri_state))
-			CALL_LASEROPS(sensor_peri->laser_af, set_active, sensor_peri->subdev_laser_af, false);
+			if (sensor_peri->laser_af && test_bit(IS_SENSOR_LASER_AF_AVAILABLE, &sensor_peri->peri_state))
+				CALL_LASEROPS(sensor_peri->laser_af, set_active, sensor_peri->subdev_laser_af, false);
 #endif
+#ifdef USE_AF_SLEEP_MODE
+#if defined(CONFIG_CAMERA_USE_INTERNAL_MCU) && defined(USE_TELE_OIS_AF_COMMON_INTERFACE)
+			if (!(sensor_peri->mcu && sensor_peri->mcu->mcu_ctrl_actuator))
+#endif
+			{
+				if (sensor_peri->actuator && sensor_peri->actuator->actuator_ops) {
+					flush_work(&sensor_peri->actuator->actuator_active_off);
+				}
+			}
+#endif
+			if (sensor_peri->mcu && sensor_peri->mcu->ois)
+				flush_work(&sensor_peri->mcu->ois->ois_set_deinit_work);
+
+			info("[%s] join time X", __func__);
+		}
 
 		if (sensor_peri->flash != NULL) {
 			if (dual_info->mode == IS_DUAL_MODE_NOTHING) {
@@ -2170,20 +2200,10 @@ int is_sensor_peri_s_stream(struct is_device_sensor *device,
 			memset(&sensor_peri->flash->expecting_flash_dm[0], 0, sizeof(camera2_flash_dm_t) * EXPECT_DM_NUM);
 		}
 
-#ifdef USE_AF_SLEEP_MODE
-#if defined(CONFIG_CAMERA_USE_INTERNAL_MCU) && defined(USE_TELE_OIS_AF_COMMON_INTERFACE)
-		if (!(sensor_peri->mcu && sensor_peri->mcu->mcu_ctrl_actuator))
-#endif
-		{
-			if (sensor_peri->actuator && sensor_peri->actuator->actuator_ops) {
-				flush_work(&sensor_peri->actuator->actuator_active_off);
-			}
-		}
-#endif
-		if (sensor_peri->mcu && sensor_peri->mcu->ois)
-			flush_work(&sensor_peri->mcu->ois->ois_set_deinit_work);
-
 		memset(&sensor_peri->cis.cur_sensor_uctrl, 0, sizeof(camera2_sensor_uctl_t));
+#ifdef USE_OIS_HALL_DATA_FOR_VDIS
+		memset(&sensor_peri->cis.expecting_aa_dm[0], 0, sizeof(camera2_aa_dm_t) * EXPECT_DM_NUM);
+#endif
 		memset(&sensor_peri->cis.expecting_sensor_dm[0], 0, sizeof(camera2_sensor_dm_t) * EXPECT_DM_NUM);
 		memset(&sensor_peri->cis.expecting_sensor_udm[0], 0, sizeof(camera2_sensor_udm_t) * EXPECT_DM_NUM);
 		for (i = 0; i < CAM2P0_UCTL_LIST_SIZE; i++) {
@@ -2193,10 +2213,23 @@ int is_sensor_peri_s_stream(struct is_device_sensor *device,
 			sensor_peri->cis.sensor_ctls[i].valid_flash_udctrl = false;
 
 			memset(&sensor_peri->cis.sensor_ctls[i].roi_control, 0, sizeof(struct roi_setting_t));
-			memset(&sensor_peri->cis.sensor_ctls[i].stat_control, 0,
+			memset(&sensor_peri->cis.sensor_ctls[i].lsi_stat_control, 0,
 					sizeof(struct sensor_lsi_3hdr_stat_control_per_frame));
+			memset(&sensor_peri->cis.sensor_ctls[i].imx_stat_control, 0,
+					sizeof(struct sensor_imx_3hdr_stat_control_per_frame));
+			memset(&sensor_peri->cis.sensor_ctls[i].imx_tone_control, 0,
+					sizeof(struct sensor_imx_3hdr_tone_control));
+			memset(&sensor_peri->cis.sensor_ctls[i].imx_ev_control, 0,
+					sizeof(struct sensor_imx_3hdr_ev_control));
 		}
-		sensor_peri->cis.sensor_stats = NULL;
+		sensor_peri->cis.sensor_stats = false;
+		memset(&sensor_peri->cis.imx_sensor_stats, 0,
+				sizeof(struct sensor_imx_3hdr_stat_control_mode_change));
+		memset(&sensor_peri->cis.lsi_sensor_stats, 0,
+				sizeof(struct sensor_lsi_3hdr_stat_control_mode_change));
+		sensor_peri->cis.lsc_table_status = false;
+		memset(&sensor_peri->cis.imx_lsc_table_3hdr, 0,
+				sizeof(struct sensor_imx_3hdr_lsc_table_init));
 
 		sensor_peri->use_sensor_work = false;
 	}
@@ -2215,6 +2248,109 @@ p_err:
 	if (sensor_peri->mcu && sensor_peri->mcu->aperture)
 		mutex_unlock(&sensor_peri->mcu->aperture->control_lock);
 
+	return ret;
+}
+
+#ifdef SUPPORT_SENSOR_SEAMLESS_3HDR
+static int is_sensor_peri_s_3hdr_mode(struct is_device_sensor *device,
+		struct seamless_mode_change_info *mode_change)
+{
+	int ret = 0;
+	struct v4l2_subdev *subdev_module = NULL;
+	struct is_sensor_cfg *cfg = NULL;
+	struct is_module_enum *module = NULL;
+	struct is_device_sensor_peri *sensor_peri = NULL;
+	struct is_cis *cis = NULL;
+	u32 max_again = 0, max_dgain = 0;
+
+	FIMC_BUG(!mode_change);
+	FIMC_BUG(!device);
+
+	subdev_module = device->subdev_module;
+	FIMC_BUG(!subdev_module);
+
+	module = v4l2_get_subdevdata(subdev_module);
+	FIMC_BUG(!module);
+
+	sensor_peri = (struct is_device_sensor_peri *)module->private_data;
+	FIMC_BUG(!sensor_peri);
+	cis = &sensor_peri->cis;
+
+	if (device->ex_mode == mode_change->ex_mode) {
+		info("%s: already in %d exmode\n", __func__, mode_change->ex_mode);
+		return 0;
+	}
+
+	if (cis->cis_data->cur_width != mode_change->width
+			|| cis->cis_data->cur_height != mode_change->height
+			|| device->image.framerate != mode_change->fps) {
+		merr("%dx%d@%d -> %dx%d@%d not allowed", device,
+				cis->cis_data->cur_width, cis->cis_data->cur_height, device->image.framerate,
+				mode_change->width, mode_change->height, mode_change->fps);
+	}
+
+	device->cfg = NULL;
+	device->ex_mode = mode_change->ex_mode;
+
+	cfg = is_sensor_g_mode(device);
+	device->cfg = cfg;
+	if (!device->cfg) {
+		merr("sensor cfg is invalid", device);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	sensor_peri->cis.cis_data->sens_config_index_cur = device->cfg->mode;
+
+	CALL_CISOPS(cis, cis_data_calculation, cis->subdev, device->cfg->mode);
+
+	ret = CALL_CISOPS(cis, cis_mode_change, cis->subdev, device->cfg->mode);
+	if (ret < 0)
+		goto p_err;
+
+	/* Update max again, dgain */
+	CALL_CISOPS(cis, cis_get_max_analog_gain, cis->subdev, &max_again);
+	CALL_CISOPS(cis, cis_get_max_digital_gain, cis->subdev, &max_dgain);
+	info("%s: max again permile %d, max dgain permile %d\n", __func__, max_again, max_dgain);
+
+p_err:
+	return ret;
+}
+#endif
+
+int is_sensor_peri_s_mode_change(struct is_device_sensor *device,
+		struct seamless_mode_change_info *mode_change)
+{
+	int ret = 0;
+
+	FIMC_BUG(!device);
+
+	switch(mode_change->ex_mode) {
+#ifdef SUPPORT_REMOSAIC_CROP_ZOOM
+		case EX_CROP_ZOOM:
+			ret = is_sensor_peri_crop_zoom(device, mode_change);
+			break;
+		case EX_NONE:
+			if(device->ex_mode == EX_CROP_ZOOM)
+				ret = is_sensor_peri_crop_zoom(device, mode_change);
+			break;
+#endif
+#ifdef SUPPORT_SENSOR_SEAMLESS_3HDR
+		case EX_3DHDR:
+		case EX_SEAMLESS_TETRA:
+			ret = is_sensor_peri_s_3hdr_mode(device, mode_change);
+			break;
+#endif
+		default:
+			err("err!!! Unknown mode(%#x)", device->ex_mode);
+			ret = -EINVAL;
+			goto p_err;
+	}
+
+	minfo("received to set sensor mode change: %d (%d)", device,
+			device->ex_mode, ret);
+
+p_err:
 	return ret;
 }
 
@@ -2474,21 +2610,58 @@ int is_sensor_peri_s_sensor_stats(struct is_device_sensor *device,
 		}
 
 		if (module_ctl->update_3hdr_stat) {
-			ret = CALL_CISOPS(&sensor_peri->cis, cis_set_3hdr_stat,
+			if (!strcmp(module->sensor_maker, "SLSI"))
+				ret = CALL_CISOPS(&sensor_peri->cis, cis_set_3hdr_stat,
 						sensor_peri->subdev_cis,
 						streaming,
-						(void *)&module_ctl->stat_control);
+						(void *)&module_ctl->lsi_stat_control);
+			else if (!strcmp(module->sensor_maker, "SONY"))
+				ret = CALL_CISOPS(&sensor_peri->cis, cis_set_3hdr_stat,
+						sensor_peri->subdev_cis,
+						streaming,
+						(void *)&module_ctl->imx_stat_control);
 			if (ret < 0)
 				err("failed to set 3hdr stat(%d)", ret);
 		}
 
+		if (module_ctl->update_tone) {
+			ret = CALL_CISOPS(&sensor_peri->cis, cis_set_tone_stat,
+					sensor_peri->subdev_cis, module_ctl->imx_tone_control);
+			if (ret < 0)
+				err("failed to set tone stat(%d)", ret);
+		}
+
+		if (module_ctl->update_ev) {
+			ret = CALL_CISOPS(&sensor_peri->cis, cis_set_ev_stat,
+					sensor_peri->subdev_cis, module_ctl->imx_ev_control);
+			if (ret < 0)
+				err("failed to set ev stat(%d)", ret);
+		}
 	} else {
-		ret = CALL_CISOPS(&sensor_peri->cis, cis_set_3hdr_stat,
+		if (!strcmp(module->sensor_maker, "SLSI")) {
+			ret = CALL_CISOPS(&sensor_peri->cis, cis_set_3hdr_stat,
+					sensor_peri->subdev_cis,
+					streaming,
+					(void *)&sensor_peri->cis.lsi_sensor_stats);
+			if (ret < 0)
+				err("failed to set 3hdr lsc init table(%d)", ret);
+		} else if (!strcmp(module->sensor_maker, "SONY")) {
+			if (sensor_peri->cis.lsc_table_status) {
+				ret = CALL_CISOPS(&sensor_peri->cis, cis_init_3hdr_lsc_table,
+						sensor_peri->subdev_cis,
+						(void *)&sensor_peri->cis.imx_lsc_table_3hdr);
+				if (ret < 0)
+					err("failed to set 3hdr lsc init table(%d)", ret);
+			}
+			if (sensor_peri->cis.sensor_stats) {
+				ret = CALL_CISOPS(&sensor_peri->cis, cis_set_3hdr_stat,
 						sensor_peri->subdev_cis,
 						streaming,
-						data);
-		if (ret < 0)
-			err("failed to set 3hdr stat(%d)", ret);
+						(void *)&sensor_peri->cis.imx_sensor_stats);
+				if (ret < 0)
+					err("failed to set 3hdr stat(%d)", ret);
+			}
+		}
 	}
 p_err:
 	return ret;

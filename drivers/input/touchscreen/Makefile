@@ -116,4 +116,4 @@ obj-$(CONFIG_TOUCHSCREEN_SEC_TS_Y79A_C)	+= sec_ts/y79a_c/
 obj-$(CONFIG_TOUCHSCREEN_SEC_TS_Y761_SUB) += sec_ts/y761_sub/
 obj-$(CONFIG_TOUCHSCREEN_FTS9)		+= stm/fts9cu80f/
 obj-$(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE)	+= sec_virtual_tsp.o
-
+obj-$(CONFIG_TOUCHSCREEN_ZINITIX_ZT7650)	+= zinitix/zt7650/

@@ -1,7 +1,7 @@
 /*
  * Common header file for all error codes.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  *
  *
  *
@@ -134,8 +134,9 @@ typedef int bcmerror_t;
 #define BCME_NOCHAN			-70	/* Registration with 0 chans in list */
 #define BCME_PKTTOSS			-71	/* Pkt tossed */
 #define BCME_DNGL_DEVRESET		-72	/* dongle re-attach during DEVRESET */
+#define BCME_ROAM			-73	/* Roam related failures */
 
-#define BCME_LAST			BCME_DNGL_DEVRESET
+#define BCME_LAST			BCME_ROAM
 
 #define BCME_NOTENABLED BCME_DISABLED
 
@@ -224,6 +225,7 @@ typedef int bcmerror_t;
 	"Registration with zero channels", \
 	"pkt toss", \
 	"Dongle Devreset", \
+	"Roam specific errors", \
 }
 
 /** status - TBD BCME_ vs proxd status - range reserved for BCME_ */

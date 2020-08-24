@@ -2240,8 +2240,9 @@ static int max77865_fuelgauge_probe(struct platform_device *pdev)
 	fuelgauge_cfg.drv_data = fuelgauge;
 
 	fuelgauge->psy_fg = power_supply_register(&pdev->dev, &max77865_fuelgauge_power_supply_desc, &fuelgauge_cfg);
-	if (!fuelgauge->psy_fg) {
-		pr_err("%s: Failed to Register psy_fg\n", __func__);
+	if (IS_ERR(fuelgauge->psy_fg)) {
+		ret = PTR_ERR(fuelgauge->psy_fg);
+		pr_err("%s: Failed to Register psy_fg(%d)\n", __func__, ret);
 		goto err_data_free;
 	}
 

@@ -47,8 +47,11 @@ struct disp_cb_info {
 
 typedef int (disp_error_cb)(void *data,
 		struct disp_check_cb_info *info);
+typedef int (disp_powerdown_cb)(void *data,
+		struct disp_check_cb_info *info);
 struct disp_error_cb_info {
 	disp_error_cb *error_cb;
+	disp_powerdown_cb *powerdown_cb;
 	void *data;
 };
 
@@ -61,6 +64,7 @@ struct disp_error_cb_info {
 #define DISP_CHECK_STATUS_OK	(0)
 #define DISP_CHECK_STATUS_NODEV	(1 << 0)	/* UB_CON_DET */
 #define DISP_CHECK_STATUS_ELOFF	(1 << 1)	/* DISP_DET */
+
 #define IS_DISP_CHECK_STATUS_DISCONNECTED(_status_) ((_status_) & (DISP_CHECK_STATUS_NODEV))
 #define IS_DISP_CHECK_STATUS_NOK(_status_) ((_status_) != (DISP_CHECK_STATUS_OK))
 

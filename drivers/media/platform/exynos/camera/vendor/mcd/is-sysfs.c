@@ -3152,7 +3152,6 @@ void ois_factory_resource_clean(void)
 		info("%s ois_power off before entering suspend.\n", __func__);
 	} else if (check_shaking_noise) {
 		is_vendor_shaking_gpio_off(vender);
-		check_shaking_noise = false;
 		info("%s shaking_power off before entering suspend.\n", __func__);
 	}
 
@@ -3184,14 +3183,14 @@ void ois_power_control(int onoff)
 		break;
 	case 1:
 		if (!camera_running && !camera_running2 && !check_ois_power) {
+			check_ois_power = true;
+
 			if (check_shaking_noise) {
 				is_vendor_shaking_gpio_off(vender);
-				check_shaking_noise = false;
 				pr_info("%s shaking off before start ois power on.\n", __func__);
 			}
 
 			is_ois_gpio_on(sysfs_core);
-			check_ois_power = true;
 			msleep(150);
 			pr_info("%s ois_power on.\n", __func__);
 		} else {
@@ -3259,6 +3258,23 @@ static ssize_t camera_ois_autotest_store(struct device *dev,
 	}
 
 	ois_threshold = value;
+
+	return count;
+}
+
+static ssize_t camera_ois_set_mode_store(struct device *dev,
+				    struct device_attribute *attr, const char *buf, size_t count)
+{
+	int value = 0;
+
+	if (kstrtoint(buf, 10, &value)) {
+		err("convert fail");
+	}
+
+	if (check_ois_power)
+		is_ois_set_mode(sysfs_core, value);
+	else
+		err("OIS power is not enabled.");
 
 	return count;
 }
@@ -3515,8 +3531,16 @@ static ssize_t camera_ois_hall_position_show(struct device *dev,
 {
 	u16 targetPos[4] = {0, };
 	u16 hallPos[4] = {0, };
+	bool camera_running;
+	bool camera_running2;
 
-	is_ois_get_hall_pos(sysfs_core, targetPos, hallPos);
+	camera_running = is_vendor_check_camera_running(SENSOR_POSITION_REAR);
+	camera_running2 = is_vendor_check_camera_running(SENSOR_POSITION_REAR2);
+
+	if (camera_running || camera_running2)
+		is_ois_get_hall_pos(sysfs_core, targetPos, hallPos);
+	else
+		err("Camera power is not enabled.");
 
 	return sprintf(buf, "%u,%u,%u,%u,%u,%u,%u,%u",
 		targetPos[0], targetPos[1], targetPos[2], targetPos[3],
@@ -3529,9 +3553,14 @@ static ssize_t camera_rear_aperture_halltest_show(struct device *dev,
 	u16 hall_value = 0;
 	bool result = false;
 
+	if (check_ois_power) {
 #ifdef CONFIG_CAMERA_USE_MCU
-	result = is_aperture_hall_test(sysfs_core, &hall_value);
+		result = is_aperture_hall_test(sysfs_core, &hall_value);
 #endif
+	} else {
+		err("OIS power is not enabled.");
+	}
+
 	if (result)
 		return sprintf(buf, "%d,0x%04x\n", result, hall_value);
 	else
@@ -3674,22 +3703,21 @@ static ssize_t camera_ois_shaking_noise_store(struct device *dev,
 	case '0':
 		if (!camera_running && !camera_running2 && check_shaking_noise && !check_ois_power) {
 			is_vendor_shaking_gpio_off(vender);
-
-			check_shaking_noise = false;
 			pr_info("%s shaking_power off.\n", __func__);
 		} else {
 			pr_info("%s Do not set shaking power off.\n", __func__);
 		}
+
+		check_shaking_noise = false;
 		break;
 	case '1':
 		if (!camera_running && !camera_running2 && !check_shaking_noise && !check_ois_power) {
 			is_vendor_shaking_gpio_on(vender);
-
-			check_shaking_noise = true;
 			pr_info("%s shaking_power on.\n", __func__);
 		} else {
 			pr_info("%s Do not set shaking power on.\n", __func__);
 		}
+
 		shaking_power_count++;
 		break;
 	default:
@@ -3698,6 +3726,72 @@ static ssize_t camera_ois_shaking_noise_store(struct device *dev,
 	}
 	return count;
 }
+
+static ssize_t camera_ois_check_cross_talk_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	u16 hall_data[11] = {0, };
+	int result = 0;
+
+	if (check_ois_power) {
+		is_ois_check_cross_talk(sysfs_core, hall_data);
+		result = 1;
+	} else {
+		err("OIS power is not enabled.");
+		result = 0;
+	}
+
+	return sprintf(buf, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", result, hall_data[0], hall_data[1],
+		hall_data[2], hall_data[3], hall_data[4], hall_data[5], hall_data[6], hall_data[7], hall_data[8], hall_data[9]);
+}
+
+static ssize_t camera_ois_read_ext_clock_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	u32 clock = 0;
+
+	if (check_ois_power) {
+		is_ois_read_ext_clock(sysfs_core, &clock);
+	} else {
+		err("OIS power is not enabled.");
+	}
+
+	return sprintf(buf, "%ld\n", clock);
+}
+
+static ssize_t camera_ois_rear3_read_cross_talk_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct is_ois_info *ois_pinfo = NULL;
+	int xvalue = 0;
+	int yvalue = 0;
+	int xvalue_pre = 0;
+	int yvalue_pre = 0;
+	int xvalue_post = 0;
+	int yvalue_post = 0;
+
+	is_ois_get_phone_version(&ois_pinfo);
+	xvalue = (ois_pinfo->tele_xcoef[1] << 8) | (ois_pinfo->tele_xcoef[0]);
+	yvalue = (ois_pinfo->tele_ycoef[1] << 8) | (ois_pinfo->tele_ycoef[0]);
+
+	info("%s value =  0x%02x, 0x%02x, 0x%02x, 0x%02x", __func__, ois_pinfo->tele_xcoef[0], ois_pinfo->tele_xcoef[1],
+		ois_pinfo->tele_ycoef[0], ois_pinfo->tele_ycoef[1]);
+
+	if ((ois_pinfo->tele_xcoef[0] == 0xFF && ois_pinfo->tele_xcoef[1] == 0xFF) &&
+		(ois_pinfo->tele_ycoef[0] == 0xFF && ois_pinfo->tele_ycoef[1] == 0xFF)) {
+		return sprintf(buf, "NONE\n");
+	} else if (ois_pinfo->tele_cal_mark[0] != 0xBB) {
+		return sprintf(buf, "NONE\n");
+	} else {
+		xvalue_pre = xvalue / 100;
+		yvalue_pre = yvalue / 100;
+		xvalue_post = abs(xvalue) - abs(xvalue_pre) * 100;
+		yvalue_post = abs(yvalue) - abs(yvalue_pre) * 100;
+		return sprintf(buf, "%d.%d%d,%d.%d%d\n", xvalue_pre, xvalue_post / 10, xvalue_post % 10,
+			yvalue_pre, yvalue_post / 10, yvalue_post % 10);
+	}
+}
+
 #endif
 
 #ifdef FORCE_CAL_LOAD
@@ -4644,6 +4738,7 @@ static DEVICE_ATTR(selftest, S_IRUGO, camera_ois_selftest_show, NULL);
 static DEVICE_ATTR(ois_power, S_IWUSR, NULL, camera_ois_power_store);
 static DEVICE_ATTR(autotest, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH,
 		camera_ois_autotest_show, camera_ois_autotest_store);
+static DEVICE_ATTR(ois_set_mode, S_IWUSR, NULL, camera_ois_set_mode_store);
 #ifdef CAMERA_2ND_OIS
 static DEVICE_ATTR(autotest_2nd, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH,
 		camera_ois_autotest_2nd_show, camera_ois_autotest_2nd_store);
@@ -4661,6 +4756,9 @@ static DEVICE_ATTR(ois_gain_rear, S_IRUGO, camera_ois_rear_gain_show, NULL);
 static DEVICE_ATTR(ois_supperssion_ratio_rear, S_IRUGO, camera_ois_rear_supperssion_ratio_show, NULL);
 static DEVICE_ATTR(reset_check, S_IRUGO, camera_ois_reset_check, NULL);
 static DEVICE_ATTR(prevent_shaking_noise, S_IWUSR, NULL, camera_ois_shaking_noise_store);
+static DEVICE_ATTR(check_cross_talk, S_IRUGO, camera_ois_check_cross_talk_show, NULL);
+static DEVICE_ATTR(ois_ext_clk, S_IRUGO, camera_ois_read_ext_clock_show, NULL);
+static DEVICE_ATTR(rear3_read_cross_talk, S_IRUGO, camera_ois_rear3_read_cross_talk_show, NULL);
 #endif
 #ifdef FORCE_CAL_LOAD
 static DEVICE_ATTR(rear_force_cal_load, S_IRUGO, camera_rear_force_cal_load_show, NULL);
@@ -5438,6 +5536,10 @@ int is_create_sysfs(struct is_core *core)
 			pr_err("failed to create ois device file, %s\n",
 				dev_attr_ois_power.attr.name);
 		}
+		if (device_create_file(camera_ois_dev, &dev_attr_ois_set_mode) < 0) {
+			pr_err("failed to create ois device file, %s\n",
+				dev_attr_ois_set_mode.attr.name);
+		}
 		if (device_create_file(camera_ois_dev, &dev_attr_autotest) < 0) {
 			pr_err("failed to create ois device file, %s\n",
 				dev_attr_autotest.attr.name);
@@ -5495,6 +5597,18 @@ int is_create_sysfs(struct is_core *core)
 		if (device_create_file(camera_ois_dev, &dev_attr_prevent_shaking_noise) < 0) {
 			pr_err("failed to create ois device file, %s\n",
 				dev_attr_prevent_shaking_noise.attr.name);
+		}
+		if (device_create_file(camera_ois_dev, &dev_attr_check_cross_talk) < 0) {
+			pr_err("failed to create ois device file, %s\n",
+				dev_attr_check_cross_talk.attr.name);
+		}
+		if (device_create_file(camera_ois_dev, &dev_attr_ois_ext_clk) < 0) {
+			pr_err("failed to create ois device file, %s\n",
+				dev_attr_ois_ext_clk.attr.name);
+		}
+		if (device_create_file(camera_ois_dev, &dev_attr_rear3_read_cross_talk) < 0) {
+			pr_err("failed to create ois device file, %s\n",
+				dev_attr_rear3_read_cross_talk.attr.name);
 		}
 	}
 #endif
@@ -5776,6 +5890,7 @@ int is_destroy_sysfs(struct is_core *core)
 	if (camera_ois_dev) {
 		device_remove_file(camera_ois_dev, &dev_attr_selftest);
 		device_remove_file(camera_ois_dev, &dev_attr_ois_power);
+		device_remove_file(camera_ois_dev, &dev_attr_ois_set_mode);
 		device_remove_file(camera_ois_dev, &dev_attr_autotest);
 #ifdef CAMERA_2ND_OIS
 		device_remove_file(camera_ois_dev, &dev_attr_autotest_2nd);
@@ -5792,6 +5907,9 @@ int is_destroy_sysfs(struct is_core *core)
 		device_remove_file(camera_ois_dev, &dev_attr_ois_supperssion_ratio_rear);
 		device_remove_file(camera_ois_dev, &dev_attr_reset_check);
 		device_remove_file(camera_ois_dev, &dev_attr_prevent_shaking_noise);
+		device_remove_file(camera_ois_dev, &dev_attr_check_cross_talk);
+		device_remove_file(camera_ois_dev, &dev_attr_ois_ext_clk);
+		device_remove_file(camera_ois_dev, &dev_attr_rear3_read_cross_talk);
 	}
 #endif
 #ifdef SECURE_CAMERA_IRIS

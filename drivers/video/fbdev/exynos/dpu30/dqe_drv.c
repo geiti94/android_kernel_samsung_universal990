@@ -510,7 +510,7 @@ int decon_dqe_create_interface(struct decon_device *decon)
 	}
 
 	dqe->dev = device_create(dqe_class, decon->dev, 0,
-			&dqe, "dqe", 0);
+			&dqe, "dqe%d", 0);
 	if (IS_ERR_OR_NULL(dqe->dev)) {
 		pr_err("failed to create dqe device\n");
 		ret = -EINVAL;

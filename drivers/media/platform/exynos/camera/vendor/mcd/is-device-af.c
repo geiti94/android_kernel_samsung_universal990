@@ -391,7 +391,7 @@ int is_af_init(struct is_actuator *actuator, struct i2c_client *client, int val)
 		ret = is_af_i2c_write(client, 0x02, 0x40);
 		if (ret < 0)
 			goto p_err;
-		msleep(1);
+		usleep_range(actuator->vendor_sleep_to_standby_delay, actuator->vendor_sleep_to_standby_delay + 10);
 	}
 
 	for (i = 0; i < product_id_len; i += 2) {
@@ -455,7 +455,7 @@ int16_t is_af_move_lens(struct is_core *core)
 			if (ret) {
 				err("i2c write fail\n");
 			}
-			msleep(1);
+			usleep_range(actuator->vendor_sleep_to_standby_delay, actuator->vendor_sleep_to_standby_delay + 10);
 			info("[%s] Set standy mode\n", __func__);
 		}
 
@@ -510,7 +510,7 @@ int16_t is_af_move_lens_rear2(struct is_core *core)
 			if (ret) {
 				err("i2c write fail\n");
 			}
-			msleep(1);
+			usleep_range(actuator->vendor_sleep_to_standby_delay, actuator->vendor_sleep_to_standby_delay + 10);
 			info("[%s] Set standy mode\n", __func__);
 		}
 

@@ -30,6 +30,7 @@ int dsp_system_request_control(struct dsp_system *sys, unsigned int id,
 		union dsp_control *cmd)
 {
 	int ret;
+	char boost_mo[DSP_BUS_SCENARIO_NAME_LEN] = "max";
 
 	dsp_enter();
 	switch (id) {
@@ -52,7 +53,7 @@ int dsp_system_request_control(struct dsp_system *sys, unsigned int id,
 				goto p_err;
 			}
 
-			ret = dsp_bus_mo_get(&sys->bus, DSP_MO_MAX);
+			ret = dsp_bus_mo_get(&sys->bus, boost_mo);
 			if (ret) {
 				dsp_pm_boost_disable(&sys->pm);
 				mutex_unlock(&sys->boost_lock);
@@ -66,16 +67,19 @@ int dsp_system_request_control(struct dsp_system *sys, unsigned int id,
 	case DSP_CONTROL_DISABLE_BOOST:
 		mutex_lock(&sys->boost_lock);
 		if (sys->boost) {
-			dsp_bus_mo_put(&sys->bus, DSP_MO_MAX);
+			dsp_bus_mo_put(&sys->bus, boost_mo);
 			dsp_pm_boost_disable(&sys->pm);
 			sys->boost = false;
 		}
 		mutex_unlock(&sys->boost_lock);
 		break;
 	case DSP_CONTROL_REQUEST_MO:
-		ret = dsp_bus_mo_get(&sys->bus, cmd->mo.scenario_id);
+		ret = dsp_bus_mo_get(&sys->bus, cmd->mo.scenario_name);
+		if (ret)
+			goto p_err;
+		break;
 	case DSP_CONTROL_RELEASE_MO:
-		dsp_bus_mo_put(&sys->bus, cmd->mo.scenario_id);
+		dsp_bus_mo_put(&sys->bus, cmd->mo.scenario_name);
 		break;
 	default:
 		ret = -EINVAL;
@@ -206,19 +210,27 @@ void dsp_system_iovmm_fault_dump(struct dsp_system *sys)
 	dsp_leave();
 }
 
-static int __dsp_system_master_copy(void __iomem *dst, unsigned char *src,
-		size_t size)
+static int __dsp_system_master_copy(struct dsp_system *sys)
 {
 	int ret;
+	void __iomem *dst;
+	unsigned char *src;
+	size_t size;
 	unsigned int remain = 0;
 
 	dsp_enter();
-	if (!dst || !src || !size) {
-		ret = -EINVAL;
-		dsp_warn("master bin must be not zero[%#lx/%#lx/%zu]\n",
-				(long)dst, (long)src, size);
-		goto p_err;
+	if (!sys->boot_bin_size) {
+		dsp_warn("master bin must not be zero(%zu)\n",
+				sys->boot_bin_size);
+		ret = dsp_binary_load(DSP_MASTER_FW_NAME, NULL,
+				DSP_FW_EXTENSION, sys->boot_bin,
+				sizeof(sys->boot_bin), &sys->boot_bin_size);
+		if (ret)
+			goto p_err;
 	}
+	dst = sys->boot_mem;
+	src = sys->boot_bin;
+	size = sys->boot_bin_size;
 
 	__iowrite32_copy(dst, src, size >> 2);
 	if (size & 0x3) {
@@ -240,7 +252,7 @@ static void __dsp_system_init(struct dsp_system *sys)
 	dsp_enter();
 	pmem = sys->memory.priv_mem;
 
-	dsp_ctrl_sm_writel(DSP_SM_RESERVED(TO_CA5_INT_STATUS), 0x0);
+	dsp_ctrl_sm_writel(DSP_SM_RESERVED(TO_CC_INT_STATUS), 0x0);
 	dsp_ctrl_sm_writel(DSP_SM_RESERVED(TO_HOST_INT_STATUS), 0x0);
 
 	dsp_ctrl_sm_writel(DSP_SM_RESERVED(DEBUG_LAYER_START),
@@ -250,7 +262,7 @@ static void __dsp_system_init(struct dsp_system *sys)
 	memcpy(pmem[DSP_PRIV_MEM_FW].kvaddr, pmem[DSP_PRIV_MEM_FW].bac_kvaddr,
 			pmem[DSP_PRIV_MEM_FW].used_size);
 
-	dsp_ctrl_sm_writel(DSP_SM_RESERVED(CA5_DSP_FW_RESERVED_SIZE),
+	dsp_ctrl_sm_writel(DSP_SM_RESERVED(FW_RESERVED_SIZE),
 			pmem[DSP_PRIV_MEM_FW].size);
 	dsp_ctrl_sm_writel(DSP_SM_RESERVED(IVP_PM_IOVA),
 			pmem[DSP_PRIV_MEM_IVP_PM].iova);
@@ -276,13 +288,13 @@ static void __dsp_system_init(struct dsp_system *sys)
 			pmem[DSP_PRIV_MEM_FW_LOG].iova);
 	dsp_ctrl_sm_writel(DSP_SM_RESERVED(FW_LOG_MEMORY_SIZE),
 			pmem[DSP_PRIV_MEM_FW_LOG].size);
-	dsp_ctrl_sm_writel(DSP_SM_RESERVED(TO_CA5_MBOX_MEMORY_IOVA),
+	dsp_ctrl_sm_writel(DSP_SM_RESERVED(TO_CC_MBOX_MEMORY_IOVA),
 			pmem[DSP_PRIV_MEM_MBOX_MEMORY].iova);
-	dsp_ctrl_sm_writel(DSP_SM_RESERVED(TO_CA5_MBOX_MEMORY_SIZE),
+	dsp_ctrl_sm_writel(DSP_SM_RESERVED(TO_CC_MBOX_MEMORY_SIZE),
 			pmem[DSP_PRIV_MEM_MBOX_MEMORY].size);
-	dsp_ctrl_sm_writel(DSP_SM_RESERVED(TO_CA5_MBOX_POOL_IOVA),
+	dsp_ctrl_sm_writel(DSP_SM_RESERVED(TO_CC_MBOX_POOL_IOVA),
 			pmem[DSP_PRIV_MEM_MBOX_POOL].iova);
-	dsp_ctrl_sm_writel(DSP_SM_RESERVED(TO_CA5_MBOX_POOL_SIZE),
+	dsp_ctrl_sm_writel(DSP_SM_RESERVED(TO_CC_MBOX_POOL_SIZE),
 			pmem[DSP_PRIV_MEM_MBOX_POOL].size);
 
 	dsp_ctrl_sm_writel(DSP_SM_RESERVED(KERNEL_MODE), DSP_DYNAMIC_KERNEL);
@@ -362,15 +374,9 @@ int dsp_system_boot(struct dsp_system *sys)
 		dsp_ctrl_init(&sys->ctrl);
 	} else {
 		dsp_ctrl_all_init(&sys->ctrl);
-		ret = __dsp_system_master_copy(sys->boot_mem, sys->boot_bin,
-				sys->boot_bin_size);
-		if (ret) {
-			ret = dsp_binary_master_load(DSP_MASTER_FW_NAME, NULL,
-					DSP_FW_EXTENSION, sys->boot_mem,
-					sys->boot_mem_size);
-			if (ret < 0)
-				goto p_err;
-		}
+		ret = __dsp_system_master_copy(sys);
+		if (ret)
+			goto p_err;
 	}
 
 	__dsp_system_init(sys);
@@ -435,7 +441,7 @@ int dsp_system_reset(struct dsp_system *sys)
 
 	sys->system_flag = 0x0;
 	dsp_pm_update_devfreq_boot(&sys->pm);
-	dsp_interface_interrupt(&sys->interface, BIT(DSP_TO_CA5_INT_RESET));
+	dsp_interface_interrupt(&sys->interface, BIT(DSP_TO_CC_INT_RESET));
 	ret = __dsp_system_wait_reset(sys);
 	if (ret)
 		dsp_ctrl_force_reset(&sys->ctrl);
@@ -530,15 +536,9 @@ static int __dsp_system_npu_boot(struct dsp_system *sys, dma_addr_t fw_iova)
 		dsp_ctrl_common_init(&sys->ctrl);
 		dsp_ctrl_sm_writel(DSP_SM_RESERVED(NPU_FW_IOVA), fw_iova);
 
-		ret = __dsp_system_master_copy(sys->boot_mem, sys->boot_bin,
-				sys->boot_bin_size);
-		if (ret) {
-			ret = dsp_binary_master_load(DSP_MASTER_FW_NAME, NULL,
-					DSP_FW_EXTENSION, sys->boot_mem,
-					sys->boot_mem_size);
-			if (ret < 0)
-				goto p_err;
-		}
+		ret = __dsp_system_master_copy(sys);
+		if (ret)
+			goto p_err;
 
 		dsp_ctrl_writel(DSPC_CPU_RELEASE, 0x6);
 	}
@@ -607,7 +607,7 @@ static int __dsp_system_binary_copy(struct dsp_system *sys, void *list)
 		goto p_err;
 	}
 	pmem->used_size = bin->size;
-	dsp_info("binary[%s] is copied\n", DSP_FW_NAME);
+	dsp_info("binary[%s/%u] is copied\n", DSP_FW_NAME, bin->size);
 
 	pmem = &mem->priv_mem[DSP_PRIV_MEM_IVP_PM];
 	bin = &bin_list->bins[BIN_TYPE_DSP_IVP_PM_BIN];
@@ -623,7 +623,7 @@ static int __dsp_system_binary_copy(struct dsp_system *sys, void *list)
 		goto p_err;
 	}
 	pmem->used_size = bin->size;
-	dsp_info("binary[%s] is copied\n", DSP_IVP_PM_NAME);
+	dsp_info("binary[%s/%u] is copied\n", DSP_IVP_PM_NAME, bin->size);
 
 	pmem = &mem->priv_mem[DSP_PRIV_MEM_IVP_DM];
 	bin = &bin_list->bins[BIN_TYPE_DSP_IVP_DM_BIN];
@@ -639,7 +639,7 @@ static int __dsp_system_binary_copy(struct dsp_system *sys, void *list)
 		goto p_err;
 	}
 	pmem->used_size = bin->size;
-	dsp_info("binary[%s] is copied\n", DSP_IVP_DM_NAME);
+	dsp_info("binary[%s/%u] is copied\n", DSP_IVP_DM_NAME, bin->size);
 
 	pmem = &mem->priv_mem[DSP_PRIV_MEM_IAC_PM];
 	bin = &bin_list->bins[BIN_TYPE_DSP_IAC_PM_BIN];
@@ -656,7 +656,7 @@ static int __dsp_system_binary_copy(struct dsp_system *sys, void *list)
 		goto p_err;
 	}
 	pmem->used_size = bin->size;
-	dsp_info("binary[%s] is copied\n", DSP_IAC_PM_NAME);
+	dsp_info("binary[%s/%u] is copied\n", DSP_IAC_PM_NAME, bin->size);
 
 	pmem = &mem->priv_mem[DSP_PRIV_MEM_IAC_DM];
 	bin = &bin_list->bins[BIN_TYPE_DSP_IAC_DM_BIN];
@@ -672,7 +672,7 @@ static int __dsp_system_binary_copy(struct dsp_system *sys, void *list)
 		goto p_err;
 	}
 	pmem->used_size = bin->size;
-	dsp_info("binary[%s] is copied\n", DSP_IAC_DM_NAME);
+	dsp_info("binary[%s/%u] is copied\n", DSP_IAC_DM_NAME, bin->size);
 
 	dsp_leave();
 	return 0;
@@ -691,38 +691,37 @@ static int __dsp_system_binary_load(struct dsp_system *sys)
 
 	pmem = &mem->priv_mem[DSP_PRIV_MEM_FW];
 	ret = dsp_binary_load(DSP_FW_NAME, sys->fw_postfix, DSP_FW_EXTENSION,
-			pmem->bac_kvaddr, pmem->size);
-	if (ret < 0)
+			pmem->bac_kvaddr, pmem->size, &pmem->used_size);
+	if (ret)
 		goto p_err_load;
-	pmem->used_size = ret;
 
 	pmem = &mem->priv_mem[DSP_PRIV_MEM_IVP_PM];
 	ret = dsp_binary_load(DSP_IVP_PM_NAME, sys->fw_postfix,
-			DSP_FW_EXTENSION, pmem->kvaddr, pmem->size);
-	if (ret < 0)
+			DSP_FW_EXTENSION, pmem->kvaddr, pmem->size,
+			&pmem->used_size);
+	if (ret)
 		goto p_err_load;
-	pmem->used_size = ret;
 
 	pmem = &mem->priv_mem[DSP_PRIV_MEM_IVP_DM];
 	ret = dsp_binary_load(DSP_IVP_DM_NAME, sys->fw_postfix,
-			DSP_FW_EXTENSION, pmem->kvaddr, pmem->size);
-	if (ret < 0)
+			DSP_FW_EXTENSION, pmem->kvaddr, pmem->size,
+			&pmem->used_size);
+	if (ret)
 		goto p_err_load;
-	pmem->used_size = ret;
 
 	pmem = &mem->priv_mem[DSP_PRIV_MEM_IAC_PM];
 	ret = dsp_binary_load(DSP_IAC_PM_NAME, sys->fw_postfix,
-			DSP_FW_EXTENSION, pmem->kvaddr, pmem->size);
-	if (ret < 0)
+			DSP_FW_EXTENSION, pmem->kvaddr, pmem->size,
+			&pmem->used_size);
+	if (ret)
 		goto p_err_load;
-	pmem->used_size = ret;
 
 	pmem = &mem->priv_mem[DSP_PRIV_MEM_IAC_DM];
 	ret = dsp_binary_load(DSP_IAC_DM_NAME, sys->fw_postfix,
-			DSP_FW_EXTENSION, pmem->kvaddr, pmem->size);
-	if (ret < 0)
+			DSP_FW_EXTENSION, pmem->kvaddr, pmem->size,
+			&pmem->used_size);
+	if (ret)
 		goto p_err_load;
-	pmem->used_size = ret;
 
 	dsp_leave();
 	return 0;
@@ -853,6 +852,7 @@ static void __dsp_system_master_load_async(const struct firmware *fw,
 			ret = firmware_request_nowarn(&fw, full_name, sys->dev);
 			if (ret >= 0)
 				break;
+			/* Wait for the file system to be mounted at boot time*/
 			msleep(500);
 		}
 		if (ret < 0) {
@@ -872,7 +872,7 @@ static void __dsp_system_master_load_async(const struct firmware *fw,
 	memcpy(sys->boot_bin, fw->data, fw->size);
 	sys->boot_bin_size = fw->size;
 	release_firmware(fw);
-	dsp_info("binary[%s] is loaded\n", full_name);
+	dsp_info("binary[%s/%zu] is loaded\n", full_name, sys->boot_bin_size);
 	dsp_leave();
 }
 

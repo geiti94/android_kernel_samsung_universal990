@@ -117,6 +117,8 @@ enum itf_vc_stat_type {
 	/* Types for 3HDR */
 	VC_STAT_TYPE_TAIL_FOR_3HDR_LSI = 600,
 	VC_STAT_TYPE_TAIL_FOR_3HDR_IMX,
+	VC_STAT_TYPE_TAIL_FOR_3HDR_IMX_2_STAT0,
+	VC_STAT_TYPE_TAIL_FOR_3HDR_IMX_2_STAT1,
 
 	/* Types for PDP 1.0 in 2020 EVT0 */
 	VC_STAT_TYPE_PDP_1_0_PDAF_STAT0 = 700,
@@ -234,6 +236,7 @@ typedef struct {
 	enum camera2_wdr_mode pre_wdr_mode;
 	enum camera2_disparity_mode disparity_mode;
 	enum camera2_paf_mode paf_mode;
+	enum aa_scene_mode scene_mode;
 } is_shared_data;
 
 typedef struct {
@@ -251,10 +254,17 @@ struct wb_gains {
 
 struct roi_setting_t {
 	bool    update;
-	u16     roi_start_x;
-	u16     roi_start_y;
-	u16     roi_end_x;
-	u16     roi_end_y;
+#ifdef SUPPORT_SENSOR_SEAMLESS_3HDR
+	u16     roi_start_x[2];
+	u16     roi_start_y[2];
+	u16     roi_end_x[2];
+	u16     roi_end_y[2];
+#else
+	u16 	roi_start_x;
+	u16 	roi_start_y;
+	u16 	roi_end_x;
+	u16 	roi_end_y;
+#endif
 };
 
 struct sensor_lsi_3hdr_stat_control_mode_change {
@@ -270,6 +280,42 @@ struct sensor_lsi_3hdr_stat_control_per_frame {
 	int r_weight;
 	int b_weight;
 	int g_weight;
+};
+
+struct sensor_imx_3hdr_stat_control_mode_change {
+		struct roi_setting_t y_sum_roi;
+};
+
+struct sensor_imx_3hdr_stat_control_per_frame {
+	u8 pgain;
+	u8 ngain;
+	u8 fc_correct_intensity;
+	u16 wbd_r_gr;
+};
+
+struct sensor_imx_3hdr_lsc_table_init {
+		u16 ram_table[13*10*2];
+};
+
+struct sensor_imx_3hdr_tone_control {
+	bool gmt_tc2_enable;
+	u8 gmt_tc2_ratio;
+	u8 manual21_frame_p1;
+	u8 manual21_frame_p2;
+	u8 manual12_frame_p1;
+	u8 manual12_frame_p2;
+	u8 manual_tc_ratio;
+	u8 ltc_ratio;
+	u16 hdr_tc_ratio_1;
+	u16 hdr_tc_ratio_2;
+	u16 hdr_tc_ratio_3;
+	u16 hdr_tc_ratio_4;
+	u16 hdr_tc_ratio_5;
+};
+
+struct sensor_imx_3hdr_ev_control {
+	u8 evc_pgain;
+	u8 evc_ngain;
 };
 
 typedef struct {
@@ -338,7 +384,6 @@ typedef struct {
 	/* Moved from SensorEntry.cpp Jong 20121008 */
 	unsigned int sen_vsync_count;
 	unsigned int sen_frame_id;
-	unsigned int stream_id;
 	unsigned int product_name; /* sensor names such as IMX134, IMX135, and S5K3L2 */
 	unsigned int sens_config_index_cur;
 	unsigned int sens_config_index_pre;
@@ -356,28 +401,26 @@ typedef struct {
 
 	unsigned int max_fps;
 
-	unsigned int mipi_err_int_cnt[10];
-	unsigned int mipi_err_print_out_cnt[10];
-
-	bool called_common_sensor_setting; /* [hc0105.kim, 2013/09/13] Added to avoid calling common sensor register setting again. */
 /* #ifdef C1_LSC_CHANGE // [ist.song 2014.08.19] Added to inform videomode to sensor. */
 	bool video_mode;
 #ifdef USE_NEW_PER_FRAME_CONTROL
 	unsigned int num_of_frame;
 #endif
 /* #endif */
-	unsigned int actuator_position;
 
 	is_shared_data is_data;
 	ois_shared_data ois_data;
 	ae_setting auto_exposure[2];
 	preprocessor_ae_setting preproc_auto_exposure[2];
 
-/*	SysSema_t pFlashCtrl_IsrSema; //[2014.08.13, kh14.koo] to add for sema of KTD2692 (flash dirver) */
-
 	bool binning; /* If binning is set, sensor should binning for size */
 	bool dual_slave;
 	bool lte_multi_capture_mode;
+	bool highres_capture_mode;
+
+	/* set aeb mode */
+	u32 cur_aeb_mode;
+	u32 pre_aeb_mode;
 
 	u32 cis_rev;
 	u32 cis_model_id;
@@ -486,6 +529,11 @@ struct is_cis_ops {
 	int (*cis_active_test)(struct v4l2_subdev *subdev);
 	int (*cis_set_dual_setting)(struct v4l2_subdev *subdev, u32 mode);
 	int (*cis_get_binning_ratio)(struct v4l2_subdev *subdev, u32 mode, int *binning_ratio);
+	int (*cis_init_3hdr_lsc_table)(struct v4l2_subdev *subdev, void *data);
+	int (*cis_set_tone_stat)(struct v4l2_subdev *subdev, struct sensor_imx_3hdr_tone_control tone_control);
+	int (*cis_set_ev_stat)(struct v4l2_subdev *subdev, struct sensor_imx_3hdr_ev_control ev_control);
+	int (*cis_set_totalgain)(struct v4l2_subdev *subdev, struct ae_param *target_exposure, struct ae_param *again, struct ae_param *dgain);
+	int (*cis_set_fake_retention)(struct v4l2_subdev *subdev, bool enable);
 };
 
 struct is_sensor_ctl
@@ -544,8 +592,13 @@ struct is_sensor_ctl
 	/* for update 3DHDR sensor stats */
 	struct roi_setting_t roi_control;
 	bool update_roi;
-	struct sensor_lsi_3hdr_stat_control_per_frame stat_control;
+	struct sensor_lsi_3hdr_stat_control_per_frame lsi_stat_control;
+	struct sensor_imx_3hdr_stat_control_per_frame imx_stat_control;
 	bool update_3hdr_stat;
+	struct sensor_imx_3hdr_tone_control imx_tone_control;
+	bool update_tone;
+	struct sensor_imx_3hdr_ev_control imx_ev_control;
+	bool update_ev;
 };
 
 typedef enum is_sensor_adjust_direction_ {
@@ -631,6 +684,7 @@ enum is_exposure_gain_type {
 enum is_sensor_stat_control {
 	SENSOR_STAT_NOTHING = 0, /* Default */
 	SENSOR_STAT_LSI_3DHDR, /* LSI 3DHDR stat control */
+	SENSOR_STAT_IMX_3DHDR, /* IMX 3DHDR stat control */
 	SENSOR_STAT_CONTROL_MAX,
 };
 
@@ -646,6 +700,11 @@ enum is_aperture_control_step {
 	APERTURE_STEP_STATIONARY = 0,
 	APERTURE_STEP_PREPARE,
 	APERTURE_STEP_MOVING,
+};
+
+enum is_sensor_aeb_mode {
+	SENSOR_AEB_MODE_OFF,
+	SENSOR_AEB_MODE_ON,
 };
 
 typedef int (*actuator_func_type)(struct v4l2_subdev *subdev, u32 *info);
@@ -709,9 +768,19 @@ struct is_long_term_expo_mode {
 	u32 frame_interval;
 };
 
+struct is_ois_hall_data {
+	u64 readTimeStamp;
+	u32 counter;
+	int16_t X_AngVel[4];
+	int16_t Y_AngVel[4];
+	int16_t Z_AngVel[4];
+};
+
 /* OIS */
 struct is_ois_ops {
 	int (*ois_init)(struct v4l2_subdev *subdev);
+	int (*ois_init_fac)(struct v4l2_subdev *subdev);
+	void (*ois_init_rear2)(struct is_core *core);
 #if defined (CONFIG_OIS_USE_RUMBA_S6) || defined (CONFIG_CAMERA_USE_MCU) || \
 	defined (CONFIG_CAMERA_USE_INTERNAL_MCU)
 	int (*ois_deinit)(struct v4l2_subdev *subdev);
@@ -758,6 +827,12 @@ struct is_ois_ops {
 	int (*ois_set_af_active)(struct v4l2_subdev *subdev, int enable);
 	int (*ois_set_af_position)(struct v4l2_subdev *subdev, u32 position);
 	void (*ois_get_hall_pos)(struct is_core *core, u16 *targetPos, u16 *hallPos);
+	int (*ois_check_cross_talk)(struct v4l2_subdev *subdev, u16 *hall_data);
+#ifdef USE_OIS_HALL_DATA_FOR_VDIS
+	int (*ois_get_hall_data)(struct v4l2_subdev *subdev, struct is_ois_hall_data *halldata);
+#endif
+	bool(*ois_get_active)(void);
+	int(*ois_read_ext_clock)(struct v4l2_subdev *subdev, u32 *clock);
 };
 
 struct is_sensor_interface;
@@ -976,6 +1051,17 @@ struct is_cis_ext_interface_ops {
 	int (*set_sensor_stat_control_per_frame)(struct is_sensor_interface *itf,
 			enum is_sensor_stat_control stat_control_type,
 			void *stat_control);
+#ifdef SUPPORT_SENSOR_SEAMLESS_3HDR
+	int (*set_sensor_lsc_table_init)(struct is_sensor_interface *itf,
+			enum is_sensor_stat_control stat_control_type,
+			void *lsc_table);
+	int (*set_sensor_tone_control)(struct is_sensor_interface *itf,
+			enum is_sensor_stat_control stat_control_type,
+			void *tone_control);
+	int (*set_sensor_ev_control)(struct is_sensor_interface *itf,
+			enum is_sensor_stat_control stat_control_type,
+			void *ev_control);
+#endif
 };
 
 struct is_cis_ext2_interface_ops {
@@ -1002,7 +1088,8 @@ struct is_cis_ext2_interface_ops {
 				u32 time);
 	int (*set_lte_multi_capture_mode)(struct is_sensor_interface *itf,
 				bool lte_multi_capture_mode);
-	void *reserved[10];
+	int (*set_aeb_mode)(struct is_sensor_interface *itf, u32 mode);
+	void *reserved[9];
 };
 
 struct is_cis_event_ops {
@@ -1201,7 +1288,7 @@ struct is_laser_af_ops
 struct is_laser_af_interface_ops
 {
 	int (*set_active)(struct is_sensor_interface *itf, bool is_active);
-	int (*get_distance)(struct is_sensor_interface *itf, void* data, u32* size);
+	int (*get_distance)(struct is_sensor_interface *itf, void *data, u32 *size);
 };
 #endif
 

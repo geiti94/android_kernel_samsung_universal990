@@ -199,7 +199,7 @@ int sensor_imx258_cis_init(struct v4l2_subdev *subdev)
 	do {
 		ret = is_sensor_read8(client, 0x0A01, &data8);
 		read_cnt ++;
-		mdelay(1);
+		usleep_range(1000, 1100);
 	} while (!(data8 & 0x01) && (read_cnt < 100));
 
 	/* 0x10 : PDAF(0APH5), 0x30 : Non PDAF(0ATH5) */

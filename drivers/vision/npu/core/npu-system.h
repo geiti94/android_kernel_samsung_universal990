@@ -59,6 +59,11 @@ struct npu_system {
 	struct npu_iomem_area	sfr_mbox[2];
 
 	struct npu_iomem_area	sfr_npu[4];
+#ifdef CONFIG_CORESIGHT_STM
+	struct npu_iomem_area	sfr_coresight;
+	struct npu_iomem_area	sfr_stm;
+	struct npu_iomem_area	sfr_mct_g;
+#endif
 	struct npu_iomem_area	pmu_npu;
 	struct npu_iomem_area	pmu_npu_cpu;
 	struct npu_iomem_area	mbox_sfr;

@@ -49,6 +49,7 @@ extern void init_sched_energy_table(struct cpumask *cpus, int table_size,
 				int max_f, int min_f);
 extern void rebuild_sched_energy_table(struct cpumask *cpus, int clipped_freq,
 						int max_freq, int type);
+extern void update_capacity(int cpu, bool init);
 
 /*
  * multi load
@@ -95,6 +96,7 @@ extern bool lbt_overutilized(int cpu, int level, enum cpu_idle_type idle);
 extern void update_lbt_overutil(int cpu, unsigned long capacity);
 extern void lb_update_misfit_status(struct task_struct *p, struct rq *rq, unsigned long task_h_load);
 extern bool need_iss_margin(int src_cpu, int dst_cpu);
+extern void set_lbt_overutil_with_migov(int enabled);
 
 /*
  * Core sparing
@@ -130,6 +132,7 @@ static inline void init_sched_energy_table(struct cpumask *cpus, int table_size,
 				int max_f, int min_f) { }
 static inline void rebuild_sched_energy_table(struct cpumask *cpus, int clipped_freq,
 						int max_freq, int type) { }
+static inline void update_capacity(int cpu, bool init) { }
 
 /*
  * multi load
@@ -174,6 +177,7 @@ static inline struct list_head *lb_prefer_cfs_tasks(int src_cpu, int dst_cpu)
 {
 	return NULL;
 }
+#ifdef CONFIG_SMP
 static inline int lb_need_active_balance(enum cpu_idle_type idle,
 				struct sched_domain *sd, int src_cpu, int dst_cpu)
 {
@@ -184,12 +188,14 @@ static inline bool lb_sibling_overutilized(int dst_cpu, struct sched_domain *sd,
 {
 	return true;
 }
+#endif
 static inline bool lbt_overutilized(int cpu, int level)
 {
 	return false;
 }
 static inline void update_lbt_overutil(int cpu, unsigned long capacity) { }
 static inline void lb_update_misfit_status(struct task_struct *p, struct rq *rq, unsigned long task_h_load) { }
+static inline void set_lbt_overutil_with_migov(int enabled) { }
 
 /*
  * Core sparing
@@ -236,18 +242,18 @@ static inline void emstune_cpu_update(int cpu, u64 now) { };
 static inline unsigned long emstune_freq_boost(int cpu, unsigned long util) { return util; };
 
 #define emstune_add_request(req)	do { } while(0);
-static void __emstune_add_request(struct emstune_mode_request *req, char *func, unsigned int line) { }
-static void emstune_remove_request(struct emstune_mode_request *req) { }
-static void emstune_update_request(struct emstune_mode_request *req, s32 new_value) { }
-static void emstune_update_request_timeout(struct emstune_mode_request *req, s32 new_value,
+static inline void __emstune_add_request(struct emstune_mode_request *req, char *func, unsigned int line) { }
+static inline void emstune_remove_request(struct emstune_mode_request *req) { }
+static inline void emstune_update_request(struct emstune_mode_request *req, s32 new_value) { }
+static inline void emstune_update_request_timeout(struct emstune_mode_request *req, s32 new_value,
 					unsigned long timeout_us) { }
-static void emstune_boost(struct emstune_mode_request *req, int enable) { }
-static void emstune_boost_timeout(struct emstune_mode_request *req, unsigned long timeout_us) { }
+static inline void emstune_boost(struct emstune_mode_request *req, int enable) { }
+static inline void emstune_boost_timeout(struct emstune_mode_request *req, unsigned long timeout_us) { }
 
-static void emstune_mode_change(int next_mode_idx) { }
+static inline void emstune_mode_change(int next_mode_idx) { }
 
-static int emstune_register_mode_update_notifier(struct notifier_block *nb) { return 0; }
-static int emstune_unregister_mode_update_notifier(struct notifier_block *nb) { return 0; }
+static inline int emstune_register_mode_update_notifier(struct notifier_block *nb) { return 0; }
+static inline int emstune_unregister_mode_update_notifier(struct notifier_block *nb) { return 0; }
 
 static inline int emstune_util_est_group(int st_idx) { return 0; }
 #endif /* CONFIG_SCHED_EMS && CONFIG_SCHED_TUNE */
@@ -276,16 +282,28 @@ extern void frt_sync_sched_avg(struct task_struct *p, struct sched_avg *sa);
 static inline int frt_update_rt_rq_load_avg(struct rq *rq) { return 0; };
 static inline int frt_find_lowest_rq(struct task_struct *task) { return -1; };
 static inline void frt_migrate_task_rq_rt(struct task_struct *p, int nuew_cpu) { };
+#ifndef CONFIG_UML
 static inline void frt_update_load_avg(struct rt_rq *rt_rq, struct sched_rt_entity *se, int flags) { };
+#else
+static inline void frt_update_load_avg(void *rt_rq, struct sched_rt_entity *se, int flags) { };
+#endif
 static inline void frt_task_change_group_rt(struct task_struct *p, int type) { };
 static inline void frt_attach_task_rt_rq(struct task_struct *p) { };
 static inline void frt_detach_task_rt_rq(struct task_struct *p) { };
+#ifndef CONFIG_UML
 static inline void frt_init_rt_rq_load(struct rt_rq *rt_rq) { };
+#else
+static inline void frt_init_rt_rq_load(void *rt_rq) { };
+#endif
 static inline void frt_update_available_cpus(void) { };
 static inline void frt_clear_victim_flag(struct task_struct *p) { };
 static inline bool frt_test_victim_flag(struct task_struct *p) { return false; };
 static inline void frt_task_dead_rt(struct task_struct *p) { };
+#ifndef CONFIG_UML
 static inline void frt_set_task_rq_rt(struct sched_rt_entity *se, struct rt_rq *prev, struct rt_rq *next) { };
+#else
+static inline void frt_set_task_rq_rt(struct sched_rt_entity *se, void *prev, void *next) { };
+#endif
 static inline void frt_init_entity_runnable_average(struct sched_rt_entity *rt_se) { }
 static inline void frt_store_sched_avg(struct task_struct *p, struct sched_avg *sa) { }
 static inline void frt_sync_sched_avg(struct task_struct *p, struct sched_avg *sa) { }
@@ -295,4 +313,12 @@ static inline void frt_sync_sched_avg(struct task_struct *p, struct sched_avg *s
 void update_cont_avg(struct rq *rq, struct task_struct *prev, struct task_struct *next);
 #else
 static inline void update_cont_avg(struct rq *rq, struct task_struct *prev, struct task_struct *next) { };
+#endif
+
+#ifdef CONFIG_CPU_FREQ_GOV_ENERGYSTEP
+extern int esg_get_migov_boost(int cpu);
+extern void esg_set_migov_boost(int cpu, int boost);
+#else
+static inline void esg_get_migov_boost(int cpu) { return 0; };
+static inline int esg_set_migov_boost(int cpu, int boost) { };
 #endif

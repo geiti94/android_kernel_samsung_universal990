@@ -30,6 +30,7 @@
 #include <linux/relay.h>
 #include <linux/slab.h>
 #include <linux/percpu-rwsem.h>
+#include <linux/sec_debug.h>
 #include <linux/sec_perf.h>
 
 #include <trace/events/power.h>
@@ -238,7 +239,9 @@ static bool cpuhp_is_ap_state(enum cpuhp_state state)
 static inline void wait_for_ap_thread(struct cpuhp_cpu_state *st, bool bringup)
 {
 	struct completion *done = bringup ? &st->done_up : &st->done_down;
+	secdbg_dtsk_set_data(DTYPE_CPUHP, (void *)st->thread);
 	wait_for_completion(done);
+	secdbg_dtsk_clear_data();
 }
 
 static inline void complete_ap_thread(struct cpuhp_cpu_state *st, bool bringup)
@@ -1479,14 +1482,6 @@ static struct cpuhp_step cpuhp_hp_states[] = {
 		.name			= "sched:active",
 		.startup.single		= sched_cpu_activate,
 		.teardown.single	= sched_cpu_deactivate,
-	},
-#endif
-
-#ifdef CONFIG_SEC_PERF_LATENCYCHECKER
-	[CPUHP_AP_LATENYCHECKER_ONLINE] = {
-		.name			= "latenychecker:online",
-		.startup.single		= sec_perf_latencychecker_enable,
-		.teardown.single	= sec_perf_latencychecker_disable,
 	},
 #endif
 

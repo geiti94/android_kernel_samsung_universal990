@@ -148,4 +148,8 @@ void s6e3ha8_copy_analog_clock_ctrl(struct maptbl *tbl, u8 *dst);
 void s6e3ha8_copy_digital_clock_ctrl(struct maptbl *tbl, u8 *dst);
 int s6e3ha8_getidx_self_mode_pos(struct maptbl *tbl);
 void s6e3ha8_copy_self_move_reset(struct maptbl *tbl, u8 *dst);
+#ifdef SUPPORT_NORMAL_SELFMOVE
+int s6e3ha8_getidx_self_pattern(struct maptbl *tbl);
+void s6e3ha8_copy_selfmove_pattern(struct maptbl *tbl, u8 *dst);
+#endif
 #endif

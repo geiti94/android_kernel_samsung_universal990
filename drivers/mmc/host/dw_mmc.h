@@ -300,6 +300,9 @@ struct dw_mci {
 	/* bouce buffer */
 	void *bounce_buffer_addr;
 #define DMA_UPPER_ADDR	0xa00000000	/* DMA UPPER 8GB ADDR */
+       /*
+        * exynos max_segs is 512
+        */
 	void *backup_addr[SG_MAX_LEN];
 	u32 backup_size[SG_MAX_LEN];
 	u32 bu_count;

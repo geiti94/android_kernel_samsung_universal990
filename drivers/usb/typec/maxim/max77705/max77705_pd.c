@@ -513,6 +513,7 @@ void max77705_vbus_turn_on_ctrl(struct max77705_usbc_platform_data *usbc_data, b
 	int count = 5;
 #if defined(CONFIG_USB_HOST_NOTIFY)
 	struct otg_notify *o_notify = get_otg_notify();
+	static int reserve_booster = 0;
 	bool must_block_host = is_blocked(o_notify, NOTIFY_BLOCK_TYPE_HOST);
 
 	pr_info("%s : enable=%d, auto_vbus_en=%d, must_block_host=%d, swaped=%d\n",
@@ -560,6 +561,20 @@ void max77705_vbus_turn_on_ctrl(struct max77705_usbc_platform_data *usbc_data, b
 #endif
 
 	pr_info("%s : enable=%d\n", __func__, enable);
+
+	if (o_notify && o_notify->booting_delay_sec && enable) {
+		pr_info("%s %d, is booting_delay_sec. skip to control booster\n",
+			__func__, __LINE__);
+		reserve_booster = 1;
+		send_otg_notify(o_notify, NOTIFY_EVENT_RESERVE_BOOSTER, 1);
+		return;
+	}
+	if (!enable) {
+		if (reserve_booster) {
+			reserve_booster = 0;
+			send_otg_notify(o_notify, NOTIFY_EVENT_RESERVE_BOOSTER, 0);
+		}
+	}
 
 	while (count) {
 		psy_otg = power_supply_get_by_name("otg");
@@ -640,7 +655,7 @@ void max77705_pdo_list(struct max77705_usbc_platform_data *usbc_data, unsigned c
 
 	if (usbc_data->pd_data->pdo_list && do_power_nego) {
 		pr_info("%s : PDO list is changed, so power negotiation is need\n",
-			__func__, pd_noti.sink_status.selected_pdo_num);
+			__func__);
 		pd_noti.sink_status.selected_pdo_num = 0;
 		pd_noti.event = PDIC_NOTIFY_EVENT_PD_SINK_CAP;
 	}
@@ -696,6 +711,8 @@ void max77705_current_pdo(struct max77705_usbc_platform_data *usbc_data, unsigne
 			pPower_list->max_voltage = pdo_obj.BITS_pdo_fixed.voltage * UNIT_FOR_VOLTAGE;
 			pPower_list->min_voltage = 0;
 			pPower_list->max_current = pdo_obj.BITS_pdo_fixed.max_current * UNIT_FOR_CURRENT;
+			pPower_list->comm_capable = pdo_obj.BITS_pdo_fixed.usb_communications_capable;
+			pPower_list->suspend = pdo_obj.BITS_pdo_fixed.usb_suspend_supported;			
 			if (pPower_list->max_voltage > AVAILABLE_VOLTAGE)
 				pPower_list->accept = false;
 			else
@@ -729,14 +746,15 @@ void max77705_current_pdo(struct max77705_usbc_platform_data *usbc_data, unsigne
 		do_power_nego = true;
 
 	pd_noti.sink_status.available_pdo_num = available_pdo_num;
-	pr_info("%s : current_pdo_num(%d), available_pdo_num(%d/%d)\n", __func__,
-		pd_noti.sink_status.current_pdo_num, pd_noti.sink_status.available_pdo_num, num_of_pdo);
+	pr_info("%s : current_pdo_num(%d), available_pdo_num(%d/%d) comm(%d) suspend(%d)\n", __func__,
+		pd_noti.sink_status.current_pdo_num, pd_noti.sink_status.available_pdo_num, num_of_pdo,
+		pd_noti.sink_status.power_list[sel_pdo_pos].comm_capable, pd_noti.sink_status.power_list[sel_pdo_pos].suspend);
 
 	pd_noti.event = PDIC_NOTIFY_EVENT_PD_SINK;
 
 	if (usbc_data->pd_data->pdo_list && do_power_nego) {
 		pr_info("%s : PDO list is changed, so power negotiation is need\n",
-				__func__, pd_noti.sink_status.selected_pdo_num);
+				__func__);
 		pd_noti.sink_status.selected_pdo_num = 0;
 		pd_noti.event = PDIC_NOTIFY_EVENT_PD_SINK_CAP;
 	}

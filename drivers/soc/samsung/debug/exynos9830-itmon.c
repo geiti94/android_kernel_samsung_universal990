@@ -1399,6 +1399,9 @@ static void itmon_report_prot_chk_rawdata(struct itmon_dev *itmon,
 				     struct itmon_nodeinfo *node)
 {
 	unsigned int dbg_mo_cnt, prot_chk_ctl, prot_chk_info, prot_chk_int_id;
+#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
+	char temp_buf[SZ_128];
+#endif
 
 	dbg_mo_cnt = __raw_readl(node->regs +  OFFSET_PROT_CHK);
 	prot_chk_ctl = __raw_readl(node->regs +  OFFSET_PROT_CHK + REG_PROT_CHK_CTL);
@@ -1418,6 +1421,16 @@ static void itmon_report_prot_chk_rawdata(struct itmon_dev *itmon,
 		prot_chk_ctl,
 		prot_chk_info,
 		prot_chk_int_id);
+#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
+	snprintf(temp_buf, SZ_128, "%s/ %s/ 0x%08X/ %s/ 0x%08X, 0x%08X, 0x%08X, 0x%08X",
+		"Protocol Error", node->name, node->phy_regs,
+		itmon_nodestring[node->type],
+		dbg_mo_cnt,
+		prot_chk_ctl,
+		prot_chk_info,
+		prot_chk_int_id);
+	secdbg_exin_set_busmon(temp_buf);
+#endif
 }
 
 static void itmon_report_rawdata(struct itmon_dev *itmon,
@@ -1507,6 +1520,10 @@ static void itmon_trace_data(struct itmon_dev *itmon,
 	info0 = __raw_readl(node->regs + offset + REG_EXT_INFO_0);
 	info1 = __raw_readl(node->regs + offset + REG_EXT_INFO_1);
 	info2 = __raw_readl(node->regs + offset + REG_EXT_INFO_2);
+
+	if ((BIT_ERR_CODE(int_info) == ERRCODE_DECERR) && info0 != 0 &&
+		!strncmp(node->name, "SCI_IRPM", strlen(node->name)))
+		dbg_snapshot_soc_do_dpm_policy(GO_S2D_ID);
 
 	dbg_mo_cnt = __raw_readl(node->regs +  OFFSET_PROT_CHK);
 	prot_chk_ctl = __raw_readl(node->regs +  OFFSET_PROT_CHK + REG_PROT_CHK_CTL);

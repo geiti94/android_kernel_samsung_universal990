@@ -1,10 +1,10 @@
 /*
- * PCIe phy driver for Samsung EXYNOS8890
+ * PCIe phy driver for Samsung EXYNOS9830
  *
  * Copyright (C) 2013 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
  *
- * Author: Kyoungil Kim <ki0351.kim@samsung.com>
+ * Author: Kwangho Kim <kwangho2.kim.kim@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as

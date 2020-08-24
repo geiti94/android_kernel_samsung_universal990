@@ -127,6 +127,8 @@ bool gpu_check_trace_code(int code)
 	case KBASE_TRACE_CODE(LSI_KBASE_PM_INIT_HW):
 	case KBASE_TRACE_CODE(LSI_FORCE_POWER_ON):
 	case KBASE_TRACE_CODE(LSI_FORCE_POWER_OFF):
+	case KBASE_TRACE_CODE(LSI_RESUME_CHECK):
+	case KBASE_TRACE_CODE(LSI_RESUME_FREQ):
 	case KBASE_TRACE_CODE(LSI_IFPM_POWER_ON):
 	case KBASE_TRACE_CODE(LSI_IFPM_POWER_OFF):
 		level = TRACE_CLK;
@@ -273,6 +275,8 @@ static int gpu_dvfs_update_config_data_from_dt(struct kbase_device *kbdev)
 		platform->interactive.highspeed_clock = of_data_int_array[0] == 0 ? 500 : (u32) of_data_int_array[0];
 		platform->interactive.highspeed_load  = of_data_int_array[1] == 0 ? 100 : (u32) of_data_int_array[1];
 		platform->interactive.highspeed_delay = of_data_int_array[2] == 0 ? 0 : (u32) of_data_int_array[2];
+	} else if (!strncmp("joint", of_string, strlen("joint"))) {
+		platform->governor_type = G3D_DVFS_GOVERNOR_JOINT;
 	} else if (!strncmp("static", of_string, strlen("static"))) {
 		platform->governor_type = G3D_DVFS_GOVERNOR_STATIC;
 	} else if (!strncmp("booster", of_string, strlen("booster"))) {
@@ -282,6 +286,7 @@ static int gpu_dvfs_update_config_data_from_dt(struct kbase_device *kbdev)
 	} else {
 		platform->governor_type = G3D_DVFS_GOVERNOR_DEFAULT;
 	}
+	platform->governor_type_init = platform->governor_type;
 
 #ifdef CONFIG_CAL_IF
 	platform->gpu_dvfs_start_clock = cal_dfs_get_boot_freq(platform->g3d_cmu_cal_id);
@@ -326,15 +331,34 @@ static int gpu_dvfs_update_config_data_from_dt(struct kbase_device *kbdev)
 	gpu_update_config_data_int(np, "gpu_pmqos_mif_max_clock", &platform->pmqos_mif_max_clock);
 	gpu_update_config_data_int(np, "gpu_pmqos_mif_max_clock_base", &platform->pmqos_mif_max_clock_base);
 	gpu_update_config_data_int(np, "gpu_cl_dvfs_start_base", &platform->cl_dvfs_start_base);
+#ifdef CONFIG_MALI_SEC_G3D_PERF_STABLE_PMQOS
+	gpu_update_config_data_int_array(np, "gpu_pmqos_cl2_max_clock", of_data_int_array, 2);
+	for (i = 0; i < 2; i++) {
+		platform->pmqos_cl2_max_clock[i] = of_data_int_array[i] == 0 ? INT_MAX : (u32) of_data_int_array[i];
+	}
+	gpu_update_config_data_int_array(np, "gpu_pmqos_cl1_max_clock", of_data_int_array, 2);
+	for (i = 0; i < 2; i++) {
+		platform->pmqos_cl1_max_clock[i] = of_data_int_array[i] == 0 ? 0 : (u32) of_data_int_array[i];
+	}
+	gpu_update_config_data_int_array(np, "gpu_pmqos_g3d_clock", of_data_int_array, 2);
+	for (i = 0; i < 2; i++) {
+		platform->pmqos_g3d_clock[i] = of_data_int_array[i] == 0 ? 0 : (u32) of_data_int_array[i];
+	}
+#endif
 #endif /* CONFIG_MALI_DVFS */
 	gpu_update_config_data_bool(np, "gpu_early_clk_gating", &platform->early_clk_gating_status);
 #ifdef CONFIG_MALI_RT_PM
 	gpu_update_config_data_bool(np, "gpu_dvs", &platform->dvs_status);
-	gpu_update_config_data_bool(np, "gpu_inter_frame_pm", &platform->inter_frame_pm_feature);
 #else
 	platform->dvs_status = 0;
+#endif
+
+#ifdef CONFIG_MALI_IFPO
+	gpu_update_config_data_bool(np, "gpu_inter_frame_pm", &platform->inter_frame_pm_feature);
+#else
 	platform->inter_frame_pm_feature = 0;
 #endif
+
 	gpu_update_config_data_int(np, "gpu_runtime_pm_delay_time", &platform->runtime_pm_delay_time);
 #ifdef CONFIG_EXYNOS_BTS
 	gpu_update_config_data_int(np, "gpu_mo_min_clock", &platform->mo_min_clock);
@@ -369,6 +393,12 @@ static int gpu_dvfs_update_config_data_from_dt(struct kbase_device *kbdev)
 	platform->need_cpu_qos = false;
 #endif
 
+#ifdef CONFIG_MALI_IFPO
+#ifdef CONFIG_MALI_DYNAMIC_IFPO
+	gpu_update_config_data_int(np, "gpu_inter_frame_dynamic_util", &platform->gpu_dynamic_ifpo_util);
+	gpu_update_config_data_int(np, "gpu_inter_frame_dynamic_freq", &platform->gpu_dynamic_ifpo_freq);
+#endif
+#endif
 	return 0;
 }
 
@@ -556,6 +586,11 @@ static int gpu_context_init(struct kbase_device *kbdev)
 
 #ifdef CONFIG_MALI_ASV_CALIBRATION_SUPPORT
 	platform->gpu_auto_cali_status = false;
+#endif
+
+#ifdef CONFIG_MALI_SEC_CL_BOOST
+	platform->previous_cl_job = 0;
+	platform->down_stay_no_count = 0;
 #endif
 
 	platform->inter_frame_pm_status = platform->inter_frame_pm_feature;

@@ -1541,7 +1541,6 @@ int xhci_bus_suspend(struct usb_hcd *hcd)
 	bool wake_enabled;
 #ifdef CONFIG_USB_DWC3_EXYNOS
 	int is_port_connect = 0;
-	int ret;
 #endif
 
 	rhub = xhci_get_rhub(hcd);
@@ -1654,16 +1653,6 @@ retry:
 	}
 
 #ifdef CONFIG_USB_DWC3_EXYNOS
-	if (is_port_connect) {
-		xhci_info(xhci, "port is connected, phy vendor set\n");
-		ret = phy_vendor_set(hcd->phy, 1, 0);
-		if (ret) {
-			xhci_info(xhci, "phy vendor set fail\n");
-			spin_unlock_irqrestore(&xhci->lock, flags);
-			return ret;
-		}
-	}
-
 	xhci_info(xhci, "%s 'HC_STATE_SUSPENDED' portcon: %d main_hcd: %d\n",
 		__func__, is_port_connect, (hcd == xhci->main_hcd));
 #endif
@@ -1714,10 +1703,6 @@ int xhci_bus_resume(struct usb_hcd *hcd)
 	struct xhci_hub *rhub;
 	struct xhci_port **ports;
 
-#ifdef CONFIG_USB_DWC3_EXYNOS
-	xhci_info(xhci, "[%s] phy vendor set \n",__func__);
-	phy_vendor_set(hcd->phy, 1, 1);
-#endif
 	rhub = xhci_get_rhub(hcd);
 	ports = rhub->ports;
 	max_ports = rhub->num_ports;

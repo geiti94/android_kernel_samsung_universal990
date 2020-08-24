@@ -561,7 +561,6 @@ static ssize_t store_pcie(struct device *dev,
 				exynos_elbi_read(exynos_pcie, PCIE_ELBI_RDLH_LINKUP));
 		break;
 
-
 	default:
 		dev_err(dev, "Unsupported Test Number(%d)...\n", op_num);
 	}
@@ -1314,6 +1313,7 @@ static int exynos_pcie_rd_own_conf(struct pcie_port *pp, int where, int size,
 		exynos_pcie_clock_enable(pp, PCIE_ENABLE_CLOCK);
 		exynos_pcie_phy_clock_enable(&pci->pp,
 				PCIE_ENABLE_CLOCK);
+
 #ifdef NCLK_OFF_CONTROL
 		if (exynos_pcie->ip_ver >= 0x981000)
 			exynos_elbi_write(exynos_pcie, 0x0, PCIE_L12ERR_CTRL);
@@ -1376,6 +1376,7 @@ static int exynos_pcie_wr_own_conf(struct pcie_port *pp, int where, int size,
 		/*exynos_pcie_phy_clock_enable(&exynos_pcie->pp,*/
 		exynos_pcie_phy_clock_enable(&pci->pp,
 				PCIE_ENABLE_CLOCK);
+
 #ifdef NCLK_OFF_CONTROL
 		if (exynos_pcie->ip_ver >= 0x981000)
 			exynos_elbi_write(exynos_pcie, 0x0, PCIE_L12ERR_CTRL);

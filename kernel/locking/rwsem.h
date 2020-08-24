@@ -143,11 +143,19 @@ static inline bool rwsem_list_add_per_prio(struct rwsem_waiter *waiter_in,
 				list_add(&waiter_in->list, pos->prev);
 				sem->m_count++;
 				if (prewaiter != NULL) {
+#ifndef CONFIG_UML
 					if (prewaiter->task->cpu > (BIG_FIRST-1)) {
+#else
+					if (task_cpu(prewaiter->task) > (BIG_FIRST-1)) {
+#endif
 						cpumask_clear(&(waiter->task->aug_cpus_allowed));
 						for (i = BIG_FIRST; i < NR_CPUS ; i++)
 							cpumask_set_cpu(i,&(waiter->task->aug_cpus_allowed));
+#ifndef CONFIG_UML
 					} else if (prewaiter->task->cpu > (MID_FIRST-1)) {
+#else
+					} else if (task_cpu(prewaiter->task) > (MID_FIRST-1)) {
+#endif
 						cpumask_clear(&(waiter->task->aug_cpus_allowed));
 						for (i = MID_FIRST; i < NR_CPUS ; i++)
 							cpumask_set_cpu(i,&(waiter->task->aug_cpus_allowed));

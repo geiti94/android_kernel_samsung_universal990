@@ -37,7 +37,7 @@ static int __dpp_match_dev(struct decon_device *decon, struct device *dev)
 	
 	dpp = (struct dpp_device *)dev_get_drvdata(dev);
 	if (dpp == NULL) {
-		decon_err("DECON:ERR:%s:faield to get dpp data\n", __func__);
+		decon_err("DECON:ERR:%s:failed to get dpp data\n", __func__);
 		return -EINVAL;
 	}
 
@@ -55,7 +55,7 @@ static int __dsim_match_dev(struct decon_device *decon, struct device *dev)
 	
 	dsim = (struct dsim_device *)dev_get_drvdata(dev);
 	if (dsim == NULL) {
-		decon_err("DECON:ERR:%s:faield to get dsim data\n", __func__);
+		decon_err("DECON:ERR:%s:failed to get dsim data\n", __func__);
 		return -EINVAL;
 	}
 
@@ -72,7 +72,7 @@ static int __displayport_match_dev(struct decon_device *decon, struct device *de
 
 	displayport = (struct displayport_device *)dev_get_drvdata(dev);
 	if (displayport == NULL) {
-		decon_err("DECON:ERR:%s:faield to get displayport data\n", __func__);
+		decon_err("DECON:ERR:%s:failed to get displayport data\n", __func__);
 		return -EINVAL;
 	}
 
@@ -471,6 +471,103 @@ static int dpu_dump_buffer_data(struct dpp_device *dpp)
 	}
 
 	return 0;
+}
+#endif
+
+/*
+ * dpu_show_dma_attach_info
+ * @purpose : To check the memory leak in relation to buffers used by the DPU
+ *  - attach related counters are increased at map
+ *  - detach related counters are decreased at unmap
+ *  - when the (log) messages appears,
+ *    it is expected that we will be able to compare the difference of
+ *    these two counts to indirectly check if leakage occurred in DPU(dsim).
+ *    (log) .dsim: iovmm_map: Not enough IOVM space to allocate 0xXXXXXXX
+ *
+ * @fn  : function name calling this function.
+ * @sel : 0 - print information whenever event occurs
+ *        1 - print information when event occurred first
+ *
+ * MAX_DMA_ATTACH_CNT(10) : YUV(4Layers: 4*2) + RGB(2layers)
+ * - This is depending on attribute of layer : supported formats
+ */
+#define MAX_DMA_ATTACH_CNT	(10)
+void dpu_show_dma_attach_info(char *fn, struct decon_device *decon, u32 sel)
+{
+	u32 frame_cnt;
+	u32 allow_cnt;
+	u32 cnt_diff = 0;
+	struct dpu_dma_info *cnt;
+
+	if (sel == 0) {
+		cnt = &decon->d.buf_cnt;
+		cnt->count++;
+		cnt->timestamp = ktime_get();
+	} else
+		cnt = &decon->d.buf_cnt_bak;
+
+	frame_cnt = atomic_read(&decon->up.remaining_frame);
+	decon_info("%s: occur_cnt:%d remain_frame:%d fr_cnt:%d\n",
+		fn, cnt->count, frame_cnt, decon->frame_cnt);
+	decon_info(">> buf_attach:%d map_attach:%d iovmm_map:%d\n",
+		cnt->buf_attach_cnt, cnt->map_attach_cnt,
+		cnt->iovmm_map_cnt);
+	decon_info(">> buf_detach:%d unmap_attach:%d iovmm_unmap:%d\n",
+		cnt->buf_detach_cnt, cnt->unmap_attach_cnt,
+		cnt->iovmm_unmap_cnt);
+
+	if (sel == 0) {
+		allow_cnt = MAX_DMA_ATTACH_CNT * (frame_cnt + 1);
+		cnt_diff = cnt->buf_attach_cnt -
+				cnt->buf_detach_cnt;
+		if (cnt_diff > allow_cnt)
+			BUG();
+	}
+}
+
+int register_lcd_status_notifier(struct notifier_block *nb)
+{
+	return atomic_notifier_chain_register(&lcd_status_notifier_list, nb);
+}
+EXPORT_SYMBOL(register_lcd_status_notifier);
+
+int unregister_lcd_status_notifier(struct notifier_block *nb)
+{
+	return atomic_notifier_chain_unregister(&lcd_status_notifier_list, nb);
+}
+EXPORT_SYMBOL(unregister_lcd_status_notifier);
+
+/* If lcd status is
+ *     0 : LCD ON
+ *     1 : LCD OFF
+*/
+void lcd_status_notifier(u32 lcd_status)
+{
+	atomic_notifier_call_chain(&lcd_status_notifier_list, lcd_status, NULL);
+}
+
+#if IS_ENABLED(CONFIG_EXYNOS_FPS_CHANGE_NOTIFY)
+int register_fps_change_notifier(struct notifier_block *nb)
+{
+	struct decon_device *decon = get_decon_drvdata(0);
+
+	return atomic_notifier_chain_register(&decon->fps_change_notifier_list, nb);
+}
+EXPORT_SYMBOL(register_fps_change_notifier);
+
+int unregister_fps_change_notifier(struct notifier_block *nb)
+{
+	struct decon_device *decon = get_decon_drvdata(0);
+
+	return atomic_notifier_chain_unregister(&decon->fps_change_notifier_list, nb);
+}
+EXPORT_SYMBOL(unregister_fps_change_notifier);
+
+void notify_fps_change(u32 fps)
+{
+	struct decon_device *decon = get_decon_drvdata(0);
+
+	atomic_notifier_call_chain(&decon->fps_change_notifier_list, fps, NULL);
 }
 #endif
 

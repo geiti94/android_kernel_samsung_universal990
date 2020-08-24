@@ -133,9 +133,27 @@ static struct bbd_device bbd;
  * Embedded patch file provided as /dev/bbd_patch
  */
 
-static unsigned char bbd_patch[] = {
-#if defined(CONFIG_SENSORS_SSP_PICASSO)
+
+static unsigned char bbd_patch_old[] = {
+#if defined(CONFIG_SENSORS_SSP_CANVAS)
+#include "q_os/bbd_patch_file_canvas_old.h"
+#elif defined(CONFIG_SENSORS_SSP_PICASSO)
 #include "q_os/bbd_patch_file_picasso.h"
+#elif defined(CONFIG_SENSORS_SSP_R8) 
+#include "q_os/bbd_patch_file_r8.h"
+#else
+#include "q_os/bbd_patch_file_picasso.h"
+#endif
+};
+
+
+static unsigned char bbd_patch[] = {
+#if defined(CONFIG_SENSORS_SSP_CANVAS)
+#include "q_os/bbd_patch_file_canvas.h"
+#elif defined(CONFIG_SENSORS_SSP_PICASSO)
+#include "q_os/bbd_patch_file_picasso.h"
+#elif defined(CONFIG_SENSORS_SSP_R8)
+#include "q_os/bbd_patch_file_r8.h"
 #else
 #include "q_os/bbd_patch_file_picasso.h"
 #endif
@@ -770,22 +788,30 @@ ssize_t bbd_control_write(struct file *filp, const char __user *buf, size_t size
 	return bbd_control(bbd.priv[minor].write_buf, len);
 }
 
+#define bbd_old     0
+#define bbd_new_old     1
+#define bbd_current     2
+
 extern int get_patch_version(int ap_type, int hw_rev);
 
 ssize_t bbd_patch_read(struct file *filp, char __user *buf, size_t size, loff_t *ppos)
 {
-	ssize_t rd_size = size;
 	size_t  offset = filp->f_pos;
-        int patch_size = sizeof(bbd_patch);
-    
+	int hw_rev = bbd.ssp_cb->on_control(bbd.ssp_priv, SSP_GET_HW_REV);
+	int ap_type = bbd.ssp_cb->on_control(bbd.ssp_priv, SSP_GET_AP_REV);
+	int patch_ver = get_patch_version(ap_type, hw_rev);
+
+	int patch_size = patch_ver == bbd_old ? sizeof(bbd_patch_old) : sizeof(bbd_patch);
+	ssize_t rd_size = patch_size < size ? patch_size : size;
+
 	if (offset >= patch_size) {	   /* signal EOF */
 		*ppos = 0;
 		return 0;
 	}
     
-	if (offset+size > patch_size)
+	if (offset + rd_size > patch_size)
 		rd_size = patch_size - offset;
-        if (copy_to_user(buf, bbd_patch + offset, rd_size))
+        if (copy_to_user(buf, patch_ver == bbd_old ? bbd_patch_old + offset : bbd_patch + offset, rd_size))
 		rd_size = -EFAULT;
 	else
 		*ppos = filp->f_pos + rd_size;
@@ -800,9 +826,9 @@ static int urgent_patch_size = 0;
 
 ssize_t bbd_urgent_patch_read(struct file *user_filp, char __user *buf, size_t size, loff_t *ppos)
 {
-	ssize_t rd_size = size;
+	ssize_t rd_size = 0;
 	size_t offset = user_filp->f_pos;
-   
+
 	int ret = 0;
 	struct file *filp = NULL;
 	loff_t fsize = 0;
@@ -874,16 +900,17 @@ ssize_t bbd_urgent_patch_read(struct file *user_filp, char __user *buf, size_t s
 				kfree(urgent_buffer);
 				return 0;
 			}
+			rd_size = urgent_patch_size < size ? urgent_patch_size : size;
 
-		if (offset + size > urgent_patch_size)
-			rd_size = urgent_patch_size - offset;
+			if (offset + rd_size > urgent_patch_size)
+				rd_size = urgent_patch_size - offset;
 
-		// 02-3. read requested size of urget_patch
-		pr_info("[SSPBBD] %s : download in progress (%d/%d)", __func__, offset  + rd_size, urgent_patch_size);
+			// 02-3. read requested size of urget_patch
+			pr_info("[SSPBBD] %s : download in progress (%d/%d)", __func__, offset  + rd_size, urgent_patch_size);
 
-		if(copy_to_user(buf, (void *)(urgent_buffer + offset), rd_size)) {
-			pr_info("[SSPBBD] %s : copy to user from urgent_buffer", __func__);
-			rd_size = -EFAULT;
+			if(copy_to_user(buf, (void *)(urgent_buffer + offset), rd_size)) {
+				pr_info("[SSPBBD] %s : copy to user from urgent_buffer", __func__);
+				rd_size = -EFAULT;
 		}
 		else
 			*ppos = user_filp->f_pos + rd_size;
@@ -1097,7 +1124,7 @@ static int bbd_suspend(pm_message_t state)
 	if (pssp_driver->driver.pm && pssp_driver->driver.pm->suspend)
 		pssp_driver->driver.pm->suspend(&dummy_spi.dev);
 #endif
-	mdelay(20);
+//	mdelay(20);
 
 	pr_info("[SSPBBD]: %s --\n", __func__);
 	return 0;
@@ -1113,7 +1140,7 @@ static int bbd_resume(void)
 #ifdef DEBUG_1HZ_STAT
 	bbd_enable_stat();
 #endif
-	wake_lock_timeout(&bbd.bbd_wake_lock, HZ/2);
+	wake_lock_timeout(&bbd.bbd_wake_lock, HZ/3);
 
 	return 0;
 }

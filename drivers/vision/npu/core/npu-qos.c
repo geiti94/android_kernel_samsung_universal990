@@ -15,6 +15,7 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
+#include <soc/samsung/exynos-devfreq.h>
 
 #include "npu-vs4l.h"
 #include "npu-device.h"
@@ -55,6 +56,48 @@ static int npu_qos_max_notifier(struct notifier_block *nb,
 	return NOTIFY_DONE;
 }
 
+static int npu_check_qos_dsp_min(void)
+{
+	unsigned long dsp_freq;
+
+	/* use L0 even with DSP for typical mode */
+	if (qos_setting->info->mode == NPU_PERF_MODE_NPU_BOOST ||
+			qos_setting->info->mode == NPU_PERF_MODE_NPU_DN) {
+		npu_info("use L0 even with DSP L0 : mode %d\n", qos_setting->info->mode);
+		return NOTIFY_DONE;
+	}
+
+	/* check DSP minlock level */
+	if (!qos_setting->dsp_type ||
+			!qos_setting->dsp_max_freq ||
+			!qos_setting->npu_max_freq) {
+		npu_info("not correlated to DSP : type %d max_freq (dsp %d, npu %d)\n",
+				qos_setting->dsp_type,
+				qos_setting->dsp_max_freq,
+				qos_setting->npu_max_freq);
+		return NOTIFY_DONE;
+	}
+
+	dsp_freq = exynos_devfreq_get_domain_freq(qos_setting->dsp_type);
+
+	if (dsp_freq >= qos_setting->dsp_max_freq) {
+		/* set NPU maxlock with DSP minlock */
+		pm_qos_update_request(&qos_setting->npu_qos_req_npu_max,
+				qos_setting->npu_max_freq);
+	} else {
+		/* release NPU maxlock with DSP minlock */
+		pm_qos_update_request(&qos_setting->npu_qos_req_npu_max,
+				PM_QOS_NPU_THROUGHPUT_MAX_DEFAULT_VALUE);
+	}
+	return NOTIFY_DONE;
+}
+
+static int npu_qos_dsp_min_notifier(struct notifier_block *nb,
+		unsigned long action, void *nb_data)
+{
+	return npu_check_qos_dsp_min();
+}
+
 int npu_qos_probe(struct npu_system *system)
 {
 	qos_setting = &(system->qos_setting);
@@ -81,6 +124,7 @@ int npu_qos_probe(struct npu_system *system)
 	pm_qos_add_request(&qos_setting->npu_qos_req_cpu_cl1, PM_QOS_CLUSTER1_FREQ_MIN, 0);
 	pm_qos_add_request(&qos_setting->npu_qos_req_cpu_cl2, PM_QOS_CLUSTER2_FREQ_MIN, 0);
 
+	mutex_lock(&qos_setting->npu_qos_lock);
 	qos_setting->req_npu_freq = 0;
 	qos_setting->req_dnc_freq = 0;
 	qos_setting->req_int_freq = 0;
@@ -88,12 +132,16 @@ int npu_qos_probe(struct npu_system *system)
 	qos_setting->req_cl0_freq = 0;
 	qos_setting->req_cl1_freq = 0;
 	qos_setting->req_cl2_freq = 0;
+	mutex_unlock(&qos_setting->npu_qos_lock);
 
 	qos_lock.npu_freq_maxlock = PM_QOS_NPU_THROUGHPUT_MAX_DEFAULT_VALUE;
 	qos_lock.dnc_freq_maxlock = PM_QOS_DNC_THROUGHPUT_MAX_DEFAULT_VALUE;
 
 	qos_setting->npu_qos_max_nb.notifier_call = npu_qos_max_notifier;
 	pm_qos_add_notifier(PM_QOS_NPU_THROUGHPUT_MAX, &qos_setting->npu_qos_max_nb);
+
+	qos_setting->npu_qos_dsp_min_nb.notifier_call = npu_qos_dsp_min_notifier;
+	pm_qos_add_notifier(PM_QOS_DSP_THROUGHPUT, &qos_setting->npu_qos_dsp_min_nb);
 
 	if (npu_qos_sysfs_create(system)) {
 		npu_info("npu_qos_sysfs create failed\n");
@@ -121,6 +169,9 @@ int npu_qos_start(struct npu_system *system)
 	qos_setting->req_cl0_freq = 0;
 	qos_setting->req_cl1_freq = 0;
 	qos_setting->req_cl2_freq = 0;
+
+	// check for dsp even without any minlock request
+	npu_check_qos_dsp_min();
 
 	mutex_unlock(&qos_setting->npu_qos_lock);
 

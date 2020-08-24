@@ -250,6 +250,7 @@ enum {
 #define MSG2SSP_AP_MCU_SET_MOTOR_STATUS		0xC3
 #endif
 
+#define MSG2SSP_AP_SENSORS_NAME		0x0D
 #define MSG2SSP_AP_WHOAMI			0x0F
 #define MSG2SSP_AP_FIRMWARE_REV		0xF0
 #define MSG2SSP_AP_SENSOR_FORMATION		0xF1
@@ -354,43 +355,10 @@ enum {
 #define MCU_SLEEP_FACTORY_DATA_LENGTH	FACTORY_DATA_MAX
 #define GESTURE_FACTORY_DATA_LENGTH		4
 
-#if defined(CONFIG_SENSORS_SSP_TMG399x)
-#define DEFAULT_HIGH_THRESHOLD			130
-#define DEFAULT_LOW_THRESHOLD			90
-#define DEFAULT_CAL_HIGH_THRESHOLD		130
-#define DEFAULT_CAL_LOW_THRESHOLD		54
-#elif defined(CONFIG_SENSORS_SSP_TMD4905)/*CONFIG_SENSORS_SSP_PROX_AUTOCAL_AMS*/
-#define DEFAULT_HIGH_THRESHOLD				600
-#define DEFAULT_LOW_THRESHOLD				400
-#define DEFAULT_DETECT_HIGH_THRESHOLD		8192
-#define DEFAULT_DETECT_LOW_THRESHOLD		5000
-#elif defined(CONFIG_SENSORS_SSP_TMD4904)/*CONFIG_SENSORS_SSP_PROX_AUTOCAL_AMS*/
-#define DEFAULT_HIGH_THRESHOLD				420
-#define DEFAULT_LOW_THRESHOLD				290
-#define DEFAULT_DETECT_HIGH_THRESHOLD		16383
-#define DEFAULT_DETECT_LOW_THRESHOLD		5000
-#else
-#ifdef CONFIG_SENSORS_SSP_PROX_AUTOCAL_AMS
 #define DEFAULT_HIGH_THRESHOLD				2400
 #define DEFAULT_LOW_THRESHOLD				1600
-#ifdef CONFIG_SENSORS_SSP_CROWN
-#define DEFAULT_DETECT_HIGH_THRESHOLD		16360
-#define DEFAULT_DETECT_LOW_THRESHOLD		1500
-#elif defined(CONFIG_SENSORS_SSP_BEYOND)
-#define DEFAULT_DETECT_HIGH_THRESHOLD		16368
-#define DEFAULT_DETECT_LOW_THRESHOLD		250
-#define DEFAULT_DETECT_LOW_THRESHOLD_FOR_LCUT	2200
-#else
 #define DEFAULT_DETECT_HIGH_THRESHOLD		16368
 #define DEFAULT_DETECT_LOW_THRESHOLD		1000
-#endif //CONFIG_SENSORS_SSP_CROWN
-#else
-#define DEFAULT_HIGH_THRESHOLD			2000
-#define DEFAULT_LOW_THRESHOLD			1400
-#define DEFAULT_CAL_HIGH_THRESHOLD		2000
-#define DEFAULT_CAL_LOW_THRESHOLD		840
-#endif //CONFIG_SENSORS_SSP_PROX_AUTOCAL_AMS
-#endif
 
 #define DEFAULT_PROX_ALERT_HIGH_THRESHOLD			1000
 
@@ -537,10 +505,17 @@ struct sensor_value {
 		struct {
 			u32 lux;
 			s32 cct;
+#ifndef CONFIG_SENSORS_SSP_PICASSO
+			u32 r;
+			u32 g;
+			u32 b;
+			u32 w;
+#else
 			u16 r;
 			u16 g;
 			u16 b;
 			u16 w;
+#endif
 			u16 a_gain;
 			u16 a_time;
 			u8 brightness;
@@ -550,10 +525,17 @@ struct sensor_value {
 		struct {
 			u32 lux;
 			s32 cct;
+#ifndef CONFIG_SENSORS_SSP_PICASSO
+			u32 r;
+			u32 g;
+			u32 b;
+			u32 w;
+#else
 			u16 r;
 			u16 g;
 			u16 b;
 			u16 w;
+#endif
 			u16 a_gain;
 			u16 a_time;
 			u8 brightness;
@@ -563,11 +545,19 @@ struct sensor_value {
 
 #ifdef CONFIG_SENSORS_SSP_IRDATA_FOR_CAMERA
 		struct {
+#ifndef CONFIG_SENSORS_SSP_PICASSO
+			u32 irdata;
+			u32 ir_r;
+			u32 ir_g;
+			u32 ir_b;
+			u32 ir_w;
+#else
 			u16 irdata;
 			u16 ir_r;
 			u16 ir_g;
 			u16 ir_b;
 			u16 ir_w;
+#endif
 #ifdef CONFIG_SENSORS_SSP_LIGHT_MAX_GAIN_2BYTE
 			u16 ir_a_gain;
 			u8 ir_a_time; // ir_brightness;
@@ -850,25 +840,11 @@ struct ssp_data {
 #endif
 
 	int light_coef[7];
-#if defined(CONFIG_SENSORS_SSP_PROX_AUTOCAL_AMS)
-#ifdef CONFIG_SENSORS_SSP_PROX_ADC_CAL
-	int ProxOffset;
-#endif
+
 	unsigned int uProxHiThresh;
 	unsigned int uProxLoThresh;
 	unsigned int uProxHiThresh_detect;
 	unsigned int uProxLoThresh_detect;
-#else
-	unsigned int uProxCanc;
-	unsigned int uCrosstalk;
-	unsigned int uProxCalResult;
-	unsigned int uProxHiThresh;
-	unsigned int uProxLoThresh;
-	unsigned int uProxHiThresh_default;
-	unsigned int uProxLoThresh_default;
-	unsigned int uProxHiThresh_cal;
-	unsigned int uProxLoThresh_cal;
-#endif
 
 	unsigned int uProxAlertHiThresh;
 	unsigned int uIr_Current;
@@ -995,6 +971,9 @@ struct ssp_data {
 	int gyro_lib_state;
 	int mag_type;
 
+//	#ifdef CONFIG_SENSORS_DYNAMIC_SENSOR_NAME
+	char sensor_name[SENSOR_MAX][256];
+//	#endif
 	/* variable for sensor register dump */
 	char *sensor_dump[SENSOR_MAX];
 
@@ -1012,6 +991,7 @@ struct ssp_data {
 #endif
 #if defined(CONFIG_PANEL_NOTIFY)
 	struct panel_bl_event_data panel_event_data;
+	bool ub_disabled;
 #endif
 	char sensor_state[SENSOR_MAX + 1 + ((SENSOR_MAX-1) / 10)]; // \0 + blank
 	unsigned int uNoRespSensorCnt;
@@ -1328,4 +1308,9 @@ int set_prox_cal_to_ssp(struct ssp_data *data);
 int set_prox_dynamic_cal_to_ssp(struct ssp_data *data);
 int set_prox_call_min_to_ssp(struct ssp_data *data);
 int set_factory_binary_flag_to_ssp(struct ssp_data *data);
+
+
+#ifdef CONFIG_PANEL_NOTIFY
+char get_copr_status(struct ssp_data *data);
+#endif
 #endif

@@ -87,6 +87,22 @@ struct exynos_dsc {
 	u32 enc_sw;
 };
 
+/*
+ * TODO : VRR NS/HS MODE need to be unified.
+ * - dpu30/decon.h : WIN_VRR_NORMAL_MODE, WIN_VRR_HS_MODE
+ * - dpu30/exynos_panel.h : EXYNOS_PANEL_VRR_NS_MODE, EXYNOS_PANEL_VRR_HS_MODE
+ * - panel/panel.h : VRR_NORMAL_MODE, VRR_HS_MODE,
+ */
+enum {
+	EXYNOS_PANEL_VRR_NS_MODE = 0,
+	EXYNOS_PANEL_VRR_HS_MODE = 1,
+};
+
+static inline char *EXYNOS_VRR_MODE_STR(int vrr_mode)
+{
+	return (vrr_mode == EXYNOS_PANEL_VRR_NS_MODE) ?  "NS" : "HS";
+}
+
 #define MAX_DISPLAY_MODE		32
 /* exposed to user */
 struct exynos_display_mode {
@@ -107,6 +123,24 @@ struct exynos_display_mode_info {
 	u32 dsc_height;
 	u32 dsc_dec_sw;
 	u32 dsc_enc_sw;
+	void *pdata;		/* used by common panel driver */
+};
+
+struct exynos_display_modes {
+	/*
+	 * exynos_display_mode_info get from
+	 * panel_display_modes.
+	 */
+	unsigned int num_mode_infos;
+	unsigned int native_mode_info;
+	struct exynos_display_mode_info **mode_infos;
+
+	/*
+	 * exynos_display_mode get from @mode_infos
+	 */
+	unsigned int num_modes;
+	unsigned int native_mode;
+	struct exynos_display_mode **modes;
 };
 
 #ifdef CONFIG_DYNAMIC_FREQ
@@ -120,7 +154,7 @@ struct df_status_info {
 	u32 current_df;
 	u32 ffc_df;
 	u32 context;
-	
+
 	u32 current_ddi_osc;
 	u32 request_ddi_osc;
 };
@@ -143,7 +177,6 @@ struct df_param {
 	u32 context;
 };
 #endif
-
 
 #define MAX_COLOR_MODE		5
 
@@ -181,8 +214,10 @@ struct exynos_panel_info {
 	unsigned int req_vrr_mode;
 	unsigned int fps;
 	unsigned int vrr_mode;
-	unsigned int target_fps;
-	unsigned int target_vrr_mode;
+	unsigned int panel_vrr_fps;
+	unsigned int panel_vrr_mode;
+	unsigned int panel_te_sw_skip_count;
+	unsigned int panel_te_hw_skip_count;
 
 	struct exynos_dsc dsc;
 
@@ -200,7 +235,36 @@ struct exynos_panel_info {
 #endif
 	int display_mode_count;
 	unsigned int cur_mode_idx;
+	unsigned int req_mode_idx;
 	struct exynos_display_mode_info display_mode[MAX_DISPLAY_MODE];
 	struct panel_color_mode color_mode;
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	unsigned int cur_exynos_mode;
+	unsigned int req_exynos_mode;
+	struct exynos_display_modes *exynos_modes;
+	struct panel_display_modes *panel_modes;
+#endif
 };
+
+#if defined(CONFIG_DECON_VRR_MODULATION)
+/*
+ * exynos_panel_vsync_hz() function returns
+ * ddi's scan fps according to vrr mode.
+ */
+static inline int exynos_panel_vsync_hz(struct exynos_panel_info *lcd_info)
+{
+	if (!lcd_info)
+		return -EINVAL;
+
+	return lcd_info->panel_vrr_fps;
+}
+
+static inline int exynos_panel_div_count(struct exynos_panel_info *lcd_info)
+{
+	if (!lcd_info)
+		return -EINVAL;
+
+	return lcd_info->panel_te_sw_skip_count + 1;
+}
+#endif
 #endif /* __EXYNOS_PANEL_H__ */

@@ -143,6 +143,9 @@
 #define WL_STA_DWDS_CAP		0x01000000	/* DWDS CAP */
 #define WL_STA_DWDS		0x02000000	/* DWDS active */
 #define WL_WDS_LINKUP		WL_STA_WDS_LINKUP	/* deprecated */
+#define WL_STA_IS_2G		0x04000000	/* 2G channels supported */
+#define WL_STA_IS_5G		0x08000000	/* 5G channels supported */
+#define WL_STA_IS_6G		0x10000000	/* 6G channels supported */
 
 /* STA HT cap fields */
 #define WL_STA_CAP_LDPC_CODING		0x0001	/* Support for rx of LDPC coded pkts */
@@ -216,6 +219,7 @@
 
 /* Mask bit for LOW power scan, High accuracy scan, LOW span scan bit defines */
 #define WL_SCANFLAGS_SCAN_MODE_MASK	0x7000u
+#define WL_SCANFLAGS_SCAN_MODE_SHIFT	12u
 
 /* Bitmask for scan_type */
 /* Reserved flag precludes the use of 0xff for scan_type which is
@@ -253,6 +257,9 @@
 #define WL_SCANFLAGS_LISTEN		 0x8000U  /* Listen option in escan
 						 * enable LISTEN along with PASSIVE flag
 						 */
+
+/* BIT MASK for SSID TYPE */
+#define WL_SCAN_SSIDFLAGS_SHORT_SSID		0x01U /* Use as Regular SSID */
 
 /* Value to decide scan type based on scqs */
 #define WL_SC_RETRY_SCAN_MODE_NO_SCAN		0x0u	/* Do not reschedule scan */
@@ -429,7 +436,7 @@
 #define CRYPTO_ALGO_AES_CCM		4
 #define CRYPTO_ALGO_AES_OCB_MSDU	5
 #define CRYPTO_ALGO_AES_OCB_MPDU	6
-#if !defined(BCMCCX) && !defined(BCMEXTCCX) // MOG-NO
+#if !defined(BCMCCX) && !defined(BCMEXTCCX)
 #define CRYPTO_ALGO_NALG		7
 #else
 #define CRYPTO_ALGO_CKIP		7
@@ -454,7 +461,7 @@
 /* algo bit vector */
 #define KEY_ALGO_MASK(_algo)	(1 << _algo)
 
-#if defined(BCMCCX) || defined(BCMEXTCCX) // MOG-NO
+#if defined(BCMCCX) || defined(BCMEXTCCX)
 #define KEY_ALGO_MASK_CCX		(KEY_ALGO_MASK(CRYPTO_ALGO_CKIP) | \
 					KEY_ALGO_MASK(CRYPTO_ALGO_CKIP_MMH) | \
 					KEY_ALGO_MASK(CRYPTO_ALGO_WEP_MMH))
@@ -480,7 +487,7 @@
 
 #define WL_SOFT_KEY	(1 << 0)	/* Indicates this key is using soft encrypt */
 #define WL_PRIMARY_KEY	(1 << 1)	/* Indicates this key is the primary (ie tx) key */
-#if defined(BCMCCX) || defined(BCMEXTCCX) // MOG-NO
+#if defined(BCMCCX) || defined(BCMEXTCCX)
 #define WL_CKIP_KP	(1 << 4)	/* CMIC */
 #define WL_CKIP_MMH	(1 << 5)	/* CKIP */
 #else
@@ -497,7 +504,7 @@
 #define TKIP_ENABLED		0x0002
 #define AES_ENABLED		0x0004
 #define WSEC_SWFLAG		0x0008
-#ifdef BCMCCX // MOG-NO
+#ifdef BCMCCX
 #define CKIP_KP_ENABLED		0x0010
 #define CKIP_MIC_ENABLED	0x0020
 #endif /* BCMCCX */
@@ -517,7 +524,7 @@
 
 #define WSEC_INFO_ALGO_NONE(_wi) (((_wi).cur_algos) == 0)
 
-#ifdef BCMCCX // MOG-NO
+#ifdef BCMCCX
 #define WSEC_CKIP_KP_ENABLED(wsec)	((wsec) & CKIP_KP_ENABLED)
 #define WSEC_CKIP_MIC_ENABLED(wsec)	((wsec) & CKIP_MIC_ENABLED)
 #define WSEC_CKIP_ENABLED(wsec)	((wsec) & (CKIP_KP_ENABLED|CKIP_MIC_ENABLED))
@@ -562,7 +569,7 @@
 #define WPA_AUTH_NONE			0x0001	/* none (IBSS) */
 #define WPA_AUTH_UNSPECIFIED		0x0002	/* over 802.1x */
 #define WPA_AUTH_PSK			0x0004	/* Pre-shared key */
-#if defined(BCMCCX) || defined(BCMEXTCCX) // MOG-NO
+#if defined(BCMCCX) || defined(BCMEXTCCX)
 #define WPA_AUTH_CCKM			0x0008	/* CCKM */
 #define WPA2_AUTH_CCKM			0x0010	/* CCKM2 */
 #endif	/* BCMCCX || BCMEXTCCX */
@@ -763,7 +770,6 @@
 #define WLC_GET_LAZYWDS				138
 #define WLC_SET_LAZYWDS				139
 #define WLC_GET_BANDLIST			140
-
 #define WLC_GET_BAND				141
 #define WLC_SET_BAND				142
 #define WLC_SCB_DEAUTHENTICATE			143
@@ -1067,6 +1073,8 @@
 #define	WLC_BAND_6G		4	/* 6 Ghz */
 #define WLC_BAND_INVALID	-1	/* Invalid band */
 
+#define WL_BAND_MAX_CNT         3       /* max number of bands supported */
+
 /* band range returned by band_range iovar */
 #define WL_CHAN_FREQ_RANGE_2G      0
 #define WL_CHAN_FREQ_RANGE_5GL     1
@@ -1180,27 +1188,31 @@
 #define WLC_BW_40MHZ_BIT		(1<<1)
 #define WLC_BW_80MHZ_BIT		(1<<2)
 #define WLC_BW_160MHZ_BIT		(1<<3)
-#define WLC_BW_10MHZ_BIT		(1<<4)
-#define WLC_BW_5MHZ_BIT			(1<<5)
-#define WLC_BW_2P5MHZ_BIT		(1<<6)
+#define WLC_BW_240MHZ_BIT		(1<<4)
+#define WLC_BW_320MHZ_BIT		(1u<<5u)
+
 /* Bandwidth capabilities */
 #define WLC_BW_CAP_20MHZ		(WLC_BW_20MHZ_BIT)
 #define WLC_BW_CAP_40MHZ		(WLC_BW_40MHZ_BIT|WLC_BW_20MHZ_BIT)
-#define WLC_BW_CAP_80MHZ		(WLC_BW_80MHZ_BIT|WLC_BW_40MHZ_BIT|WLC_BW_20MHZ_BIT)
+#define WLC_BW_CAP_80MHZ		(WLC_BW_80MHZ_BIT|WLC_BW_40MHZ_BIT| \
+					 WLC_BW_20MHZ_BIT)
 #define WLC_BW_CAP_160MHZ		(WLC_BW_160MHZ_BIT|WLC_BW_80MHZ_BIT| \
-	WLC_BW_40MHZ_BIT|WLC_BW_20MHZ_BIT)
-#define WLC_BW_CAP_2P5MHZ		(WLC_BW_2P5MHZ_BIT)
-#define WLC_BW_CAP_5MHZ			(WLC_BW_5MHZ_BIT)
-#define WLC_BW_CAP_10MHZ		(WLC_BW_10MHZ_BIT)
+					 WLC_BW_40MHZ_BIT|WLC_BW_20MHZ_BIT)
+#define WLC_BW_CAP_320MHZ		(WLC_BW_320MHZ_BIT| \
+					 WLC_BW_160MHZ_BIT|WLC_BW_80MHZ_BIT| \
+					 WLC_BW_40MHZ_BIT|WLC_BW_20MHZ_BIT)
+#define WLC_BW_CAP_240MHZ		(WLC_BW_240MHZ_BIT| \
+					WLC_BW_160MHZ_BIT|WLC_BW_80MHZ_BIT| \
+					WLC_BW_40MHZ_BIT|WLC_BW_20MHZ_BIT)
 #define WLC_BW_CAP_UNRESTRICTED		0xFF
 
-#define WL_BW_CAP_20MHZ(bw_cap)	(((bw_cap) & WLC_BW_20MHZ_BIT) ? TRUE : FALSE)
-#define WL_BW_CAP_40MHZ(bw_cap)	(((bw_cap) & WLC_BW_40MHZ_BIT) ? TRUE : FALSE)
-#define WL_BW_CAP_80MHZ(bw_cap)	(((bw_cap) & WLC_BW_80MHZ_BIT) ? TRUE : FALSE)
-#define WL_BW_CAP_160MHZ(bw_cap)(((bw_cap) & WLC_BW_160MHZ_BIT) ? TRUE : FALSE)
-#define WL_BW_CAP_2P5MHZ(bw_cap)(((bw_cap) & WLC_BW_2P5MHZ_BIT) ? TRUE : FALSE)
-#define WL_BW_CAP_5MHZ(bw_cap)	(((bw_cap) & WLC_BW_5MHZ_BIT) ? TRUE : FALSE)
-#define WL_BW_CAP_10MHZ(bw_cap)	(((bw_cap) & WLC_BW_10MHZ_BIT) ? TRUE : FALSE)
+#define WL_BW_CAP_20MHZ(bw_cap)		(((bw_cap) & WLC_BW_20MHZ_BIT) ? TRUE : FALSE)
+#define WL_BW_CAP_40MHZ(bw_cap)		(((bw_cap) & WLC_BW_40MHZ_BIT) ? TRUE : FALSE)
+#define WL_BW_CAP_80MHZ(bw_cap)		(((bw_cap) & WLC_BW_80MHZ_BIT) ? TRUE : FALSE)
+#define WL_BW_CAP_160MHZ(bw_cap)	(((bw_cap) & WLC_BW_160MHZ_BIT) ? TRUE : FALSE)
+#define WL_BW_CAP_240MHZ(bw_cap)	(((bw_cap) & WLC_BW_240MHZ_BIT) ? TRUE : FALSE)
+#define WL_BW_CAP_320MHZ(bw_cap)	(((bw_cap) & WLC_BW_320MHZ_BIT) ? TRUE : FALSE)
+
 /* values to force tx/rx chain */
 #define WLC_N_TXRX_CHAIN0		0
 #define WLC_N_TXRX_CHAIN1		1
@@ -1212,7 +1224,7 @@
 #define WLC_VHT_SGI_160			0x08
 
 /* when sgi_tx==WLC_SGI_ALL, bypass rate selection, enable sgi for all mcs */
-#define WLC_SGI_ALL				0x02
+#define WLC_SGI_ALL			0x02
 
 #define LISTEN_INTERVAL			10
 /* interference mitigation options */
@@ -1310,6 +1322,7 @@
 #define WL_BW_2P5MHZ		5
 #define WL_BW_5MHZ		6
 #define WL_BW_10MHZ		7
+#define WL_BW_320MHZ		8u
 
 /* tx_power_t.flags bits */
 #define WL_TX_POWER_F_ENABLED	1
@@ -1513,77 +1526,20 @@
 /* maximum channels returned by the get valid channels iovar */
 #define WL_NUMCHANNELS		64
 
-/* Channels break down for 2G BAND
-* 2G 20MHz = 14
-*
-* 2G 40MHz
-* 9 * 2 = 18
-*
-* 2G tot = 14 + 18 = 32
-*
-* Channels Break down for 5G BAND
-* 5G 20MHz
-* 36-48   4
-* 52-64   4
-* 100-144 12
-* 149-161  4
-* 165      1
-* 5G 20 subtot = 25
-*
-* 5G  40 12 * 2 = 24
-* 5G  80 6 * 4  = 24
-* 5G 160 2 * 8  = 16
-*
-* 5G total = 25 + 24+ 24+ 16 = 89
-*
-* TOTAL 2G and 5G
-* 2G + 5G  = (32 + 89) = 121
-*
-*  Channels Break down for 6G BAND
-* 20MHz        = 59
-* 40MHz 29 * 2 = 58
-* 80MHz 14 * 4 = 56
-* 160MHz 7 * 8  = 56
-* 6G total = 59 + 58 + 56 + 56 = 229
-*
-* Toal WL_NUMCHANSPECS 2G/5G/6G
-*  total = 32 + 89 + 229 = 350
-*
-* IF 5g 80+80 is defined
-* 80MHz cf pairs are:
-* 42 106
-* 42 122
-* 42 138
-* 42 155
-* 58 106
-* 58 122
-* 58 138
-* 58 155
-* 106 138
-* 106 155
-* 122 155
-* 138 155
-*
-*
-* 12 pairs * 8 primary channels = 96
-* TOTAL 2G + 5G + 5G (80 + 80)
-* 32 + 89 + 96 = 217
-*
-*TOTAL 2G + 5G + 5G (80 + 80) +6G (excluding 80 + 80)
-* 32 + 89 + 96 + 229 = 446
-*
-*/
+/* This constant is obsolete, not part of ioctl/iovar interface and should never be used
+ * It is preserved only for compatibility with older branches that use it
+ */
 #ifdef WL_BAND6G
-/* max number of chanspecs (used by the iovar to calc. buf space) */
 #ifdef WL11AC_80P80
 #define WL_NUMCHANSPECS 446
 #else
 #define WL_NUMCHANSPECS 350
 #endif
 #else
-/* max number of chanspecs (used by the iovar to calc. buf space) */
-#ifdef WL11AC_80P80
+#if defined(WL11AC_80P80)
 #define WL_NUMCHANSPECS 206
+#elif defined(WL_BW160MHZ)
+#define WL_NUMCHANSPECS 140
 #else
 #define WL_NUMCHANSPECS 110
 #endif
@@ -2063,7 +2019,7 @@
 #define TSPEC_UNKNOWN		3	/* TSPEC unknown */
 #define TSPEC_STATUS_MASK	7	/* TSPEC status mask */
 
-#ifdef BCMCCX // MOG-NO
+#ifdef BCMCCX
 /* "wlan_reason" iovar interface */
 #define WL_WLAN_ASSOC_REASON_NORMAL_NETWORK	0 /* normal WLAN network setup */
 #define WL_WLAN_ASSOC_REASON_ROAM_FROM_CELLULAR_NETWORK	1 /* roam from Cellular network */
@@ -2189,14 +2145,6 @@
 #else
 #define MAX_BSSID_BLACKLIST_NUM        32
 #endif /* CUSTOM_BSSID_BLACKLIST_NUM */
-
-#ifndef BESTN_MAX
-#define BESTN_MAX			10
-#endif
-
-#ifndef MSCAN_MAX
-#define MSCAN_MAX			32
-#endif
 
 /* TCP Checksum Offload error injection for testing */
 #define TOE_ERRTEST_TX_CSUM	0x00000001

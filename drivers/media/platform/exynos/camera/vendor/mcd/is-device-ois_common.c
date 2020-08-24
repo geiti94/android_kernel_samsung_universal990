@@ -236,6 +236,8 @@ int is_ois_gpio_on(struct is_core *core)
 	struct is_module_enum *module = NULL;
 	int i = 0;
 
+	info("%s E", __func__);
+
 	for (i = 0; i < IS_SENSOR_COUNT; i++) {
 		is_search_sensor_module_with_position(&core->sensor[i], SENSOR_POSITION_REAR, &module);
 		if (module)
@@ -267,6 +269,8 @@ int is_ois_gpio_on(struct is_core *core)
 #endif
 
 p_err:
+	info("%s X", __func__);
+
 	return ret;
 }
 
@@ -276,6 +280,8 @@ int is_ois_gpio_off(struct is_core *core)
 	struct exynos_platform_is_module *module_pdata;
 	struct is_module_enum *module = NULL;
 	int i = 0;
+
+	info("%s E", __func__);
 
 	for (i = 0; i < IS_SENSOR_COUNT; i++) {
 		is_search_sensor_module_with_position(&core->sensor[i], SENSOR_POSITION_REAR, &module);
@@ -308,6 +314,8 @@ int is_ois_gpio_off(struct is_core *core)
 	}
 
 p_err:
+	info("%s X", __func__);
+
 	return ret;
 }
 
@@ -653,6 +661,80 @@ void is_ois_get_hall_pos(struct is_core *core, u16 *targetPos, u16 *hallPos)
 	ois_device = is_ois_get_device(core);
 
 	CALL_OISOPS(ois_device, ois_get_hall_pos, core, targetPos, hallPos);
+
+	return;
+}
+
+void is_ois_check_cross_talk(struct is_core *core, u16 *hall_data)
+{
+	struct is_device_ois *ois_device = NULL;
+	struct is_device_sensor *device = NULL;
+
+	ois_device = is_ois_get_device(core);
+	device = &core->sensor[0];
+
+	CALL_OISOPS(ois_device, ois_check_cross_talk, device->subdev_mcu, hall_data);
+
+	return;
+}
+
+int is_ois_read_ext_clock(struct is_core *core, u32 *clock)
+{
+	struct is_device_ois *ois_device = NULL;
+	struct is_device_sensor *device = NULL;
+	int ret = 0;
+
+	ois_device = is_ois_get_device(core);
+	device = &core->sensor[0];
+
+	ret = CALL_OISOPS(ois_device, ois_read_ext_clock, device->subdev_mcu, clock);
+
+	return ret;
+}
+
+void is_ois_init_rear2(struct is_core *core)
+{
+	struct is_device_ois *ois_device = NULL;
+
+	ois_device = is_ois_get_device(core);
+
+	CALL_OISOPS(ois_device, ois_init_rear2, core);
+
+	return;
+}
+
+void is_ois_set_mode(struct is_core *core, int mode)
+{
+	struct is_device_sensor *device = NULL;
+	struct is_mcu *mcu = NULL;
+	int internal_mode = 0;
+
+	device = &core->sensor[0];
+	mcu = device->mcu;
+
+	switch(mode) {
+		case 0x0:
+			internal_mode = OPTICAL_STABILIZATION_MODE_STILL;
+			break;
+		case 0x1:
+			internal_mode = OPTICAL_STABILIZATION_MODE_VIDEO;
+			break;
+		case 0x5:
+			internal_mode = OPTICAL_STABILIZATION_MODE_CENTERING;
+			break;
+		case 0x13:
+			internal_mode = OPTICAL_STABILIZATION_MODE_STILL_ZOOM;
+			break;
+		case 0x14:
+			internal_mode = OPTICAL_STABILIZATION_MODE_VDIS;
+			break;
+		default:
+			dbg_ois("%s: ois_mode value(%d)\n", __func__, mode);
+			break;
+	}
+
+	CALL_OISOPS(mcu->ois, ois_init_fac, device->subdev_mcu);
+	CALL_OISOPS(mcu->ois, ois_set_mode, device->subdev_mcu, internal_mode);
 
 	return;
 }

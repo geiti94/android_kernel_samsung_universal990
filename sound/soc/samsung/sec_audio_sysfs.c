@@ -19,7 +19,6 @@
  *
  */
 
-
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -35,6 +34,77 @@
 #define EARJACK_DEV_ID 0
 #define CODEC_DEV_ID 1
 #define AMP_DEV_ID 2
+
+/* bigdata add */
+#define DECLARE_AMP_BIGDATA_SYSFS(id) \
+static ssize_t audio_amp_##id##_temperature_max_show(struct device *dev, \
+	struct device_attribute *attr, char *buf) \
+{ \
+	int report = 0; \
+	if (audio_data->get_amp_temperature_max) \
+		report = audio_data->get_amp_temperature_max((id)); \
+	else \
+		dev_info(dev, "%s: No callback registered\n", __func__); \
+	return snprintf(buf, PAGE_SIZE, "%d\n", report); \
+} \
+static DEVICE_ATTR(temperature_max_##id, S_IRUGO | S_IWUSR | S_IWGRP, \
+			audio_amp_##id##_temperature_max_show, NULL); \
+static ssize_t audio_amp_##id##_temperature_keep_max_show(struct device *dev, \
+	struct device_attribute *attr, char *buf) \
+{ \
+	int report = 0; \
+	if (audio_data->get_amp_temperature_keep_max) \
+		report = audio_data->get_amp_temperature_keep_max((id)); \
+	else \
+		dev_info(dev, "%s: No callback registered\n", __func__); \
+	return snprintf(buf, PAGE_SIZE, "%d\n", report); \
+} \
+static DEVICE_ATTR(temperature_keep_max_##id, S_IRUGO | S_IWUSR | S_IWGRP, \
+			audio_amp_##id##_temperature_keep_max_show, NULL); \
+static ssize_t audio_amp_##id##_temperature_overcount_show(struct device *dev, \
+	struct device_attribute *attr, char *buf) \
+{ \
+	int report = 0; \
+	if (audio_data->get_amp_temperature_overcount) \
+		report = audio_data->get_amp_temperature_overcount((id)); \
+	else \
+		dev_info(dev, "%s: No callback registered\n", __func__); \
+	return snprintf(buf, PAGE_SIZE, "%d\n", report); \
+} \
+static DEVICE_ATTR(temperature_overcount_##id, S_IRUGO | S_IWUSR | S_IWGRP, \
+			audio_amp_##id##_temperature_overcount_show, NULL); \
+static ssize_t audio_amp_##id##_excursion_max_show(struct device *dev, \
+	struct device_attribute *attr, char *buf) \
+{ \
+	int report = 0; \
+	if (audio_data->get_amp_excursion_max) \
+		report = audio_data->get_amp_excursion_max((id)); \
+	else \
+		dev_info(dev, "%s: No callback registered\n", __func__); \
+	return snprintf(buf, PAGE_SIZE, "%04d\n", report); \
+} \
+static DEVICE_ATTR(excursion_max_##id, S_IRUGO | S_IWUSR | S_IWGRP, \
+			audio_amp_##id##_excursion_max_show, NULL); \
+static ssize_t audio_amp_##id##_excursion_overcount_show(struct device *dev, \
+	struct device_attribute *attr, char *buf) \
+{ \
+	int report = 0; \
+	if (audio_data->get_amp_excursion_overcount) \
+		report = audio_data->get_amp_excursion_overcount(id); \
+	else \
+		dev_info(dev, "%s: No callback registered\n", __func__); \
+	return snprintf(buf, PAGE_SIZE, "%d\n", report); \
+} \
+static DEVICE_ATTR(excursion_overcount_##id, S_IRUGO | S_IWUSR | S_IWGRP, \
+			audio_amp_##id##_excursion_overcount_show, NULL); \
+static struct attribute *audio_amp_##id##_attr[] = { \
+	&dev_attr_temperature_max_##id.attr, \
+	&dev_attr_temperature_keep_max_##id.attr, \
+	&dev_attr_temperature_overcount_##id.attr, \
+	&dev_attr_excursion_max_##id.attr, \
+	&dev_attr_excursion_overcount_##id.attr, \
+	NULL, \
+}
 
 struct sec_audio_sysfs_data *audio_data;
 
@@ -182,7 +252,7 @@ static ssize_t force_enable_antenna_store(struct device *dev,
 {
 	if (audio_data->set_force_enable_antenna) {
 		if ((!size) || (buf[0] != '1')) {
-			dev_info(dev, "%s: antenna disble\n", __func__);
+			dev_info(dev, "%s: antenna disable\n", __func__);
 			audio_data->set_force_enable_antenna(0);
 		} else {
 			dev_info(dev, "%s: update antenna enable\n", __func__);
@@ -297,38 +367,6 @@ int audio_register_temperature_max_cb(int (*temperature_max) (enum amp_id))
 }
 EXPORT_SYMBOL_GPL(audio_register_temperature_max_cb);
 
-static ssize_t audio_amp_l_temperature_max_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	int report = 0;
-
-	if (audio_data->get_amp_temperature_max)
-		report = audio_data->get_amp_temperature_max(LEFT_AMP);
-	else
-		dev_info(dev, "%s: No callback registered\n", __func__);
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", report);
-}
-
-static DEVICE_ATTR(l_temperature_max, S_IRUGO | S_IWUSR | S_IWGRP,
-			audio_amp_l_temperature_max_show, NULL);
-
-static ssize_t audio_amp_r_temperature_max_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	int report = 0;
-
-	if (audio_data->get_amp_temperature_max)
-		report = audio_data->get_amp_temperature_max(RIGHT_AMP);
-	else
-		dev_info(dev, "%s: No callback registered\n", __func__);
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", report);
-}
-
-static DEVICE_ATTR(r_temperature_max, S_IRUGO | S_IWUSR | S_IWGRP,
-			audio_amp_r_temperature_max_show, NULL);
-
 int audio_register_temperature_keep_max_cb(int (*temperature_keep_max) (enum amp_id))
 {
 	if (audio_data->get_amp_temperature_keep_max) {
@@ -342,38 +380,6 @@ int audio_register_temperature_keep_max_cb(int (*temperature_keep_max) (enum amp
 	return 0;
 }
 EXPORT_SYMBOL_GPL(audio_register_temperature_keep_max_cb);
-
-static ssize_t audio_amp_l_temperature_keep_max_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	int report = 0;
-
-	if (audio_data->get_amp_temperature_keep_max)
-		report = audio_data->get_amp_temperature_keep_max(LEFT_AMP);
-	else
-		dev_info(dev, "%s: No callback registered\n", __func__);
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", report);
-}
-
-static DEVICE_ATTR(l_temperature_keep_max, S_IRUGO | S_IWUSR | S_IWGRP,
-			audio_amp_l_temperature_keep_max_show, NULL);
-
-static ssize_t audio_amp_r_temperature_keep_max_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	int report = 0;
-
-	if (audio_data->get_amp_temperature_keep_max)
-		report = audio_data->get_amp_temperature_keep_max(RIGHT_AMP);
-	else
-		dev_info(dev, "%s: No callback registered\n", __func__);
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", report);
-}
-
-static DEVICE_ATTR(r_temperature_keep_max, S_IRUGO | S_IWUSR | S_IWGRP,
-			audio_amp_r_temperature_keep_max_show, NULL);
 
 int audio_register_temperature_overcount_cb(int (*temperature_overcount) (enum amp_id))
 {
@@ -389,38 +395,6 @@ int audio_register_temperature_overcount_cb(int (*temperature_overcount) (enum a
 }
 EXPORT_SYMBOL_GPL(audio_register_temperature_overcount_cb);
 
-static ssize_t audio_amp_l_temperature_overcount_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	int report = 0;
-
-	if (audio_data->get_amp_temperature_overcount)
-		report = audio_data->get_amp_temperature_overcount(LEFT_AMP);
-	else
-		dev_info(dev, "%s: No callback registered\n", __func__);
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", report);
-}
-
-static DEVICE_ATTR(l_temperature_overcount, S_IRUGO | S_IWUSR | S_IWGRP,
-			audio_amp_l_temperature_overcount_show, NULL);
-
-static ssize_t audio_amp_r_temperature_overcount_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	int report = 0;
-
-	if (audio_data->get_amp_temperature_overcount)
-		report = audio_data->get_amp_temperature_overcount(RIGHT_AMP);
-	else
-		dev_info(dev, "%s: No callback registered\n", __func__);
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", report);
-}
-
-static DEVICE_ATTR(r_temperature_overcount, S_IRUGO | S_IWUSR | S_IWGRP,
-			audio_amp_r_temperature_overcount_show, NULL);
-
 int audio_register_excursion_max_cb(int (*excursion_max) (enum amp_id))
 {
 	if (audio_data->get_amp_excursion_max) {
@@ -434,38 +408,6 @@ int audio_register_excursion_max_cb(int (*excursion_max) (enum amp_id))
 	return 0;
 }
 EXPORT_SYMBOL_GPL(audio_register_excursion_max_cb);
-
-static ssize_t audio_amp_l_excursion_max_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	int report = 0;
-
-	if (audio_data->get_amp_excursion_max)
-		report = audio_data->get_amp_excursion_max(LEFT_AMP);
-	else
-		dev_info(dev, "%s: No callback registered\n", __func__);
-
-	return snprintf(buf, PAGE_SIZE, "%04d\n", report);
-}
-
-static DEVICE_ATTR(l_excursion_max, S_IRUGO | S_IWUSR | S_IWGRP,
-			audio_amp_l_excursion_max_show, NULL);
-
-static ssize_t audio_amp_r_excursion_max_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	int report = 0;
-
-	if (audio_data->get_amp_excursion_max)
-		report = audio_data->get_amp_excursion_max(RIGHT_AMP);
-	else
-		dev_info(dev, "%s: No callback registered\n", __func__);
-
-	return snprintf(buf, PAGE_SIZE, "%04d\n", report);
-}
-
-static DEVICE_ATTR(r_excursion_max, S_IRUGO | S_IWUSR | S_IWGRP,
-			audio_amp_r_excursion_max_show, NULL);
 
 int audio_register_excursion_overcount_cb(int (*excursion_overcount) (enum amp_id))
 {
@@ -481,59 +423,22 @@ int audio_register_excursion_overcount_cb(int (*excursion_overcount) (enum amp_i
 }
 EXPORT_SYMBOL_GPL(audio_register_excursion_overcount_cb);
 
-static ssize_t audio_amp_l_excursion_overcount_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	int report = 0;
+DECLARE_AMP_BIGDATA_SYSFS(0);
+DECLARE_AMP_BIGDATA_SYSFS(1);
+DECLARE_AMP_BIGDATA_SYSFS(2);
+DECLARE_AMP_BIGDATA_SYSFS(3);
 
-	if (audio_data->get_amp_excursion_overcount)
-		report = audio_data->get_amp_excursion_overcount(LEFT_AMP);
-	else
-		dev_info(dev, "%s: No callback registered\n", __func__);
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", report);
-}
-
-static DEVICE_ATTR(l_excursion_overcount, S_IRUGO | S_IWUSR | S_IWGRP,
-			audio_amp_l_excursion_overcount_show, NULL);
-
-static ssize_t audio_amp_r_excursion_overcount_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	int report = 0;
-
-	if (audio_data->get_amp_excursion_overcount)
-		report = audio_data->get_amp_excursion_overcount(RIGHT_AMP);
-	else
-		dev_info(dev, "%s: No callback registered\n", __func__);
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", report);
-}
-
-static DEVICE_ATTR(r_excursion_overcount, S_IRUGO | S_IWUSR | S_IWGRP,
-			audio_amp_r_excursion_overcount_show, NULL);
-
-static struct attribute *sec_audio_amp_attr[] = {
-	&dev_attr_l_temperature_max.attr,
-	&dev_attr_r_temperature_max.attr,
-	&dev_attr_l_temperature_keep_max.attr,
-	&dev_attr_r_temperature_keep_max.attr,
-	&dev_attr_l_temperature_overcount.attr,
-	&dev_attr_r_temperature_overcount.attr,
-	&dev_attr_l_excursion_max.attr,
-	&dev_attr_r_excursion_max.attr,
-	&dev_attr_l_excursion_overcount.attr,
-	&dev_attr_r_excursion_overcount.attr,
-	NULL,
-};
-
-static struct attribute_group sec_audio_amp_attr_group = {
-	.attrs = sec_audio_amp_attr,
+static struct attribute_group sec_audio_amp_big_data_attr_group[AMP_ID_MAX] = {
+	[AMP_0] = {.attrs = audio_amp_0_attr, },
+	[AMP_1] = {.attrs = audio_amp_1_attr, },
+	[AMP_2] = {.attrs = audio_amp_2_attr, },
+	[AMP_3] = {.attrs = audio_amp_3_attr, },
 };
 
 static int sec_audio_sysfs_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
+	int i;
 
 	if (audio_data == NULL) {
 		dev_err(&pdev->dev, "%s: no audio_data\n", __func__);
@@ -549,6 +454,29 @@ static int sec_audio_sysfs_probe(struct platform_device *pdev)
 					&sec_audio_jack_attr_group);
 			device_destroy(audio_data->audio_class, EARJACK_DEV_ID);
 		}
+	}
+
+	of_property_read_u32(np, "audio,num-amp", &audio_data->num_amp);
+	if (audio_data->num_amp > 0) {
+		for (i = audio_data->num_amp; i < AMP_ID_MAX; i++) {
+			sysfs_remove_group(&audio_data->amp_dev->kobj,
+				&sec_audio_amp_big_data_attr_group[i]);
+		}
+	}
+
+	return 0;
+}
+
+static int sec_audio_sysfs_remove(struct platform_device *pdev)
+{
+	int i;
+
+	if (audio_data->num_amp == 0)
+		audio_data->num_amp = AMP_ID_MAX;
+
+	for (i = 0; i < audio_data->num_amp; i++) {
+		sysfs_remove_group(&audio_data->amp_dev->kobj,
+			&sec_audio_amp_big_data_attr_group[i]);
 	}
 
 	return 0;
@@ -570,6 +498,7 @@ static struct platform_driver sec_audio_sysfs_driver = {
 	},
 
 	.probe		= sec_audio_sysfs_probe,
+	.remove		= sec_audio_sysfs_remove,
 };
 
 module_platform_driver(sec_audio_sysfs_driver);
@@ -577,6 +506,7 @@ module_platform_driver(sec_audio_sysfs_driver);
 static int __init sec_audio_sysfs_init(void)
 {
 	int ret = 0;
+	int i = 0;
 
 	audio_data = kzalloc(sizeof(struct sec_audio_sysfs_data), GFP_KERNEL);
 	if (audio_data == NULL)
@@ -630,16 +560,23 @@ static int __init sec_audio_sysfs_init(void)
 		goto err_codec_attr;
 	}
 
-	ret = sysfs_create_group(&audio_data->amp_dev->kobj,
-				&sec_audio_amp_attr_group);
-	if (ret) {
-		pr_err("%s: Failed to create amp sysfs\n", __func__);
-		goto err_amp_device;
+	audio_data->num_amp = 0;
+
+	for (i = 0; i < AMP_ID_MAX; i++) {
+		ret = sysfs_create_group(&audio_data->amp_dev->kobj,
+			&sec_audio_amp_big_data_attr_group[i]);
+		if (ret) {
+			pr_err("%s: Failed to create amp sysfs\n", __func__);
+			goto err_amp_attr;
+		}
 	}
 
-	return 0;
+	return ret;
 
-err_amp_device:
+err_amp_attr:
+	while (--i >= 0)
+		sysfs_remove_group(&audio_data->amp_dev->kobj,
+			&sec_audio_amp_big_data_attr_group[i]);
 	device_destroy(audio_data->audio_class, AMP_DEV_ID);
 	audio_data->amp_dev = NULL;
 err_codec_attr:
@@ -668,8 +605,6 @@ subsys_initcall(sec_audio_sysfs_init);
 static void __exit sec_audio_sysfs_exit(void)
 {
 	if (audio_data->amp_dev) {
-		sysfs_remove_group(&audio_data->amp_dev->kobj,
-				&sec_audio_amp_attr_group);
 		device_destroy(audio_data->audio_class, AMP_DEV_ID);
 	}
 

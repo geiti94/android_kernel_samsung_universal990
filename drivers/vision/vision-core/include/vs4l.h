@@ -121,6 +121,17 @@ struct vs4l_container {
 	struct vs4l_buffer	*buffers;
 };
 
+struct vs4l_profiler_node {
+	const char *label;
+	uint32_t duration;
+	struct vs4l_profiler_node **child;
+};
+
+struct vs4l_profiler {
+	uint8_t level;
+	struct vs4l_profiler_node *node;
+};
+
 enum vs4l_direction {
 	VS4L_DIRECTION_IN = 1,
 	VS4L_DIRECTION_OT
@@ -141,6 +152,7 @@ struct vs4l_container_list {
 	struct timeval		timestamp[6];
 	__u32			count;
 	struct vs4l_container	*containers;
+	struct vs4l_profiler	*profiler;
 };
 
 /*

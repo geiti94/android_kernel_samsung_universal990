@@ -2975,6 +2975,7 @@
 			usb_audio_offloading = <0x01>;
 			abox = <0xffffffff>;
 			xhci_l2_support = <0x01>;
+			xhci_use_uram_for_audio = <0x01>;
 		};
 	};
 
@@ -3435,7 +3436,7 @@
 				pktproc_desc_rgn_size = <0xfff00>;
 				pktproc_data_rgn_offset = <0x100000>;
 				pktproc_desc_mode = <0x01>;
-				pktproc_desc_num_ratio_percent = <0x14>;
+				pktproc_desc_num_ratio_percent = <0x19>;
 				pktproc_num_queue = <0x01>;
 				pktproc_use_exclusive_irq = <0x00>;
 				pktproc_use_hw_iocc = <0x01>;
@@ -3769,7 +3770,7 @@
 						region,index = <0x06>;
 						region,rmem = <0x02>;
 						region,offset = <0x00>;
-						region,size = <0x8000000>;
+						region,size = <0x4000000>;
 						region,cached = <0x01>;
 					};
 				};

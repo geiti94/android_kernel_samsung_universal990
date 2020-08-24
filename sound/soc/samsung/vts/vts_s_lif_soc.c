@@ -726,13 +726,11 @@ int vts_s_lif_soc_dmic_en_get(struct vts_s_lif_data *data,
 	return ret;
 }
 
-int vts_s_lif_soc_dmic_en_put(struct vts_s_lif_data *data,
+static int vts_s_lif_soc_set_gpio_port(struct vts_s_lif_data *data,
 		unsigned int id, unsigned int val)
 {
 	struct device *dev = data->dev;
 	const char *pin_name;
-
-	data->dmic_en[id] = val;
 
 	switch (id) {
 	case 0:
@@ -764,6 +762,52 @@ int vts_s_lif_soc_dmic_en_put(struct vts_s_lif_data *data,
 	} else {
 		return vts_s_lif_cfg_gpio(data->dev_vts, pin_name);
 	}
+}
+
+static atomic_t dmic_state[VTS_S_LIF_DMIC_AUD_NUM];
+int vts_s_lif_soc_dmic_en_put(struct vts_s_lif_data *data,
+		unsigned int id, unsigned int val)
+{
+	struct device *dev = data->dev;
+	int ret = 0;
+
+	if (val) {
+		if (atomic_cmpxchg(&dmic_state[id], 0, 1) == 0) {
+			/* for debug */
+			data->dmic_en[id] = 1;
+			dev_info(dev, "pin[%d] is %s (%d, %d)\n",
+					id,
+					val ? "enabled" : "disabled",
+					atomic_read(&dmic_state[id]),
+					data->dmic_en[id]);
+
+			ret = vts_s_lif_soc_set_gpio_port(data, id, val);
+		} else {
+			dev_info(dev, "pin[%d] is already %s\n",
+					id,
+					val ? "enabled" : "disabled");
+			return 0;
+		}
+	} else {
+		if (atomic_cmpxchg(&dmic_state[id], 1, 0) == 1) {
+			/* for debug */
+			data->dmic_en[id] = 0;
+			dev_info(dev, "pin [%d]is %s (%d, %d)\n",
+					id,
+					val ? "enabled" : "disabled",
+					atomic_read(&dmic_state[id]),
+					data->dmic_en[id]);
+
+			ret = vts_s_lif_soc_set_gpio_port(data, id, val);
+		} else {
+			dev_info(dev, "pin[%d] is already %s\n",
+					id,
+					val ? "enabled" : "disabled");
+			return 0;
+		}
+	}
+
+	return ret;
 }
 
 int vts_s_lif_soc_dmic_aud_control_sys_sel_put(struct vts_s_lif_data *data,
@@ -1147,9 +1191,12 @@ int vts_s_lif_soc_startup(struct snd_pcm_substream *substream,
 	vts_s_lif_restore_register(data);
 	set_bit(VTS_S_STATE_OPENED, &data->state);
 
-	vts_s_lif_soc_dmic_en_put(data, 0, data->dmic_en[0]);
-	vts_s_lif_soc_dmic_en_put(data, 1, data->dmic_en[1]);
-	vts_s_lif_soc_dmic_en_put(data, 2, data->dmic_en[2]);
+	if (data->dmic_en[0])
+		vts_s_lif_soc_set_gpio_port(data, 0, data->dmic_en[0]);
+	if (data->dmic_en[1])
+		vts_s_lif_soc_set_gpio_port(data, 1, data->dmic_en[1]);
+	if (data->dmic_en[2])
+		vts_s_lif_soc_set_gpio_port(data, 2, data->dmic_en[2]);
 
 	return 0;
 
@@ -1168,9 +1215,12 @@ void vts_s_lif_soc_shutdown(struct snd_pcm_substream *substream,
 			'C' : 'P');
 
 	/* make default pin state as idle to prevent conflict with vts */
-	vts_s_lif_soc_dmic_en_put(data, 0, 0);
-	vts_s_lif_soc_dmic_en_put(data, 1, 0);
-	vts_s_lif_soc_dmic_en_put(data, 2, 0);
+	if (data->dmic_en[0])
+		vts_s_lif_soc_set_gpio_port(data, 0, 0);
+	if (data->dmic_en[1])
+		vts_s_lif_soc_set_gpio_port(data, 1, 0);
+	if (data->dmic_en[2])
+		vts_s_lif_soc_set_gpio_port(data, 2, 0);
 
 	vts_s_lif_save_register(data);
 
@@ -1543,9 +1593,19 @@ int vts_s_lif_soc_probe(struct vts_s_lif_data *data)
 	clk_disable(data->clk_src);
 	clk_disable(data->clk_src1);
 #endif
+	/* dummy setting */
+	vts_s_lif_soc_set_gpio_port(data, 1, 1);
+	vts_s_lif_soc_set_gpio_port(data, 2, 1);
+	vts_s_lif_soc_set_gpio_port(data, 3, 1);
+	vts_s_lif_soc_set_gpio_port(data, 1, 0);
+	vts_s_lif_soc_set_gpio_port(data, 2, 0);
+	vts_s_lif_soc_set_gpio_port(data, 3, 0);
 
 	data->mute_enable = false;
 	data->mute_ms = 0;
+	atomic_set(&dmic_state[0], 0);
+	atomic_set(&dmic_state[1], 0);
+	atomic_set(&dmic_state[2], 0);
 	vts_s_lif_mark_dirty_register(data);
 	vts_s_lif_save_register(data);
 

@@ -327,7 +327,7 @@ static void __mfc_set_temporal_svc_h264(struct mfc_ctx *ctx, struct mfc_h264_enc
 		mfc_set_bits(reg, 0x7, 4, p->num_hier_max_layer);
 	} else {
 		mfc_clear_bits(reg, 0x1, 7);
-		mfc_set_bits(reg, 0x7, 4, 0x7);
+		mfc_set_bits(reg, 0x7, 4, p_264->num_hier_layer);
 	}
 	mfc_clear_set_bits(reg, 0x1, 8, p->hier_bitrate_ctrl);
 	MFC_RAW_WRITEL(reg, MFC_REG_E_NUM_T_LAYER);
@@ -410,6 +410,7 @@ static void __mfc_set_enc_params_h264(struct mfc_ctx *ctx)
 	struct mfc_enc *enc = ctx->enc_priv;
 	struct mfc_enc_params *p = &enc->params;
 	struct mfc_h264_enc_params *p_264 = &p->codec.h264;
+	unsigned int mb = 0;
 	unsigned int reg = 0;
 
 	mfc_debug_enter();
@@ -425,14 +426,31 @@ static void __mfc_set_enc_params_h264(struct mfc_ctx *ctx)
 		__mfc_set_gop_size(ctx, 1);
 	}
 
-	/* UHD encoding case */
-	if(IS_UHD_RES(ctx)) {
+	mb = WIDTH_MB((ctx)->crop_width) * HEIGHT_MB((ctx)->crop_height);
+	/* Level 6.0 case */
+	if (IS_LV60_MB(mb)) {
+		if (p_264->level < 60) {
+			mfc_info_ctx("Set Level 6.0 for MB %d\n", mb);
+			p_264->level = 60;
+		}
+		if (p_264->profile < 0x1) {
+			mfc_info_ctx("Set High profile for MB %d\n", mb);
+			p_264->profile = 0x2;
+		}
+		if (p_264->entropy_mode != 0x1) {
+			mfc_info_ctx("Set Entropy mode CABAC\n");
+			p_264->entropy_mode = 1;
+		}
+	}
+
+	/* Level 5.1 case */
+	if (IS_LV51_MB(mb)) {
 		if (p_264->level < 51) {
-			mfc_info_ctx("Set Level 5.1 for UHD\n");
+			mfc_info_ctx("Set Level 5.1 for MB %d\n", mb);
 			p_264->level = 51;
 		}
-		if (p_264->profile != 0x2) {
-			mfc_info_ctx("Set High profile for UHD\n");
+		if (p_264->profile < 0x1) {
+			mfc_info_ctx("Set High profile for MB %d\n", mb);
 			p_264->profile = 0x2;
 		}
 	}
@@ -535,6 +553,12 @@ static void __mfc_set_enc_params_h264(struct mfc_ctx *ctx)
 	mfc_clear_set_bits(reg, 0xFF, 8, p_264->rc_p_frame_qp);
 	mfc_clear_set_bits(reg, 0xFF, 0, p_264->rc_frame_qp);
 	MFC_RAW_WRITEL(reg, MFC_REG_E_FIXED_PICTURE_QP);
+
+	/* chroma QP offset  */
+	reg = MFC_RAW_READL(MFC_REG_E_H264_CHROMA_QP_OFFSET);
+	mfc_clear_set_bits(reg, 0x1F, 5, p->chroma_qp_offset_cr);
+	mfc_clear_set_bits(reg, 0x1F, 0, p->chroma_qp_offset_cb);
+	MFC_RAW_WRITEL(reg, MFC_REG_E_H264_CHROMA_QP_OFFSET);
 
 	MFC_RAW_WRITEL(0x0, MFC_REG_E_ASPECT_RATIO);
 	MFC_RAW_WRITEL(0x0, MFC_REG_E_EXTENDED_SAR);
@@ -1038,6 +1062,7 @@ static void __mfc_set_enc_params_hevc(struct mfc_ctx *ctx)
 	struct mfc_enc *enc = ctx->enc_priv;
 	struct mfc_enc_params *p = &enc->params;
 	struct mfc_hevc_enc_params *p_hevc = &p->codec.hevc;
+	unsigned int mb = 0;
 	unsigned int reg = 0;
 	int i;
 
@@ -1055,11 +1080,17 @@ static void __mfc_set_enc_params_hevc(struct mfc_ctx *ctx)
 		__mfc_set_gop_size(ctx, 1);
 	}
 
-	/* UHD encoding case */
-	if (IS_UHD_RES(ctx)) {
+	mb = WIDTH_MB((ctx)->crop_width) * HEIGHT_MB((ctx)->crop_height);
+	/* Level 6.0 case */
+	if (IS_LV60_MB(mb) && p_hevc->level < 60) {
+		mfc_info_ctx("Set Level 6.0 for MB %d\n", mb);
+		p_hevc->level = 60;
+	}
+
+	/* Level 5.1 case */
+	if (IS_LV51_MB(mb) && p_hevc->level < 51) {
+		mfc_info_ctx("Set Level 5.1 for MB %d\n", mb);
 		p_hevc->level = 51;
-		p_hevc->tier_flag = 0;
-	/* this tier_flag can be changed */
 	}
 
 	/* tier_flag & level & profile */
@@ -1137,7 +1168,7 @@ static void __mfc_set_enc_params_hevc(struct mfc_ctx *ctx)
 		mfc_set_bits(reg, 0x7, 4, p->num_hier_max_layer);
 	} else {
 		mfc_clear_bits(reg, 0x1, 7);
-		mfc_set_bits(reg, 0x7, 4, 0x7);
+		mfc_set_bits(reg, 0x7, 4, p_hevc->num_hier_layer);
 	}
 	mfc_clear_set_bits(reg, 0x1, 8, p->hier_bitrate_ctrl);
 	MFC_RAW_WRITEL(reg, MFC_REG_E_NUM_T_LAYER);
@@ -1189,6 +1220,12 @@ static void __mfc_set_enc_params_hevc(struct mfc_ctx *ctx)
 	mfc_clear_set_bits(reg, 0xFF, 8, p_hevc->rc_p_frame_qp);
 	mfc_clear_set_bits(reg, 0xFF, 0, p_hevc->rc_frame_qp);
 	MFC_RAW_WRITEL(reg, MFC_REG_E_FIXED_PICTURE_QP);
+
+	/* chroma QP offset  */
+	reg = MFC_RAW_READL(MFC_REG_E_HEVC_CHROMA_QP_OFFSET);
+	mfc_clear_set_bits(reg, 0x1F, 5, p->chroma_qp_offset_cr);
+	mfc_clear_set_bits(reg, 0x1F, 0, p->chroma_qp_offset_cb);
+	MFC_RAW_WRITEL(reg, MFC_REG_E_HEVC_CHROMA_QP_OFFSET);
 
 	/* ROI enable: it must set on SEQ_START only for HEVC encoder */
 	reg = MFC_RAW_READL(MFC_REG_E_RC_ROI_CTRL);

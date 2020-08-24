@@ -116,8 +116,14 @@ static void armpmu_start(void)
 {
 	u32 val;
 
+	val = read_sysreg(pmcr_el0);
+
+	/* Already counters are enabled */
+	if (val & ARMV8_PMU_PMCR_E)
+		return;
+
 	/* Enable All Counters */
-	val = read_sysreg(pmcr_el0) | ARMV8_PMU_PMCR_E;
+	val = val | ARMV8_PMU_PMCR_E;
 	write_sysreg(val, pmcr_el0);
 }
 

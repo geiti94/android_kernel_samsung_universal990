@@ -35,6 +35,7 @@ config SEC_DEBUG_HW_PARAM
 
 config SEC_DEBUG_AUTO_COMMENT
 	bool "Enable Samsung kernel fault auto comment"
+	depends on PRINTK
 	depends on SEC_DEBUG
 	default y
 	help
@@ -130,7 +131,7 @@ config SEC_DEBUG_WORKQUEUE_LOCKUP_PANIC
 config SEC_DEBUG_EXCEPTION_STACK
 	bool "Preserve stack data when the exception happened"
 	depends on SEC_DEBUG
-	default n
+	default y
 	help
 	  If this is set, kernel can preserve the specific size of stack data
 	  when an exception occurs from EL1. This can help to fiqure out the
@@ -168,6 +169,13 @@ config SEC_DEBUG_FREQ
 	help
 	  If this config is set, check constraint freq every time which cpufreq,
 	  devfreq are changed. In case of that, print error message
+
+config SEC_DEBUG_FREQ_SKEW_PANIC
+	bool "Panic on frequency skew detected"
+	depends on SEC_DEBUG && !SAMSUNG_PRODUCT_SHIP
+	default y
+	help
+	  This option enables the kernel to panic on skew detected.
 
 config SEC_DEBUG_DISABLE_IRQ_IN_DIE
 	bool "traps: use irq_restore with flags in die()"
@@ -291,8 +299,32 @@ config SEC_PERF_LATENCYCHECKER
 
 config SEC_DEBUG_SOFTDOG_PWDT
 	bool "Enable Soft Watchdog for Platform"
-	default n
+	default y
 	depends on WATCHDOG
 	select SOFT_WATCHDOG
 	help
 	  This option enables soft watchdog device and soft_panic.
+
+config SEC_DEBUG_PANIC_ON_RCU_STALL
+	bool "Enable panic on rcu stall"
+	depends on SEC_DEBUG && !SAMSUNG_PRODUCT_SHIP
+	depends on TREE_RCU || PREEMPT_RCU
+	default y
+	help
+	  This option enables the kernel to panic on "rcu stall"
+
+config SEC_DEBUG_WQ_LOCKUP_INFO
+	bool "Enable workqueue lockup info"
+	depends on WQ_WATCHDOG
+	default y
+	help
+	  This option enables enhanced workqueue lockup info. Current information
+	  for debugging workqueue lockup is not sufficent.
+
+config SEC_DEBUG_SOFTDOG
+	bool "Enable enhanced softdog info"
+	depends on SEC_DEBUG && SOFT_WATCHDOG
+	default y
+	help
+	  This option enables enhanced softdog info.
+	  Select the option to show related task info.

@@ -104,10 +104,18 @@ struct sensor_info {
 #define SENSOR_INFO_GYRO_UNCALIBRATED		{"uncal_gyro_sensor", GYRO_UNCALIB_SENSOR, true, REPORT_MODE_CONTINUOUS, 24, 24}
 #define SENSOR_INFO_INTERRUPT_GYRO			{"interrupt_gyro_sensor", INTERRUPT_GYRO_SENSOR, true, REPORT_MODE_ON_CHANGE, 12, 12}
 #define SENSOR_INFO_PRESSURE			{"pressure_sensor", PRESSURE_SENSOR, true, REPORT_MODE_CONTINUOUS, 6, 12}
+
+#ifndef CONFIG_SENSORS_SSP_PICASSO
+#define SENSOR_INFO_LIGHT				{"light_sensor", LIGHT_SENSOR, true, REPORT_MODE_ON_CHANGE, 30, 30}
+#define SENSOR_INFO_UNCAL_LIGHT			{"uncal_light_sensor", UNCAL_LIGHT_SENSOR, true, REPORT_MODE_CONTINUOUS, 29, 29}
+#define SENSOR_INFO_LIGHT_IR			{"light_ir_sensor", LIGHT_IR_SENSOR, true, REPORT_MODE_ON_CHANGE, 23, 23}
+#define SENSOR_INFO_LIGHT_CCT			{"light_cct_sensor", LIGHT_CCT_SENSOR, true, REPORT_MODE_ON_CHANGE, 35, 35}
+#else
 #define SENSOR_INFO_LIGHT				{"light_sensor", LIGHT_SENSOR, true, REPORT_MODE_ON_CHANGE, 22, 22}
 #define SENSOR_INFO_UNCAL_LIGHT			{"uncal_light_sensor", UNCAL_LIGHT_SENSOR, true, REPORT_MODE_CONTINUOUS, 21, 21}
 #define SENSOR_INFO_LIGHT_IR			{"light_ir_sensor", LIGHT_IR_SENSOR, true, REPORT_MODE_ON_CHANGE, 13, 13}
 #define SENSOR_INFO_LIGHT_CCT			{"light_cct_sensor", LIGHT_CCT_SENSOR, true, REPORT_MODE_ON_CHANGE, 27, 27}
+#endif
 #define SENSOR_INFO_LIGHT_FLICKER			{"light_flicker_sensor", LIGHT_FLICKER_SENSOR, true, REPORT_MODE_ON_CHANGE, 2, 2}
 
 #define SENSOR_INFO_PROXIMITY			{"proximity_sensor", PROXIMITY_SENSOR, true, REPORT_MODE_ON_CHANGE, 11, 11} 

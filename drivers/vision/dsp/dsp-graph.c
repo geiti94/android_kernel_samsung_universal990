@@ -356,8 +356,7 @@ static void __dsp_graph_unload(struct dsp_graph_manager *gmgr,
 	__dsp_graph_unmap_list(graph, DSP_COMMON_PARAM_UPDATE);
 	__dsp_graph_unmap_list(graph, DSP_COMMON_PARAM_TSGD);
 
-	if (graph->kernel_name)
-		kfree(graph->kernel_name);
+	kfree(graph->kernel_name);
 	kfree(graph);
 	dsp_leave();
 }

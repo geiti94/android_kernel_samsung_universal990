@@ -18,7 +18,23 @@
 /* factory Sysfs                                                         */
 /*************************************************************************/
 
-#define MODEL_NAME	"BCM47752KUB1G"
+#define MODEL_NAME	"BCM47755KUB1G"
+#define MODEL2_NAME	"BCM47765"
+
+char* get_mcu_name(struct device *dev)
+{
+#if defined(CONFIG_SENSORS_SSP_CANVAS)
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	if((data->ap_type == 1 && data->ap_rev < 17)
+	|| (data->ap_type == 0 && data->ap_rev < 18))
+		return MODEL_NAME;
+	else
+		return MODEL2_NAME;
+#else
+	return MODEL_NAME;
+#endif
+}
 
 ssize_t mcu_revision_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
@@ -32,7 +48,7 @@ ssize_t mcu_revision_show(struct device *dev,
 ssize_t mcu_model_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", MODEL_NAME);
+	return sprintf(buf, "%s\n", get_mcu_name(dev));
 }
 
 ssize_t mcu_reset_show(struct device *dev,
@@ -108,7 +124,7 @@ ssize_t mcu_factorytest_show(struct device *dev,
 	ssp_dbg("[SSP]: MCU Factory Test Result - %s, %s, %s\n", MODEL_NAME,
 		(bMcuTestSuccessed ? "OK" : "NG"), "OK");
 
-	return sprintf(buf, "%s,%s,%s\n", MODEL_NAME,
+	return sprintf(buf, "%s,%s,%s\n", get_mcu_name(dev),
 		(bMcuTestSuccessed ? "OK" : "NG"), "OK");
 }
 

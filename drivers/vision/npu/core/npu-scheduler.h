@@ -171,6 +171,7 @@ struct npu_scheduler_fps_load {
 	s64		tpf;		/* time per frame */
 	s64		requested_tpf;	/* tpf for fps */
 	unsigned int	fps_load;	/* 0.01 unit */
+	s64		init_freq_ratio;
 
 	struct list_head	list;
 };
@@ -187,9 +188,12 @@ struct npu_scheduler_dvfs_info {
 	s32			delay;
 	s32			limit_min;
 	s32			limit_max;
+	s32			is_init_freq;
 	struct npu_scheduler_governor *gov;
 	void			*gov_prop;
 	u32			mode_min_freq[NPU_PERF_MODE_NUM];
+	s32 curr_up_delay;
+	s32 curr_down_delay;
 
 	struct list_head	dev_list;	/* list to governor */
 	struct list_head	ip_list;	/* list to scheduler */
@@ -280,6 +284,7 @@ int npu_scheduler_unload(struct npu_device *device, const struct npu_session *se
 void npu_scheduler_update_sched_param(struct npu_device *device, struct npu_session *session);
 void npu_scheduler_gate(struct npu_device *device, struct npu_frame *frame, bool idle);
 void npu_scheduler_fps_update_idle(struct npu_device *device, struct npu_frame *frame, bool idle);
+void npu_scheduler_set_init_freq(struct npu_device *device, npu_uid_t session_uid);
 void npu_scheduler_rq_update_idle(struct npu_device *device, bool idle);
 void npu_pm_qos_update_request(struct npu_scheduler_dvfs_info *d,
 		struct pm_qos_request *req, s32 new_value);

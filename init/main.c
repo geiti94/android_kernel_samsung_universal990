@@ -105,20 +105,23 @@
 
 #ifdef CONFIG_UH
 #include <linux/uh.h>
-#ifdef CONFIG_UH_RKP
+#if (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP)
 #include <linux/rkp.h>
 #endif
 #ifdef CONFIG_KDP_CRED
 #include <linux/kdp.h>
 #endif
 #endif
-#ifdef CONFIG_UH_HARSH
+#ifdef CONFIG_UH_PDBT
 #include <linux/harsh.h>
 #include <asm/cpu.h>
 #endif
 #define CREATE_TRACE_POINTS
 #include <trace/events/initcall.h>
 
+#ifdef CONFIG_KUNIT
+#include <kunit/test.h>
+#endif
 #ifdef CONFIG_SECURITY_DEFEX
 #include <linux/defex.h>
 void __init __weak defex_load_rules(void) { }
@@ -574,7 +577,7 @@ static void __init mm_init(void)
 	pti_init();
 }
 
-#ifdef CONFIG_UH_RKP
+#if (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP)
 rkp_init_t rkp_init_data __rkp_ro = {
 	.magic = RKP_INIT_MAGIC,
 	.vmalloc_start = VMALLOC_START,
@@ -593,23 +596,33 @@ sparse_bitmap_for_kernel_t* rkp_s_bitmap_ro __rkp_ro = 0;
 sparse_bitmap_for_kernel_t* rkp_s_bitmap_dbl __rkp_ro = 0;
 sparse_bitmap_for_kernel_t* rkp_s_bitmap_buffer __rkp_ro = 0;
 
+spinlock_t ro_rkp_pages_lock = __SPIN_LOCK_UNLOCKED();
+char ro_pages_stat[PAGE_SIZE] = {0,};
+int ro_pages;
+unsigned int ro_alloc_avail = 0;
+unsigned int ro_alloc_n = 0;
+
 static void __init rkp_init(void)
 {
 	rkp_init_data.vmalloc_end = (u64)high_memory;
 	rkp_init_data.init_mm_pgd = (u64)__pa(swapper_pg_dir);
 	rkp_init_data.id_map_pgd = (u64)__pa(idmap_pg_dir);
 	rkp_init_data.zero_pg_addr = (u64)__pa(empty_zero_page);
+#ifdef CONFIG_UH_RKP
 	uh_call(UH_APP_RKP, RKP_GET_RO_BITMAP, (u64)&rkp_s_bitmap_ro, 0, 0, 0);
 	uh_call(UH_APP_RKP, RKP_GET_DBL_BITMAP, (u64)&rkp_s_bitmap_dbl, 0, 0, 0);
+#endif
 
 	uh_call(UH_APP_RKP, RKP_START, (u64)&rkp_init_data, (u64)kimage_voffset, 0, 0);
 	rkp_started = 1;
 }
 
+#ifdef CONFIG_UH_RKP
 static void __init rkp_robuffer_init(void)
 {
 	uh_call(UH_APP_RKP, RKP_GET_RKP_GET_BUFFER_BITMAP, (u64)&rkp_s_bitmap_buffer, 0, 0, 0);
 }
+#endif
 #endif
 
 #ifdef CONFIG_KDP_CRED
@@ -663,11 +676,16 @@ void kdp_init(void)
 	cred.selinux.selinux_enforcing_va  = 0;
 	cred.selinux.ss_initialized_va	= 0;
 #endif
-	uh_call(UH_APP_RKP, RKP_KDP_X40, (u64)&cred, 0, 0, 0);
+#ifdef CONFIG_FASTUH_RKP
+	cred._srodata = (u64)__start_rodata;
+	cred._erodata = (u64)__end_rodata;
+#endif
+
+	uh_call(UH_APP_KDP, RKP_KDP_X40, (u64)&cred, 0, 0, 0);
 }
 #endif
 
-#ifdef CONFIG_UH_HARSH
+#ifdef CONFIG_UH_PDBT
 void harsh_init(void)
 {
 	int i;
@@ -685,10 +703,8 @@ void harsh_init(void)
 
 	harsh.n_online_core = i;
 	uh_call(UH_APP_HARSH, HARSH_EVENT_START, (u64)&harsh, 0, 0, 0);
-
-
 }
-#endif /* CONFIG_UH_HARSH */
+#endif /* CONFIG_UH_PDBT */
 
 asmlinkage __visible void __init start_kernel(void)
 {
@@ -756,7 +772,7 @@ asmlinkage __visible void __init start_kernel(void)
 	sort_main_extable();
 	trap_init();
 	mm_init();
-#ifdef CONFIG_UH_RKP
+#if (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP)
 	rkp_init();
 #endif
 
@@ -1314,13 +1330,13 @@ static int __ref kernel_init(void *unused)
 
 	rcu_end_inkernel_boot();
 
-#ifdef CONFIG_UH_HARSH
+#ifdef CONFIG_UH_PDBT
 	harsh_init();
 #endif
 	if (ramdisk_execute_command) {
 		ret = run_init_process(ramdisk_execute_command);
 		if (!ret){
-#ifdef CONFIG_UH_RKP
+#if (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP)
 		rkp_deferred_init();
 #endif
 			return 0;
@@ -1386,6 +1402,10 @@ static noinline void __init kernel_init_freeable(void)
 	page_ext_init();
 
 	do_basic_setup();
+
+#ifdef CONFIG_KUNIT
+	test_executor_init();
+#endif
 
 	/* Open the /dev/console on the rootfs, this should never fail */
 	if (ksys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0)

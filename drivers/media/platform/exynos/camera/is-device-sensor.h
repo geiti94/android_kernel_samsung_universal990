@@ -363,6 +363,7 @@ struct is_device_sensor {
 	u64						timestamp[IS_TIMESTAMP_HASH_KEY];
 	u64						timestampboot[IS_TIMESTAMP_HASH_KEY];
 	u64						frame_id[IS_TIMESTAMP_HASH_KEY]; /* index 0 ~ 7 */
+	u64						prev_timestampboot;
 
 	u32						fcount;
 	u32						line_fcount;

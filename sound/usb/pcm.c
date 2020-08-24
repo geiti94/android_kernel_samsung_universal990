@@ -36,6 +36,9 @@
 #include "pcm.h"
 #include "clock.h"
 #include "power.h"
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+#include <linux/usb_notify.h>
+#endif
 
 #define SUBSTREAM_FLAG_DATA_EP_STARTED	0
 #define SUBSTREAM_FLAG_SYNC_EP_STARTED	1
@@ -561,16 +564,11 @@ static int set_format(struct snd_usb_substream *subs, struct audioformat *fmt)
 		dev_info(&dev->dev, "Endpoint #%x / Direction : %d \n",
 						fmt->endpoint, subs->direction);
 #endif
-		subs->interface = fmt->iface;
-		subs->altset_idx = fmt->altset_idx;
-
 		snd_usb_set_interface_quirk(dev);
 	}
 
-	/* Need to Check...
 	subs->interface = fmt->iface;
 	subs->altset_idx = fmt->altset_idx;
-	*/
 	subs->data_endpoint = snd_usb_add_endpoint(subs->stream->chip,
 						   alts, fmt->endpoint, subs->direction,
 						   SND_USB_ENDPOINT_TYPE_DATA);
@@ -1402,9 +1400,19 @@ static int snd_usb_pcm_open(struct snd_pcm_substream *substream)
 	struct snd_usb_stream *as = snd_pcm_substream_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_usb_substream *subs = &as->substream[direction];
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+	int enable = 1, type = 0;
+#endif
 
 #ifdef CONFIG_SND_EXYNOS_USB_AUDIO
 	exynos_usb_audio_pcm(1, direction);
+#endif
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+	if (direction == SNDRV_PCM_STREAM_PLAYBACK)
+		type = NOTIFY_PCM_PLAYBACK;
+	else
+		type = NOTIFY_PCM_CAPTURE;
+	store_usblog_notify(type, (void *)&enable, NULL);
 #endif
 	subs->interface = -1;
 	subs->altset_idx = 0;
@@ -1427,6 +1435,9 @@ static int snd_usb_pcm_close(struct snd_pcm_substream *substream)
 	struct snd_usb_stream *as = snd_pcm_substream_chip(substream);
 	struct snd_usb_substream *subs = &as->substream[direction];
 	int ret;
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+	int enable = 0, type = 0;
+#endif
 
 #ifdef CONFIG_SND_EXYNOS_USB_AUDIO
 	if (direction == SNDRV_PCM_STREAM_PLAYBACK)
@@ -1435,6 +1446,13 @@ static int snd_usb_pcm_close(struct snd_pcm_substream *substream)
 		reinit_completion(&usb_audio->in_conn_stop);
 
 	exynos_usb_audio_pcm(0, direction);
+#endif
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+	if (direction == SNDRV_PCM_STREAM_PLAYBACK)
+		type = NOTIFY_PCM_PLAYBACK;
+	else
+		type = NOTIFY_PCM_CAPTURE;
+	store_usblog_notify(type, (void *)&enable, NULL);
 #endif
 	stop_endpoints(subs, true);
 

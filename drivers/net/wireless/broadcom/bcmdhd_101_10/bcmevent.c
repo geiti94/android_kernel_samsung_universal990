@@ -1,7 +1,7 @@
 /*
  * bcmevent read-only data shared by kernel or app layers
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <typedefs.h>
@@ -206,6 +206,8 @@ static const bcmevent_name_str_t bcmevent_names[] = {
 	BCMEVENT_NAME(WLC_E_WA_LQM),
 	BCMEVENT_NAME(WLC_E_OBSS_DETECTION),
 	BCMEVENT_NAME(WLC_E_SC_CHAN_QUAL),
+	BCMEVENT_NAME(WLC_E_DYNSAR),
+	BCMEVENT_NAME(WLC_E_ROAM_CACHE_UPDATE),
 };
 
 const char *bcmevent_get_name(uint event_type)

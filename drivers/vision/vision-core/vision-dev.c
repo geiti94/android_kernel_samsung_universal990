@@ -196,7 +196,7 @@ static ssize_t tpf_show(struct device *dev,
 {
 	struct vision_device *vdev = container_of(dev, struct vision_device, dev);
 
-	return sprintf(buf, "%d\n", vdev->tpf);
+	return sprintf(buf, "%lld\n", vdev->tpf);
 }
 static DEVICE_ATTR_RO(tpf);
 

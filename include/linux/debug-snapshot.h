@@ -53,6 +53,8 @@ extern unsigned long dbg_snapshot_get_item_vaddr(char *name);
 extern unsigned long dbg_snapshot_get_item_curr_ptr(char *name);
 extern void dbg_snapshot_set_sjtag_status(void);
 extern int dbg_snapshot_get_sjtag_status(void);
+extern int dbg_snapshot_get_debug_level(void);
+extern int dbg_snapshot_get_debug_level_reg(void);
 extern bool dbg_snapshot_dumper_one(void *, char *, size_t, size_t *);
 extern void dbg_snapshot_panic_handler_safe(void);
 extern void dbg_snapshot_set_core_pmu_val(unsigned int val, unsigned int cpu);
@@ -159,6 +161,24 @@ extern u64 secdbg_snapshot_get_hardlatency_info(unsigned int cpu);
 #define secdbg_snapshot_get_hardlatency_info(a)	do { } while (0)
 #endif
 
+
+#ifdef CONFIG_SEC_DEBUG_WQ_LOCKUP_INFO
+extern void secdbg_show_sched_info(unsigned int cpu, int count);
+extern int secdbg_show_busy_task(unsigned int cpu, unsigned long long duration, int count);
+extern struct task_struct *get_the_busiest_task(void);
+#else
+#define secdbg_show_sched_info(a, b)	do { } while (0)
+static inline int secdbg_show_busy_task(unsigned int cpu, unsigned long long duration, int count)
+{
+        return -1;
+}
+
+static struct task_struct *get_the_busiest_task(void)
+{
+	return NULL;
+}
+#endif
+
 #else /* CONFIG_DEBUG_SNAPSHOT */
 #define dbg_snapshot_acpm(a,b,c)		do { } while(0)
 #define dbg_snapshot_task(a,b)			do { } while(0)
@@ -226,10 +246,12 @@ static inline int dbg_snapshot_get_dpm_item_value(char *first, char *second, cha
 {
 	return -1;
 }
+#ifndef CONFIG_UML
 static inline int dbg_snapshot_get_hardlockup(void)
 {
 	return 0;
 }
+#endif
 
 #define secdbg_hardlockup_get_info(a, b)	do { } while (0)
 #define secdbg_softlockup_get_info(a, b)	do { } while (0)
@@ -269,7 +291,7 @@ static inline unsigned int dbg_snapshot_get_core_pmu_val(unsigned int cpu)
 {
 	return 0;
 }
-static inline unsigned int dbg_snapshot_get_core_ehld_stat(unsigned int)
+static inline unsigned int dbg_snapshot_get_core_ehld_stat(unsigned int cpu)
 {
 	return 0;
 }
@@ -281,7 +303,11 @@ static inline int dbg_snapshot_reserved_mem_check(unsigned long node, unsigned l
 #endif /* CONFIG_DEBUG_SNAPSHOT */
 extern void dbg_snapshot_soc_helper_init(void);
 static inline void dbg_snapshot_bug_func(void) {BUG();}
+#ifdef CONFIG_UML
+static inline void dbg_snapshot_spin_func(void) {}
+#else
 static inline void dbg_snapshot_spin_func(void) {do {wfi();} while(1);}
+#endif
 
 extern struct atomic_notifier_head restart_handler_list;
 extern struct blocking_notifier_head reboot_notifier_list;
@@ -330,4 +356,9 @@ enum dsslog_freq_flag {
 	DSS_FLAG_G3D,
 	DSS_FLAG_END
 };
+
+#define DSS_DEBUG_LEVEL_PREFIX	(0xDB9 << 16)
+#define DSS_DEBUG_LEVEL_LOW	(0)
+#define DSS_DEBUG_LEVEL_MID	(1)
+
 #endif

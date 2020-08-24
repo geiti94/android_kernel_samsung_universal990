@@ -204,6 +204,12 @@ void exynos_ehld_do_policy(void)
 	}
 }
 
+static void exynos_ehld_value_raw_update_pwroff(int cpu)
+{
+	dbg_snapshot_set_core_pmu_val(0xc2, cpu);
+	dbg_snapshot_set_core_ehld_stat(EHLD_STAT_NORMAL, cpu);
+}
+
 void exynos_ehld_value_raw_update(int cpu)
 {
 	u32 val, val_en;
@@ -258,13 +264,12 @@ static enum hrtimer_restart ehld_value_raw_hrtimer_fn(struct hrtimer *hrtimer)
 	}
 
 	if (event->state != PERF_EVENT_STATE_ACTIVE) {
-		dbg_snapshot_set_core_pmu_val(0xc2,cpu);
-		dbg_snapshot_set_core_ehld_stat(EHLD_STAT_NORMAL,cpu);
+		exynos_ehld_value_raw_update_pwroff(cpu);
 		ehld_err(1, "@%s: cpu%d, event state is not active: %d\n", __func__, cpu, event->state);
 		return HRTIMER_NORESTART;
 	} else {
-		exynos_ehld_do_policy();
 		exynos_ehld_value_raw_update(cpu);
+		exynos_ehld_do_policy();
 	}
 
 	ehld_info(0, "@%s: cpu%d hrtimer is running\n", __func__, cpu);
@@ -325,8 +330,7 @@ static int exynos_ehld_stop_cpu(unsigned int cpu)
 	struct perf_event *event = ctrl->event;
 	struct hrtimer *hrtimer = &ctrl->hrtimer;
 
-	dbg_snapshot_set_core_pmu_val(0xc2,cpu);
-	dbg_snapshot_set_core_ehld_stat(EHLD_STAT_NORMAL,cpu);
+	exynos_ehld_value_raw_update_pwroff(cpu);
 
 	if (event) {
 		ctrl->ehld_running = 0;
@@ -362,15 +366,15 @@ unsigned long long exynos_ehld_event_read_cpu(int cpu)
 
 void exynos_ehld_event_raw_update(int cpu)
 {
-	struct exynos_ehld_ctrl *ctrl;
-	struct exynos_ehld_data *data;
-	unsigned long long val;
+	struct exynos_ehld_ctrl *ctrl = NULL;
+	struct exynos_ehld_data *data = NULL;
+	unsigned long long val = 0;
 	unsigned long flags, count;
 
 	raw_spin_lock_irqsave(&ehld_main.update_lock, flags);
 	ctrl = per_cpu_ptr(&ehld_ctrl, cpu);
 
-	if (ctrl->event) {
+	if (ctrl && ctrl->event) {
 		raw_spin_lock_irqsave(&ctrl->lock, flags);
 		data = &ctrl->data;
 		count = ++data->data_ptr & (NUM_TRACE - 1);
@@ -392,16 +396,15 @@ void exynos_ehld_event_raw_update(int cpu)
 				if (MSB_MASKING == (MSB_MASKING & val))
 					val |= MSB_PADDING;
 				data->pmpcsr[count] = val;
-				data->event[count] = __raw_readl(ctrl->dbg_base + PMU_OFFSET);
+				val = __raw_readl(ctrl->dbg_base + PMU_OFFSET);
+				data->event[count] = val;
 				DBG_LOCK(ctrl->dbg_base + PMU_OFFSET);
 			} else {
-				data->event[count] = dbg_snapshot_get_core_pmu_val(cpu);
+				val = dbg_snapshot_get_core_pmu_val(cpu);
+				data->event[count] = val;
 				data->pmpcsr[count] = 0;
 			}
 		}
-		if (ehld_main.dbgc.support && ehld_main.dbgc.enabled)
-			dbg_snapshot_set_core_pmu_val(val, cpu);
-
 		raw_spin_unlock_irqrestore(&ctrl->lock, flags);
 		ehld_info(0, "%s: cpu%x - time:%llu, event:0x%llx\n",
 			__func__, cpu, data->time[count], data->event[count]);
@@ -411,9 +414,9 @@ void exynos_ehld_event_raw_update(int cpu)
 
 void exynos_ehld_event_raw_update_allcpu(void)
 {
-	struct exynos_ehld_ctrl *ctrl;
-	struct exynos_ehld_data *data;
-	unsigned long long val;
+	struct exynos_ehld_ctrl *ctrl = NULL;
+	struct exynos_ehld_data *data = NULL;
+	unsigned long long val = 0;
 	unsigned long flags, count;
 	unsigned int cpu;
 
@@ -421,7 +424,7 @@ void exynos_ehld_event_raw_update_allcpu(void)
 	for_each_possible_cpu(cpu) {
 		ctrl = per_cpu_ptr(&ehld_ctrl, cpu);
 
-		if (ctrl->event) {
+		if (ctrl && ctrl->event) {
 			raw_spin_lock_irqsave(&ctrl->lock, flags);
 			data = &ctrl->data;
 			count = ++data->data_ptr & (NUM_TRACE - 1);
@@ -443,15 +446,15 @@ void exynos_ehld_event_raw_update_allcpu(void)
 					if (MSB_MASKING == (MSB_MASKING & val))
 						val |= MSB_PADDING;
 					data->pmpcsr[count] = val;
-					data->event[count] = __raw_readl(ctrl->dbg_base + PMU_OFFSET);
+					val = __raw_readl(ctrl->dbg_base + PMU_OFFSET);
+					data->event[count] = val;
 					DBG_LOCK(ctrl->dbg_base + PMU_OFFSET);
 				} else {
-					data->event[count] = dbg_snapshot_get_core_pmu_val(cpu);
+					val = dbg_snapshot_get_core_pmu_val(cpu);
+					data->event[count] = val;
 					data->pmpcsr[count] = 0;
 				}
 			}
-			if (ehld_main.dbgc.support && ehld_main.dbgc.enabled)
-				dbg_snapshot_set_core_pmu_val(val, cpu);
 
 			raw_spin_unlock_irqrestore(&ctrl->lock, flags);
 			ehld_info(0, "%s: cpu%x - time:%llu, event:0x%llx\n",
@@ -771,7 +774,7 @@ static int exynos_ehld_c2_pm_notifier(struct notifier_block *self,
 
 	switch (action) {
 	case CPU_PM_ENTER:
-		exynos_ehld_value_raw_update(cpu);
+		exynos_ehld_value_raw_update_pwroff(cpu);
 		exynos_ehld_cpu_predown(cpu);
 		break;
         case CPU_PM_ENTER_FAILED:
@@ -780,7 +783,7 @@ static int exynos_ehld_c2_pm_notifier(struct notifier_block *self,
 		exynos_ehld_value_raw_update(cpu);
 		break;
 	case CPU_CLUSTER_PM_ENTER:
-		exynos_ehld_value_raw_update(cpu);
+		exynos_ehld_value_raw_update_pwroff(cpu);
 		exynos_ehld_cpu_predown(cpu);
 		break;
 	case CPU_CLUSTER_PM_ENTER_FAILED:
@@ -825,10 +828,8 @@ static int exynos_ehld_pm_notifier(struct notifier_block *notifier,
 	case PM_POST_RESTORE:
 		ehld_main.suspending = 0;
 		if (ehld_main.dbgc.support) {
-			for_each_possible_cpu(cpu) {
-				dbg_snapshot_set_core_pmu_val(0xc2,cpu);
-				dbg_snapshot_set_core_ehld_stat(EHLD_STAT_NORMAL,cpu);
-			}
+			for_each_possible_cpu(cpu)
+				exynos_ehld_value_raw_update_pwroff(cpu);
 			adv_tracer_ehld_set_enable(true);
 			ehld_main.dbgc.enabled = true;
 		}

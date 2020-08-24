@@ -36,6 +36,10 @@
 #include <soc/samsung/exynos-itmon.h>
 #endif
 
+static int exynos_bcm_dbg_run(unsigned int bcm_run,
+		struct exynos_bcm_dbg_data *data);
+static int exynos_bcm_dbg_early_init(struct exynos_bcm_dbg_data *data,
+		unsigned int mode);
 static struct exynos_bcm_dbg_data *bcm_dbg_data = NULL;
 #ifdef CONFIG_EXYNOS_BCM_DBG_GNR
 static struct vm_struct bcm_early_vm;
@@ -387,6 +391,170 @@ static int exynos_bcm_dbg_pd_sync_exit(struct exynos_bcm_dbg_data *data)
 
 	return ret;
 }
+
+static void exynos_bcm_find_dump_data(struct exynos_bcm_dbg_data *data)
+{
+	void __iomem *v_addr = data->dump_addr.v_addr;
+	struct exynos_bcm_dump_info *dump_info = NULL;
+	struct exynos_bcm_calc *bcm_calc = data->bcm_calc;
+	u32 buff_size = data->dump_addr.buff_size - EXYNOS_BCM_KTIME_SIZE;
+	u32 dump_entry_size = sizeof(struct exynos_bcm_dump_info);
+	u32 max_index = buff_size / dump_entry_size;
+
+	u32 tmp_ktime[2];
+	u64 last_ktime;
+	unsigned int i, j, prev_seq_no, pos_idx;
+	static unsigned int pos = 0;
+
+	exynos_bcm_dbg_run(0, data);
+
+	/* get kernel time */
+	tmp_ktime[0] = __raw_readl(v_addr);
+	tmp_ktime[1] = __raw_readl(v_addr + 0x4);
+	last_ktime = (((u64)tmp_ktime[1] << EXYNOS_BCM_32BIT_SHIFT) &
+			EXYNOS_BCM_U64_HIGH_MASK) |
+		((u64)tmp_ktime[0] & EXYNOS_BCM_U64_LOW_MASK);
+
+	BCM_DBG("%s: show last_ktime %llu, cur time %llu\n", __func__, last_ktime,
+			sched_clock());
+
+	/* Find start index */
+	dump_info = (struct exynos_bcm_dump_info *)(v_addr + EXYNOS_BCM_KTIME_SIZE);
+	prev_seq_no = dump_info[pos].dump_seq_no;
+	i = 0;
+
+	while (true) {
+		/* This is out of latest dump */
+		if (prev_seq_no > dump_info[pos].dump_seq_no || dump_info[pos].dump_header == 0)
+			break;
+
+		pos_idx = BCM_CMD_GET(dump_info[pos].dump_header, BCM_IP_MASK, 0);
+
+		if (bcm_calc->ip_idx[i] == pos_idx) {
+			bcm_calc->acc_data[i].ccnt +=
+				dump_info[pos].out_data.ccnt / 1000;
+
+			bcm_calc->acc_data[i].dump_time +=
+				dump_info[pos].dump_time;
+
+			for (j = 0; j < 8; j++)
+				bcm_calc->acc_data[i].pmcnt[j]
+					+= dump_info[pos].out_data.pmcnt[j] / 1000;
+
+			i++;
+			if (i >= bcm_calc->num_ip)
+				i = 0;
+		}
+		prev_seq_no = dump_info[pos].dump_seq_no;
+		pos = (pos + 1) % max_index;
+	}
+	exynos_bcm_dbg_run(1, data);
+
+	return;
+}
+
+static void exynos_bcm_calc_work_func(struct work_struct *work)
+{
+	struct exynos_bcm_calc *bcm_calc = bcm_dbg_data->bcm_calc;
+
+	mutex_lock(&bcm_calc->lock);
+	exynos_bcm_find_dump_data(bcm_calc->data);
+	schedule_delayed_work(&bcm_calc->work,
+			msecs_to_jiffies(bcm_calc->sample_time));
+	mutex_unlock(&bcm_calc->lock);
+}
+
+bool exynos_bcm_calc_enable(int enable)
+{
+	struct exynos_bcm_dbg_data *data = bcm_dbg_data;
+	struct exynos_bcm_calc *bcm_calc = data->bcm_calc;
+	int ret;
+
+	if (enable == bcm_calc->enable)
+		return bcm_calc->enable;
+
+	/* Initalize BCM Plugin */
+
+	/* request enable */
+	if (!bcm_calc->enable) {
+		ret = exynos_bcm_dbg_early_init(data, PERF_MODE);
+		if (ret)
+			BCM_ERR("%s: failed to early bcm initialize\n", __func__);
+	}
+
+	mutex_lock(&bcm_calc->lock);
+	if (enable && !bcm_calc->enable) {
+		bcm_calc->enable = enable;
+		exynos_bcm_dbg_run(1, data);
+		/* start 50ms worker to gathering logs */
+		schedule_delayed_work(&bcm_calc->work,
+				msecs_to_jiffies(bcm_calc->sample_time));
+	}
+	else if (!enable && bcm_calc->enable){
+		cancel_delayed_work(&bcm_calc->work);
+		exynos_bcm_dbg_run(0, data);
+		memset(bcm_calc->acc_data, 0, sizeof(struct exynos_bcm_calc_data) *
+				bcm_calc->num_ip);
+		bcm_calc->enable = enable;
+	}
+	mutex_unlock(&bcm_calc->lock);
+
+	/* request disable */
+	if (!bcm_calc->enable) {
+		ret = exynos_bcm_dbg_early_init(data, DBG_MODE);
+		if (ret)
+			BCM_ERR("%s: failed to early bcm initialize\n", __func__);
+	}
+
+	BCM_INFO("%s: %s\n", __func__, bcm_calc->enable ? "enable" : "disable");
+
+	return bcm_calc->enable;
+}
+EXPORT_SYMBOL(exynos_bcm_calc_enable);
+
+void exynos_bcm_get_data(u64 *rwdata_transfer, u64 *rdata_transfer_cnt, u64
+		*rdata_latency_sum, u64 *output_bw)
+{
+	struct exynos_bcm_calc *bcm_calc = bcm_dbg_data->bcm_calc;
+	int i;
+
+	*rwdata_transfer = 0;
+	*rdata_transfer_cnt = 0;
+	*rdata_latency_sum = 0;
+
+	if (bcm_calc &&	bcm_calc->sample_time) {
+		mutex_lock(&bcm_calc->lock);
+		if (bcm_calc->enable) {
+			cancel_delayed_work(&bcm_calc->work);
+			exynos_bcm_find_dump_data(bcm_dbg_data);
+
+			for (i = 0; i < bcm_calc->num_ip - 1; i++) {
+				*rwdata_transfer +=
+					(bcm_calc->acc_data[i].pmcnt[0]	+ bcm_calc->acc_data[i].pmcnt[1])
+					* 1000 * bcm_calc->bus_width[i]	* bcm_calc->ip_cnt[i];
+			}
+
+			*rdata_transfer_cnt =
+				bcm_calc->acc_data[0].pmcnt[0]
+				+ bcm_calc->acc_data[1].pmcnt[0];
+
+			*rdata_latency_sum =
+				bcm_calc->acc_data[0].pmcnt[6]
+				+ bcm_calc->acc_data[1].pmcnt[6];
+			*output_bw =
+				(bcm_calc->acc_data[3].pmcnt[0] + bcm_calc->acc_data[3].pmcnt[1])
+				* 1000 * bcm_calc->bus_width[3] * bcm_calc->ip_cnt[3];
+
+			schedule_delayed_work(&bcm_calc->work, msecs_to_jiffies(bcm_calc->sample_time));
+		}
+		mutex_unlock(&bcm_calc->lock);
+	}
+	*rwdata_transfer = *rwdata_transfer >> 20;
+	*output_bw = *output_bw >> 20;
+
+	return;
+}
+EXPORT_SYMBOL(exynos_bcm_get_data);
 
 static void exynos_bcm_dbg_set_base_info(
 				struct exynos_bcm_ipc_base_info *ipc_base_info,
@@ -1201,26 +1369,34 @@ out:
 	return ret;
 }
 
-static int exynos_bcm_dbg_early_init(struct exynos_bcm_dbg_data *data)
+static int exynos_bcm_dbg_early_init(struct exynos_bcm_dbg_data *data,
+		unsigned int mode)
 {
 	struct exynos_bcm_ipc_base_info ipc_base_info;
 	struct exynos_bcm_event bcm_event;
 	struct exynos_bcm_filter_id filter_id;
 	struct exynos_bcm_filter_others filter_others;
 	struct exynos_bcm_sample_id sample_id;
-	unsigned int default_event;
+	unsigned int event = 0;
 	int ev_cnt, othr_cnt, ip_cnt;
+	unsigned int temp;
 	int ret = 0;
+	int i = 0;
 
 	/* pre-defined event set */
 	exynos_bcm_dbg_set_base_info(&ipc_base_info, BCM_EVT_PRE_DEFINE,
 					BCM_EVT_SET, BCM_ALL);
 
-	default_event = data->default_define_event;
-	bcm_event.index = data->define_event[default_event].index;
+	if (mode == DBG_MODE)
+		event = data->default_define_event;
+	else if (mode == PERF_MODE)
+		event = data->bcm_calc->perf_define_event;
+
+	bcm_event.index = data->define_event[event].index;
+
 	for (ev_cnt = 0; ev_cnt < data->bcm_cnt_nr; ev_cnt++)
 		bcm_event.event[ev_cnt] =
-			data->define_event[default_event].event[ev_cnt];
+			data->define_event[event].event[ev_cnt];
 
 	ret = exynos_bcm_dbg_event_ctrl(&ipc_base_info, &bcm_event, 0, data);
 	if (ret) {
@@ -1232,11 +1408,11 @@ static int exynos_bcm_dbg_early_init(struct exynos_bcm_dbg_data *data)
 	exynos_bcm_dbg_set_base_info(&ipc_base_info, BCM_EVT_EVENT_FLT_ID,
 					BCM_EVT_SET, BCM_ALL);
 
-	filter_id.sm_id_mask = data->define_filter_id[default_event].sm_id_mask;
-	filter_id.sm_id_value = data->define_filter_id[default_event].sm_id_value;
+	filter_id.sm_id_mask = data->define_filter_id[event].sm_id_mask;
+	filter_id.sm_id_value = data->define_filter_id[event].sm_id_value;
 	for (ev_cnt = 0; ev_cnt < data->bcm_cnt_nr; ev_cnt++)
 		filter_id.sm_id_active[ev_cnt] =
-			data->define_filter_id[default_event].sm_id_active[ev_cnt];
+			data->define_filter_id[event].sm_id_active[ev_cnt];
 
 	ret = exynos_bcm_dbg_filter_id_ctrl(&ipc_base_info, &filter_id,
 						0, data);
@@ -1251,16 +1427,16 @@ static int exynos_bcm_dbg_early_init(struct exynos_bcm_dbg_data *data)
 
 	for (othr_cnt = 0; othr_cnt < BCM_EVT_FLT_OTHR_MAX; othr_cnt++) {
 		filter_others.sm_other_type[othr_cnt] =
-			data->define_filter_others[default_event].sm_other_type[othr_cnt];
+			data->define_filter_others[event].sm_other_type[othr_cnt];
 		filter_others.sm_other_mask[othr_cnt] =
-			data->define_filter_others[default_event].sm_other_mask[othr_cnt];
+			data->define_filter_others[event].sm_other_mask[othr_cnt];
 		filter_others.sm_other_value[othr_cnt] =
-			data->define_filter_others[default_event].sm_other_value[othr_cnt];
+			data->define_filter_others[event].sm_other_value[othr_cnt];
 	}
 
 	for (ev_cnt = 0; ev_cnt < data->bcm_cnt_nr; ev_cnt++)
 		filter_others.sm_other_active[ev_cnt] =
-			data->define_filter_others[default_event].sm_other_active[ev_cnt];
+			data->define_filter_others[event].sm_other_active[ev_cnt];
 
 	ret = exynos_bcm_dbg_filter_others_ctrl(&ipc_base_info,
 					&filter_others, 0, data);
@@ -1273,11 +1449,11 @@ static int exynos_bcm_dbg_early_init(struct exynos_bcm_dbg_data *data)
 	exynos_bcm_dbg_set_base_info(&ipc_base_info, BCM_EVT_EVENT_SAMPLE_ID,
 					BCM_EVT_SET, BCM_ALL);
 
-	sample_id.peak_mask = data->define_sample_id[default_event].peak_mask;
-	sample_id.peak_id = data->define_sample_id[default_event].peak_id;
+	sample_id.peak_mask = data->define_sample_id[event].peak_mask;
+	sample_id.peak_id = data->define_sample_id[event].peak_id;
 	for (ev_cnt = 0; ev_cnt < data->bcm_cnt_nr; ev_cnt++)
 		sample_id.peak_enable[ev_cnt] =
-			data->define_sample_id[default_event].peak_enable[ev_cnt];
+			data->define_sample_id[event].peak_enable[ev_cnt];
 
 	ret = exynos_bcm_dbg_sample_id_ctrl(&ipc_base_info, &sample_id,
 						0, data);
@@ -1311,10 +1487,31 @@ static int exynos_bcm_dbg_early_init(struct exynos_bcm_dbg_data *data)
 	/* default run ip set */
 	for (ip_cnt = 0; ip_cnt < data->bcm_ip_nr; ip_cnt++) {
 		exynos_bcm_dbg_set_base_info(&ipc_base_info, BCM_EVT_IP_CONT,
-						BCM_EVT_SET, BCM_EACH);
+				BCM_EVT_SET, BCM_EACH);
+
+		if (mode == PERF_MODE) {
+			/* back up */
+			temp = data->initial_run_ip[ip_cnt];
+
+			mutex_lock(&data->bcm_calc->lock);
+			if (data->bcm_calc->ip_idx[i] == ip_cnt) {
+				data->initial_run_ip[ip_cnt] = BCM_IP_EN;
+				if (i < data->bcm_calc->num_ip - 1)
+					i++;
+			} else {
+				data->initial_run_ip[ip_cnt] = BCM_IP_DIS;
+			}
+
+			mutex_unlock(&data->bcm_calc->lock);
+		}
 
 		ret = exynos_bcm_dbg_ip_ctrl(&ipc_base_info,
 				&data->initial_run_ip[ip_cnt], ip_cnt, data);
+
+		/* restore */
+		if (mode == PERF_MODE)
+			data->initial_run_ip[ip_cnt] = temp;
+
 		if (ret) {
 			BCM_ERR("%s: failed set IP control\n", __func__);
 			return ret;
@@ -1412,6 +1609,12 @@ void exynos_bcm_dbg_stop(unsigned int bcm_stop_owner)
 	if (ret) {
 		BCM_ERR("%s: failed to bcm stop\n", __func__);
 		return;
+	}
+
+	if (bcm_dbg_data->bcm_calc->enable && bcm_stop_owner != PANIC_HANDLE) {
+		/* restart perf mode after finishing dbg */
+		bcm_dbg_data->bcm_calc->enable = 0;
+		exynos_bcm_calc_enable(1);
 	}
 
 	BCM_INFO("%s\n", __func__);
@@ -3008,6 +3211,60 @@ static ssize_t store_enable_stop_owner(struct device *dev,
 	return count;
 }
 
+static ssize_t show_bcm_calc(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct platform_device *pdev = container_of(dev,
+					struct platform_device, dev);
+	struct exynos_bcm_dbg_data *data = platform_get_drvdata(pdev);
+	struct exynos_bcm_calc *bcm_calc = data->bcm_calc;
+	ssize_t count = 0;
+	int i;
+
+	mutex_lock(&bcm_calc->lock);
+	if (!bcm_calc->enable) {
+		count += snprintf(buf + count, PAGE_SIZE, "ppmu_work not working!!\n");
+		mutex_unlock(&bcm_calc->lock);
+		return count;
+	}
+
+	cancel_delayed_work(&bcm_calc->work);
+
+	exynos_bcm_find_dump_data(data);
+
+	count += snprintf(buf + count, PAGE_SIZE, "ip_name, time, ccnt, pmcnt0, pmcnt1, pmcnt2, pmcnt3, pmcnt4, pmcnt5, pmcnt6, pmcnt7\n");
+
+	for (i = 0; i < bcm_calc->num_ip; i++)
+		count += snprintf(buf + count, PAGE_SIZE, "%s, %llu, %llu, %llu, %llu, %llu, %llu, %llu, %llu, %llu, %llu\n",
+				bcm_calc->ip_name[i], bcm_calc->acc_data[i].dump_time, bcm_calc->acc_data[i].ccnt,
+				bcm_calc->acc_data[i].pmcnt[0], bcm_calc->acc_data[i].pmcnt[1],
+				bcm_calc->acc_data[i].pmcnt[2], bcm_calc->acc_data[i].pmcnt[3],
+				bcm_calc->acc_data[i].pmcnt[4], bcm_calc->acc_data[i].pmcnt[5],
+				bcm_calc->acc_data[i].pmcnt[6], bcm_calc->acc_data[i].pmcnt[7]);
+
+	schedule_delayed_work(&bcm_calc->work, msecs_to_jiffies(bcm_calc->sample_time));
+	mutex_unlock(&bcm_calc->lock);
+
+	return count;
+}
+
+static ssize_t store_bcm_calc(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	unsigned int enable;
+	int ret;
+
+	ret = sscanf(buf, "%u", &enable);
+
+	if (ret != 1)
+		return -EINVAL;
+
+	exynos_bcm_calc_enable(enable);
+
+	return count;
+}
+
 #ifdef CONFIG_EXYNOS_BCM_DBG_GNR
 static ssize_t show_bcm_dbg_load_bin(struct device *dev,
 				struct device_attribute *attr, char *buf)
@@ -3104,6 +3361,7 @@ static DEVICE_ATTR(enable_stop_owner, 0640, show_enable_stop_owner, store_enable
 #ifdef CONFIG_EXYNOS_BCM_DBG_GNR
 static DEVICE_ATTR(bcm_dbg_load_bin, 0640, show_bcm_dbg_load_bin, store_bcm_dbg_load_bin);
 #endif
+static DEVICE_ATTR(bcm_calc, 0660, show_bcm_calc, store_bcm_calc);
 
 static struct attribute *exynos_bcm_dbg_sysfs_entries[] = {
 	&dev_attr_bcm_dbg_data_pd.attr,
@@ -3152,6 +3410,7 @@ static struct attribute *exynos_bcm_dbg_sysfs_entries[] = {
 #ifdef CONFIG_EXYNOS_BCM_DBG_GNR
 	&dev_attr_bcm_dbg_load_bin.attr,
 #endif
+	&dev_attr_bcm_calc.attr,
 	NULL,
 };
 
@@ -3218,7 +3477,7 @@ static int exynos_bcm_dbg_init(struct exynos_bcm_dbg_data *data)
 	}
 
 	/* Initalize BCM Plugin */
-	ret = exynos_bcm_dbg_early_init(data);
+	ret = exynos_bcm_dbg_early_init(data, DBG_MODE);
 	if (ret) {
 		BCM_ERR("%s: failed to early bcm initialize\n", __func__);
 		goto err_early_init;
@@ -3262,6 +3521,28 @@ err_early_init:
 err_ipc_channel:
 err_parse_dt:
 	return ret;
+}
+
+static void init_exynos_bcm_calc(struct exynos_bcm_dbg_data *data) {
+	struct exynos_bcm_calc *bcm_calc = data->bcm_calc;
+	int i;
+
+	INIT_DELAYED_WORK(&bcm_calc->work, exynos_bcm_calc_work_func);
+
+	bcm_calc->acc_data =
+		kzalloc(sizeof(struct exynos_bcm_calc_data)
+				* bcm_calc->num_ip, GFP_KERNEL);
+
+	BCM_INFO("%s: num_ip: %d\n", __func__, bcm_calc->num_ip);
+	BCM_INFO("%s: sample_time: %d\n", __func__,  bcm_calc->sample_time);
+	for (i = 0; i < bcm_calc->num_ip; i++)
+		BCM_INFO("%s: [idx:%d] ip_idx: %d, ip_name: %s,	ip_cnt: %d, \
+		bus_width: %d\n", __func__, i, bcm_calc->ip_idx[i],
+		bcm_calc->ip_name[i], bcm_calc->ip_cnt[i],
+		bcm_calc->bus_width[i]);
+
+	mutex_init(&bcm_calc->lock);
+	BCM_INFO("%s: Prepare PPMU accumulator done\n",	__func__);
 }
 
 #ifdef CONFIG_EXYNOS_BCM_DBG_GNR
@@ -3439,6 +3720,10 @@ static int exynos_bcm_dbg_pm_suspend(struct device *dev)
 #endif
 	BCM_DBG("%s: ++\n", __func__);
 
+	if (bcm_dbg_data->bcm_calc->enable) {
+		exynos_bcm_calc_enable(0);
+	}
+
 	ret = exynos_bcm_dbg_str(suspend, bcm_dbg_data);
 	if (ret) {
 		BCM_ERR("%s: failed set str state\n", __func__);
@@ -3475,6 +3760,12 @@ static struct dev_pm_ops exynos_bcm_dbg_pm_ops = {
 	.suspend	= exynos_bcm_dbg_pm_suspend,
 	.resume		= exynos_bcm_dbg_pm_resume,
 };
+
+static void exynos_bcm_dbg_shutdown(struct platform_device *pdev)
+{
+	if (bcm_dbg_data->bcm_calc->enable)
+		exynos_bcm_calc_enable(0);
+}
 
 static int __init exynos_bcm_dbg_probe(struct platform_device *pdev)
 {
@@ -3540,6 +3831,7 @@ static int __init exynos_bcm_dbg_probe(struct platform_device *pdev)
 	data->itmon_notifier.notifier_call = exynos_bcm_dbg_itmon_notifier;
 	itmon_notifier_chain_register(&data->itmon_notifier);
 #endif
+	init_exynos_bcm_calc(data);
 
 	BCM_INFO("%s: exynos bcm is initialized!!\n", __func__);
 
@@ -3610,6 +3902,7 @@ static const struct of_device_id exynos_bcm_dbg_match[] = {
 static struct platform_driver exynos_bcm_dbg_driver = {
 	.remove = exynos_bcm_dbg_remove,
 	.id_table = exynos_bcm_dbg_driver_ids,
+	.shutdown = exynos_bcm_dbg_shutdown,
 	.driver = {
 		.name = EXYNOS_BCM_DBG_MODULE_NAME,
 		.owner = THIS_MODULE,

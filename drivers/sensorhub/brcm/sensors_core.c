@@ -11,13 +11,50 @@
 #include <linux/fs.h>
 #include <linux/err.h>
 #include <linux/input.h>
+#include <linux/sensor/sensors_core.h>
+#include <linux/notifier.h>
 
 struct class *sensors_class;
 EXPORT_SYMBOL_GPL(sensors_class);
 struct class *sensors_event_class;
 EXPORT_SYMBOL_GPL(sensors_event_class);
+static struct device *ssc_core_dev;
 static atomic_t sensor_count;
 static struct device *symlink_dev;
+
+static BLOCKING_NOTIFIER_HEAD(sensordump_notifier_list);
+int sensordump_notifier_register(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&sensordump_notifier_list, nb);
+}
+EXPORT_SYMBOL(sensordump_notifier_register);
+
+int sensordump_notifier_unregister(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&sensordump_notifier_list, nb);
+}
+EXPORT_SYMBOL(sensordump_notifier_unregister);
+
+int sensordump_notifier_call_chain(unsigned long val, void *v)
+{
+	return blocking_notifier_call_chain(&sensordump_notifier_list, val, v);
+}
+EXPORT_SYMBOL_GPL(sensordump_notifier_call_chain);
+
+static ssize_t sensor_dump_show(struct device *dev, 
+	struct device_attribute *attr, char *buf)
+{
+
+	pr_info("[SENSOR] sensor_dump_show\n");
+	sensordump_notifier_call_chain(1, NULL);
+	
+	return snprintf(buf, PAGE_SIZE, "SENSOR_DUMP_DONE\n");
+}
+static DEVICE_ATTR(sensor_dump, 0440, sensor_dump_show, NULL);
+static struct device_attribute *ssc_core_attr[] = {
+	&dev_attr_sensor_dump,
+	NULL,
+};
 
 /*
  * Create sysfs interface
@@ -146,6 +183,17 @@ static int __init sensors_class_init(void)
 		class_destroy(sensors_class);
 		class_destroy(sensors_event_class);
 		return PTR_ERR(symlink_dev);
+	}
+
+	ssc_core_dev = device_create(sensors_class, NULL, 0, NULL,
+			"%s", "ssc_core");
+	if (IS_ERR(ssc_core_dev)) {
+		pr_err("[SENSORS CORE] ssc_core_dev create failed![%d]\n",
+			IS_ERR(ssc_core_dev));
+	}
+	else {
+		if ((device_create_file(ssc_core_dev, *ssc_core_attr)) < 0)
+			pr_err("[SENSOR CORE] ssc_core device attr failed\n");
 	}
 
 	atomic_set(&sensor_count, 0);

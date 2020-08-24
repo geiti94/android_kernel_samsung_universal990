@@ -179,35 +179,6 @@ static struct brightness_table s6e3fa7_davinci1_a3_s0_panel_hmd_brightness_table
 	.sz_brt_to_step = ARRAY_SIZE(davinci1_a3_s0_hmd_brt_tbl),
 };
 
-static struct panel_dimming_info s6e3fa7_davinci1_a3_s0_preliminary_panel_hmd_dimming_info = {
-	.name = "s6e3fa7_davinci1_a3_s0_preliminary_hmd",
-	.dim_init_info = {
-		.name = "s6e3fa7_davinci1_a3_s0_preliminary_hmd",
-		.nr_tp = S6E3FA7_NR_TP,
-		.tp = s6e3fa7_davinci1_tp,
-		.nr_luminance = S6E3FA7_HMD_NR_LUMINANCE,
-		.vregout = 109051904LL, /* 6.5 * 2^24 */
-		.bitshift = 24,
-		.vt_voltage = {
-			0, 12, 24, 36, 48, 60, 72, 84, 96, 108,
-			138, 148, 158, 168, 178, 186,
-		},
-		.target_luminance = S6E3FA7_DAVINCI_HMD_TARGET_LUMINANCE,
-		.target_gamma = 220,
-		.dim_lut = davinci1_a3_s0_hmd_dimming_lut,
-	},
-	.target_luminance = S6E3FA7_DAVINCI_HMD_TARGET_LUMINANCE,
-	.nr_luminance = S6E3FA7_HMD_NR_LUMINANCE,
-	.hbm_target_luminance = -1,
-	.nr_hbm_luminance = 0,
-	.extend_hbm_target_luminance = -1,
-	.nr_extend_hbm_luminance = 0,
-	.brt_tbl = &s6e3fa7_davinci1_a3_s0_panel_hmd_brightness_table,
-	/* dimming parameters */
-	.dimming_maptbl = davinci1_a3_s0_hmd_dimming_param_maptbl,
-	.dim_flash_on = false,	/* read dim flash when probe or not */
-};
-
 static struct panel_dimming_info s6e3fa7_davinci1_a3_s0_panel_hmd_dimming_info = {
 	.name = "s6e3fa7_davinci1_a3_s0_hmd",
 	.dim_init_info = {

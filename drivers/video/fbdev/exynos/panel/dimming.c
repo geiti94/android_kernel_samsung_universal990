@@ -11,8 +11,14 @@
  * published by the Free Software Foundation.
  */
 
+#include "panel_drv.h"
 #include "dimming.h"
 #include "dimming_gamma.h"
+
+#ifdef PANEL_PR_TAG
+#undef PANEL_PR_TAG
+#define PANEL_PR_TAG	"dimm"
+#endif
 
 static int NR_LUMINANCE;
 static int NR_TP;
@@ -204,7 +210,7 @@ s64 disp_div64(s64 num, s64 den)
 	if (num > ((1LL << (63 - BIT_SHIFT)) - 1)) {
 		int bit_shift = 62 - msb64(num);
 
-		pr_err("out of range num %lld\n", num);
+		panel_err("out of range num %lld\n", num);
 		return ((num << bit_shift) / den) >> bit_shift;
 	}
 #endif
@@ -215,7 +221,7 @@ s64 disp_div64(s64 num, s64 den)
 	u64 tnum, tden;
 
 	if (unlikely(den == 0)) {
-		pr_err("%s, den should not be zero (%llu %llu)\n", __func__, num, den);
+		panel_err("den should not be zero (%llu %llu)\n", num, den);
 		return 0;
 	}
 
@@ -223,8 +229,7 @@ s64 disp_div64(s64 num, s64 den)
 	tden = den * sign_den;
 
 	if (tden >= (1ULL << 31))
-		pr_err("%s, out of range denominator %llu\n",
-				__func__, tden);
+		panel_err("out of range denominator %llu\n", tden);
 
 	do_div(tnum, (u32)tden);
 
@@ -240,8 +245,7 @@ s64 disp_div64_round(s64 num, s64 den, u32 digits)
 	u64 tnum, tden, rem;
 
 	if (unlikely(den == 0)) {
-		pr_err("%s, den should not be zero (%llu %llu %u)\n",
-				__func__, num, den, digits);
+		panel_err("den should not be zero (%llu %llu %u)\n", num, den, digits);
 		return 0;
 	}
 
@@ -278,7 +282,7 @@ static int *generate_order(int s, int from, int to) {
 	int *t_order = (int *)kmalloc(len * sizeof(int), GFP_KERNEL);
 
 	if (!t_order) {
-		pr_err("%s, failed to allocate memory\n", __func__);
+		panel_err("failed to allocate memory\n");
 		return NULL;
 	}
 
@@ -332,12 +336,12 @@ static void generate_gamma_curve(int gamma, int *gamma_curve)
 	int i;
 	double gamma_f = (double)gamma / 100;
 
-	pr_info("%s, generate %d gamma\n", __func__, gamma);
+	panel_info("generate %d gamma\n", gamma);
 	for (i = 0; i < GRAY_SCALE_MAX; i++) {
 		gamma_curve[i] = (int)(pow(((double)i / 255), gamma_f) * (double)(1 << BIT_SHIFT) + 0.5f);
-		pr_info("%d ", gamma_curve[i]);
+		panel_info("%d ", gamma_curve[i]);
 		if (!((i + 1) % 8))
-			pr_info("\n");
+			panel_info("\n");
 	}
 }
 
@@ -365,13 +369,13 @@ int find_gamma_curve(int gamma)
 			break;
 
 	if (index == ARRAY_SIZE(gamma_curve_lut)) {
-		pr_err("%s, gamma %d curve not found\n", __func__, gamma);
+		panel_err("gamma %d curve not found\n", gamma);
 		return -1;
 	}
 
 #ifdef GENERATE_GAMMA_CURVE
 	if (!gamma_curve_lut[index].gamma_curve_table) {
-		pr_info("%s, generate gamma curve %d\n", __func__, gamma);
+		panel_info("generate gamma curve %d\n", gamma);
 		gamma_curve_table = kmalloc(GRAY_SCALE_MAX * sizeof(int), GFP_KERNEL);
 		generate_gamma_curve(gamma, gamma_curve_table);
 		gamma_curve_lut[index].gamma_curve_table = gamma_curve_table;
@@ -386,7 +390,7 @@ enum gamma_degree gamma_value_to_degree(int gamma)
 	int g_curve_index;
 	g_curve_index = find_gamma_curve(gamma);
 	if (g_curve_index < 0) {
-		pr_err("%s, gamma %d not exist\n", __func__, gamma);
+		panel_err("gamma %d not exist\n", gamma);
 		return GAMMA_NONE;
 	}
 
@@ -409,7 +413,7 @@ int gamma_curve_value(enum gamma_degree g_curve, int idx)
 		int *gamma_curve_table = (int *)kmalloc(GRAY_SCALE_MAX * sizeof(int), GFP_KERNEL);
 		int gamma = gamma_curve_lut[(int)g_curve].gamma;
 
-		pr_info("%s, generate gamma curve %d\n", __func__, gamma);
+		panel_info("generate gamma curve %d\n", gamma);
 		generate_gamma_curve(gamma, gamma_curve_table);
 		gamma_curve_lut[(int)g_curve].gamma_curve_table = gamma_curve_table;
 	}
@@ -429,7 +433,7 @@ void print_mtp_offset(struct dimming_info *dim_info)
 	int i;
 
 	for (i = 0; i < dim_info->nr_tp; i++)
-		pr_info("%-7s %-4d %-4d %-4d\n",
+		panel_info("%-7s %-4d %-4d %-4d\n",
 				dim_info->tp[i].name,
 				dim_info->tp[i].offset[RED],
 				dim_info->tp[i].offset[GREEN],
@@ -439,10 +443,10 @@ void print_mtp_offset(struct dimming_info *dim_info)
 void print_center_gamma(struct dimming_info *dim_info)
 {
 	int i;
-	pr_info("[CENTER_GAMMA]\n");
+	panel_info("[CENTER_GAMMA]\n");
 
 	for (i = 0; i < dim_info->nr_tp; i++)
-		pr_info("%-7s %-4X %-4X %-4X\n",
+		panel_info("%-7s %-4X %-4X %-4X\n",
 				dim_info->tp[i].name,
 				dim_info->tp[i].center[RED],
 				dim_info->tp[i].center[GREEN],
@@ -454,17 +458,17 @@ void print_hbm_gamma_tbl(struct dimming_info *dim_info)
 	int i;
 
 	if (unlikely(!dim_info->hbm_gamma_tbl)) {
-		pr_warn("%s, hbm_gamma_tbl not exist\n", __func__);
+		panel_warn("hbm_gamma_tbl not exist\n");
 		return;
 	}
 
 	if (unlikely(!dim_info->tp)) {
-		pr_warn("%s, tp not exist\n", __func__);
+		panel_warn("tp not exist\n");
 		return;
 	}
 
 	for (i = 0; i < dim_info->nr_tp; i++)
-		pr_info("%-7s %-4d %-4d %-4d\n",
+		panel_info("%-7s %-4d %-4d %-4d\n",
 				dim_info->tp[i].name,
 				dim_info->hbm_gamma_tbl[i][RED],
 				dim_info->hbm_gamma_tbl[i][GREEN],
@@ -478,7 +482,7 @@ void print_tpout_center(struct dimming_info *dim_info)
 	struct dimming_lut *lut;
 
 	if (unlikely(!dim_info)) {
-		pr_err("%s, invalid dim_info\n", __func__);
+		panel_err("invalid dim_info\n");
 		return;
 	}
 
@@ -487,13 +491,12 @@ void print_tpout_center(struct dimming_info *dim_info)
 	nr_luminance = dim_info->nr_luminance;
 
 	if (unlikely(!lut)) {
-		pr_err("%s, invalid dim_lut\n", __func__);
+		panel_err("invalid dim_lut\n");
 		return;
 	}
 
 	if ((nr_tp * 15UL) >= ARRAY_SIZE(buf)) {
-		pr_err("%s, exceed linebuf size (%lu)\n",
-				__func__, nr_tp * 15UL);
+		panel_err("exceed linebuf size (%lu)\n", nr_tp * 15UL);
 		return;
 	}
 
@@ -522,7 +525,7 @@ void print_tpout_center(struct dimming_info *dim_info)
 					lut[ilum].tpout[i].center[BLUE]);
 		}
 #endif
-		pr_info("%s\n", buf);
+		panel_info("%s\n", buf);
 	}
 
 }
@@ -534,7 +537,7 @@ void print_tpout_center_debug(struct dimming_info *dim_info)
 	struct dimming_lut *lut;
 
 	if (unlikely(!dim_info)) {
-		pr_err("%s, invalid dim_info\n", __func__);
+		panel_err("invalid dim_info\n");
 		return;
 	}
 
@@ -543,13 +546,12 @@ void print_tpout_center_debug(struct dimming_info *dim_info)
 	nr_luminance = dim_info->nr_luminance;
 
 	if (unlikely(!lut)) {
-		pr_err("%s, invalid dim_lut\n", __func__);
+		panel_err("invalid dim_lut\n");
 		return;
 	}
 
 	if ((nr_tp * 15UL) >= ARRAY_SIZE(buf)) {
-		pr_err("%s, exceed linebuf size (%lu)\n",
-				__func__, nr_tp * 15UL);
+		panel_err("exceed linebuf size (%lu)\n", nr_tp * 15UL);
 		return;
 	}
 
@@ -564,7 +566,7 @@ void print_tpout_center_debug(struct dimming_info *dim_info)
 					lut[ilum].tpout[i].center_debug[GREEN],
 					lut[ilum].tpout[i].center_debug[BLUE]);
 		}
-		pr_info("%s\n", buf);
+		panel_info("%s\n", buf);
 	}
 }
 
@@ -574,19 +576,19 @@ void print_tp_vout(struct dimming_info *dim_info)
 	struct tp *tp;
 
 	if (unlikely(!dim_info)) {
-		pr_err("%s, invalid dim_info\n", __func__);
+		panel_err("invalid dim_info\n");
 		return;
 	}
 
 	tp = dim_info->tp;
 	nr_tp = dim_info->nr_tp;
 	if (unlikely(!tp)) {
-		pr_err("%s, invalid tp\n", __func__);
+		panel_err("invalid tp\n");
 		return;
 	}
 
 	for (i = 0; i < nr_tp; i++)
-		pr_info("%1lld.%04lld  %1lld.%04lld  %1lld.%04lld\n",
+		panel_info("%1lld.%04lld  %1lld.%04lld  %1lld.%04lld\n",
 				scale_down_round(tp[i].vout[RED], 4), scale_down_rem(tp[i].vout[RED], 4),
 				scale_down_round(tp[i].vout[GREEN], 4), scale_down_rem(tp[i].vout[GREEN], 4),
 				scale_down_round(tp[i].vout[BLUE], 4), scale_down_rem(tp[i].vout[BLUE], 4));
@@ -597,7 +599,7 @@ void print_gray_scale_vout(struct gray_scale *gray_scale_lut)
 	int i;
 
 	for (i = 0; i < GRAY_SCALE_MAX; i++) {
-		pr_info("%1lld.%04lld  %1lld.%04lld  %1lld.%04lld\n",
+		panel_info("%1lld.%04lld  %1lld.%04lld  %1lld.%04lld\n",
 				scale_down_round(gray_scale_lut[i].vout[RED], 4), scale_down_rem(gray_scale_lut[i].vout[RED], 4),
 				scale_down_round(gray_scale_lut[i].vout[GREEN], 4), scale_down_rem(gray_scale_lut[i].vout[GREEN], 4),
 				scale_down_round(gray_scale_lut[i].vout[BLUE], 4), scale_down_rem(gray_scale_lut[i].vout[BLUE], 4));
@@ -615,7 +617,7 @@ static u64 mtp_offset_to_vregout(struct dimming_info *dim_info,
 	s64 VREF = dim_info->vref;
 
 	if (!tp || v < 0 || v >= NR_TP) {
-		pr_err("%s, invalid tp %d\n", __func__, v);
+		panel_err("invalid tp %d\n", v);
 		return -EINVAL;
 	}
 
@@ -627,15 +629,14 @@ static u64 mtp_offset_to_vregout(struct dimming_info *dim_info,
 		vsrc = tp[TP_VT].vout[c];
 	else {
 		vsrc = tp[TP_VT].vout[c];
-		pr_warn("%s unknown tp[%d].volt_src %d\n",
-				__func__, v, tp[v].volt_src);
+		panel_warn("unknown tp[%d].volt_src %d\n", v, tp[v].volt_src);
 	}
 
 	if (v == TP_VT) {
 		s32 offset = tp[v].center[c] + tp[v].offset[c];
 		if ((offset > 0xF) || (offset < 0x0)) {
-			pr_warn("%s, warning : ivt (%d) out of range(0x0 ~ 0xF) replace to %s\n",
-				__func__, offset, offset > 0xF ? "0xF" : "0x0" );
+			panel_warn("ivt (%d) out of range(0x0 ~ 0xF) replace to %s\n",
+					offset, offset > 0xF ? "0xF" : "0x0" );
 			offset = offset > 0xF ? 0xF : 0x0;
 		}
 		vreg = vsrc - VREF;
@@ -644,8 +645,8 @@ static u64 mtp_offset_to_vregout(struct dimming_info *dim_info,
 	} else if (v == TP_V0) {
 		s32 offset = tp[v].center[c] + tp[v].offset[c];
 		if ((offset > 0xF) || (offset < 0x0)) {
-			pr_warn("%s, warning : ivt (%d) out of range(0x0 ~ 0xF) replace to %s\n",
-				__func__, offset, offset > 0xF ? "0xF" : "0x0" );
+			panel_warn("ivt (%d) out of range(0x0 ~ 0xF) replace to %s\n",
+					offset, offset > 0xF ? "0xF" : "0x0" );
 			offset = offset > 0xF ? 0xF : 0x0;
 		}
 		vreg = vsrc - VREF;
@@ -662,11 +663,11 @@ static u64 mtp_offset_to_vregout(struct dimming_info *dim_info,
 	}
 
 #ifdef DEBUG_DIMMING
-	pr_info("%s, %s %s vreg %lld, vsrc %lld, num %lld, den %lld, res %lld\n",
-			__func__, tp[(int)v].name, color_name[(int)c], vreg, vsrc, num, den, res);
+	panel_info("%s %s vreg %lld, vsrc %lld, num %lld, den %lld, res %lld\n",
+			tp[(int)v].name, color_name[(int)c], vreg, vsrc, num, den, res);
 #endif
 	if (res < 0)
-		pr_err("%s, res %lld should not be minus value\n", __func__, res);
+		panel_err("res %lld should not be minus value\n", res);
 
 	return res;
 }
@@ -684,12 +685,12 @@ static s32 mtp_vregout_to_offset(struct dimming_info *dim_info,
 	struct dimming_tp_output *tpout;
 
 	if (!tp || v < 0 || v >= NR_TP) {
-		pr_err("%s, invalid tp %d\n", __func__, v);
+		panel_err("invalid tp %d\n", v);
 		return -EINVAL;
 	}
 
 	if (luminance_index < 0 || luminance_index >= NR_LUMINANCE) {
-		pr_err("%s, out of range luminance index (%d)\n", __func__, luminance_index);
+		panel_err("out of range luminance index (%d)\n", luminance_index);
 		return 0;
 	}
 
@@ -707,8 +708,7 @@ static s32 mtp_vregout_to_offset(struct dimming_info *dim_info,
 		vsrc = tpout[TP_VT].vout[c];
 	else {
 		vsrc = tpout[TP_VT].vout[c];
-		pr_warn("%s unknown tp[%d].volt_src %d\n",
-				__func__, v, tp[v].volt_src);
+		panel_warn("unknown tp[%d].volt_src %d\n", v, tp[v].volt_src);
 	}
 
 	if (v == TP_V255) {
@@ -724,7 +724,8 @@ static s32 mtp_vregout_to_offset(struct dimming_info *dim_info,
 	num -= den * (tp[v].numerator);
 	num = disp_round(num, 7) - den * (s64)tp[v].offset[c];
 	res = disp_div64_round(num, den, 2);
-	pr_debug("lum %d, %s %s  num %lld, den %lld, res %lld\n", dim_lut[luminance_index].luminance, tp[v].name, color_name[c], num, den, res);
+	panel_dbg("lum %d, %s %s  num %lld, den %lld, res %lld\n",
+			dim_lut[luminance_index].luminance, tp[v].name, color_name[c], num, den, res);
 #else
 	num -= den * ((s64)tp[v].numerator + (s64)tp[v].offset[c]);
 	res = disp_div64(num, den);
@@ -733,7 +734,7 @@ static s32 mtp_vregout_to_offset(struct dimming_info *dim_info,
 	res += rgb_offset[v][c];
 
 #ifdef DEBUG_DIMMING
-	pr_debug("luminance %3d %5s %5s num %lld\t den %lld\t rgb_offset %d\t res %lld\n",
+	panel_info("luminance %3d %5s %5s num %lld\t den %lld\t rgb_offset %d\t res %lld\n",
 			dim_lut[luminance_index].luminance, tp[v].name, color_name[c], num, den, rgb_offset[v][c], res);
 #endif
 
@@ -758,14 +759,14 @@ static int find_gray_scale_gamma_value(struct gray_scale *gray_scale_lut, u64 ga
 	s64 delta_l, delta_r;
 
 	if (unlikely(!gray_scale_lut)) {
-		pr_err("%s, gray_scale_lut not exist\n", __func__);
+		panel_err("gray_scale_lut not exist\n");
 		return -EINVAL;
 	}
 
 	if ((gray_scale_lut[l].gamma_value > gamma_value) ||
 			(gray_scale_lut[r].gamma_value < gamma_value)) {
-		pr_err("%s, out of range([l:%d, r:%d], [%lld, %lld]) candela(%lld)\n",
-				__func__, l, r, gray_scale_lut[l].gamma_value,
+		panel_err("out of range([l:%d, r:%d], [%lld, %lld]) candela(%lld)\n",
+				l, r, gray_scale_lut[l].gamma_value,
 				gray_scale_lut[r].gamma_value, gamma_value);
 		return -EINVAL;
 	}
@@ -821,8 +822,8 @@ int gamma_table_add_offset(s32 (*src)[MAX_COLOR], s32 (*ofs)[MAX_COLOR],
 	int v, c, upper, res;
 
 	if (unlikely(!tp || nr_tp == 0 || !src|| !ofs || !out)) {
-		pr_err("%s, invalid parameter (tp %d, nr_tp %d, src %d, ofs %d, out %d)\n",
-				__func__, !!tp, nr_tp, !!src, !!ofs, !!out);
+		panel_err("invalid parameter (tp %d, nr_tp %d, src %d, ofs %d, out %d)\n",
+				!!tp, nr_tp, !!src, !!ofs, !!out);
 		return -EINVAL;
 	}
 
@@ -837,8 +838,8 @@ int gamma_table_add_offset(s32 (*src)[MAX_COLOR], s32 (*ofs)[MAX_COLOR],
 
 			out[v][c] = res;
 #ifdef DEBUG_DIMMING
-			pr_info("%s, src %d, ofs %d, out %d\n",
-					__func__, src[v][c], ofs[v][c], out[v][c]);
+			panel_info("src %d, ofs %d, out %d\n",
+					src[v][c], ofs[v][c], out[v][c]);
 #endif
 		}
 	}
@@ -852,14 +853,13 @@ int gamma_table_interpolation(s32 (*from)[MAX_COLOR], s32 (*to)[MAX_COLOR],
 	int i, c;
 
 	if (unlikely(!from || !to || !out)) {
-		pr_err("%s, invalid parameter (from %p, to %p, out %p)\n",
-				__func__, from, to, out);
+		panel_err("invalid parameter (from %p, to %p, out %p)\n", from, to, out);
 		return -EINVAL;
 	}
 
 	if (unlikely(nr_tp < 0 || cur_step > total_step)) {
-		pr_err("%s, out of range (nr_tp %d, cur_step %d, total_step %d)\n",
-				__func__, nr_tp, cur_step, total_step);
+		panel_err("out of range (nr_tp %d, cur_step %d, total_step %d)\n",
+				nr_tp, cur_step, total_step);
 		return -EINVAL;
 	}
 
@@ -868,8 +868,8 @@ int gamma_table_interpolation(s32 (*from)[MAX_COLOR], s32 (*to)[MAX_COLOR],
 			out[i][c] =
 				interpolation(from[i][c], to[i][c], cur_step, total_step);
 #ifdef DEBUG_DIMMING
-			pr_info("%s, from %d, to %d, out %d, cur_step %d, total_step %d\n",
-					__func__, from[i][c], to[i][c], out[i][c], cur_step, total_step);
+			panel_info("from %d, to %d, out %d, cur_step %d, total_step %d\n",
+					from[i][c], to[i][c], out[i][c], cur_step, total_step);
 #endif
 		}
 	}
@@ -883,14 +883,13 @@ int gamma_table_interpolation_round(s32 (*from)[MAX_COLOR], s32 (*to)[MAX_COLOR]
 	int i, c;
 
 	if (unlikely(!from || !to || !out)) {
-		pr_err("%s, invalid parameter (from %p, to %p, out %p)\n",
-				__func__, from, to, out);
+		panel_err("invalid parameter (from %p, to %p, out %p)\n", from, to, out);
 		return -EINVAL;
 	}
 
 	if (unlikely(nr_tp < 0 || cur_step > total_step)) {
-		pr_err("%s, out of range (nr_tp %d, cur_step %d, total_step %d)\n",
-				__func__, nr_tp, cur_step, total_step);
+		panel_err("out of range (nr_tp %d, cur_step %d, total_step %d)\n",
+				nr_tp, cur_step, total_step);
 		return -EINVAL;
 	}
 
@@ -899,8 +898,8 @@ int gamma_table_interpolation_round(s32 (*from)[MAX_COLOR], s32 (*to)[MAX_COLOR]
 			out[i][c] =
 				interpolation_round(from[i][c], to[i][c], cur_step, total_step);
 #ifdef DEBUG_DIMMING
-			pr_info("%s, from %d, to %d, out %d, cur_step %d, total_step %d\n",
-					__func__, from[i][c], to[i][c], out[i][c], cur_step, total_step);
+			panel_info("from %d, to %d, out %d, cur_step %d, total_step %d\n",
+					from[i][c], to[i][c], out[i][c], cur_step, total_step);
 #endif
 		}
 	}
@@ -932,7 +931,7 @@ static int generate_gray_scale(struct dimming_info *dim_info)
 			v_lower = (s64)gray_scale_lut[iv_lower].vout[c];
 			vout = interpolation(v_lower, v_upper, cur_step, total_step);
 #ifdef DEBUG_DIMMING
-			pr_info("lower %3d, upper %3d, "
+			panel_info("lower %3d, upper %3d, "
 					"cur_step %3d, total_step %3d, vout[%d]\t "
 					"from %2lld.%04lld, vout %2lld.%04lld, to %2lld.%04lld\n",
 					iv_lower, iv_upper, cur_step, total_step, c,
@@ -941,8 +940,8 @@ static int generate_gray_scale(struct dimming_info *dim_info)
 					scale_down_round(v_upper, 4), scale_down_rem(v_upper, 4));
 #endif
 			if (vout < 0) {
-				pr_warn("%s, from %2lld.%4lld, to %2lld.%4lld (idx %-3d %-3d), cur_step %-3d, total_step %-3d\n",
-						__func__, scale_down_round(v_lower, 4), scale_down_rem(v_lower, 4),
+				panel_warn("from %2lld.%4lld, to %2lld.%4lld (idx %-3d %-3d), cur_step %-3d, total_step %-3d\n",
+						scale_down_round(v_lower, 4), scale_down_rem(v_lower, 4),
 						scale_down_round(v_upper, 4), scale_down_rem(v_upper, 4),
 						iv_lower, iv_upper, cur_step, total_step);
 				ret = -EINVAL;
@@ -955,7 +954,7 @@ static int generate_gray_scale(struct dimming_info *dim_info)
 		/* base luminance gamma curve value */
 		gray_scale_lut[i].gamma_value = TARGET_LUMINANCE * (u64)gamma_curve_value(TARGET_G_CURVE_DEGREE, i);
 #ifdef DEBUG_DIMMING
-		pr_info("%-4d gamma %3lld.%02lld\n", i,
+		panel_info("%-4d gamma %3lld.%02lld\n", i,
 				scale_down_round(gray_scale_lut[i].gamma_value, 2),
 				scale_down_rem(gray_scale_lut[i].gamma_value, 2));
 #endif
@@ -973,7 +972,7 @@ int find_luminance(struct dimming_info *dim_info, u32 luminance)
 	struct dimming_lut *dim_lut;
 
 	if (unlikely(!dim_info)) {
-		pr_err("%s, invalid dim_info\n", __func__);
+		panel_err("invalid dim_info\n");
 		return -1;
 	}
 
@@ -981,7 +980,7 @@ int find_luminance(struct dimming_info *dim_info, u32 luminance)
 	nr_luminance = dim_info->nr_luminance;
 
 	if (unlikely(!dim_lut)) {
-		pr_err("%s, invalid dim_lut\n", __func__);
+		panel_err("invalid dim_lut\n");
 		return -1;
 	}
 
@@ -998,7 +997,7 @@ int get_luminance(struct dimming_info *dim_info, u32 index)
 	struct dimming_lut *dim_lut;
 
 	if (unlikely(!dim_info)) {
-		pr_err("%s, invalid dim_info\n", __func__);
+		panel_err("invalid dim_info\n");
 		return 0;
 	}
 
@@ -1006,13 +1005,12 @@ int get_luminance(struct dimming_info *dim_info, u32 index)
 	nr_luminance = dim_info->nr_luminance;
 
 	if (unlikely(!dim_lut)) {
-		pr_err("%s, invalid dim_lut\n", __func__);
+		panel_err("invalid dim_lut\n");
 		return 0;
 	}
 
 	if (index >= nr_luminance) {
-		pr_warn("%s, exceed max %d, index %d\n",
-				__func__, nr_luminance - 1, index);
+		panel_warn("exceed max %d, index %d\n", nr_luminance - 1, index);
 		return dim_lut[nr_luminance - 1].luminance;
 	}
 	return dim_lut[index].luminance;
@@ -1027,12 +1025,12 @@ static void copy_tpout_center(struct dimming_info *dim_info, u32 luminance, u8 *
 	int i, c, value;
 
 	if (unlikely(!tp || !dim_lut)) {
-		pr_err("%s, invalid tp or dim_lut\n", __func__);
+		panel_err("invalid tp or dim_lut\n");
 		return;
 	}
 
 	if (unlikely(ilum < 0)) {
-		pr_err("%s, luminance(%d) not found\n", __func__, luminance);
+		panel_err("luminance(%d) not found\n", luminance);
 		return;
 	}
 
@@ -1055,29 +1053,28 @@ static void copy_tpout_hbm_center(struct dimming_info *dim_info, u32 luminance, 
 	s32 (*output_gamma_tbl)[MAX_COLOR];
 
 	if (unlikely(!tp || !dim_lut)) {
-		pr_err("%s, invalid tp or dim_lut\n", __func__);
+		panel_err("invalid tp or dim_lut\n");
 		return;
 	}
 
 	target_gamma_tbl =
 		(s32 (*)[MAX_COLOR])kzalloc(sizeof(s32) * nr_tp * MAX_COLOR, GFP_KERNEL);
 	if (unlikely(!target_gamma_tbl)) {
-		pr_err("%s. failed to allocate target_gamma_tbl\n", __func__);
+		panel_err("failed to allocate target_gamma_tbl\n");
 		goto err;
 	}
 
 	output_gamma_tbl =
 		(s32 (*)[MAX_COLOR])kzalloc(sizeof(s32) * nr_tp * MAX_COLOR, GFP_KERNEL);
 	if (unlikely(!output_gamma_tbl)) {
-		pr_err("%s. failed to allocate output_gamma_tbl\n", __func__);
+		panel_err("failed to allocate output_gamma_tbl\n");
 		goto err_alloc;
 	}
 
 	/* make target gamma table */
 	ilum = find_luminance(dim_info, dim_info->target_luminance);
 	if (unlikely(ilum < 0)) {
-		pr_err("%s, target_luminance(%d) not found\n",
-				__func__, dim_info->target_luminance);
+		panel_err("target_luminance(%d) not found\n", dim_info->target_luminance);
 		goto err_find;
 	}
 
@@ -1109,7 +1106,7 @@ void get_dimming_gamma(struct dimming_info *dim_info, u32 luminance, u8 *output,
 		void (*copy)(u8 *output, u32 value, u32 index, u32 color))
 {
 	if (unlikely(!dim_info || !output)) {
-		pr_err("%s, invalid dim_info or output\n", __func__);
+		panel_err("invalid dim_info or output\n");
 		return;
 	}
 
@@ -1118,8 +1115,8 @@ void get_dimming_gamma(struct dimming_info *dim_info, u32 luminance, u8 *output,
 	else if (dim_info->hbm_luminance && luminance <= dim_info->hbm_luminance)
 		copy_tpout_hbm_center(dim_info, luminance, output, copy);
 	else
-		pr_warn("%s, out of range (hbm_luminance %d, luminance %d)\n",
-				__func__, dim_info->hbm_luminance, luminance);
+		panel_warn("out of range (hbm_luminance %d, luminance %d)\n",
+				dim_info->hbm_luminance, luminance);
 
 	return;
 }
@@ -1134,7 +1131,7 @@ void print_dimming_tp_output(struct dimming_lut *dim_lut, struct tp *tp, int siz
 		tpout = dim_lut[i].tpout;
 		luminance = dim_lut[i].luminance;
 		for (v = 0; v < NR_TP; v++) {
-			pr_info("luminance %3d %5s "
+			panel_info("luminance %3d %5s "
 				"L %3lld.%05lld\t  M_GRAY %3u "
 				"R %3lld.%05lld\t G %3lld.%05lld\t B %3lld.%05lld\t "
 				"%3X %3X %3X\n",
@@ -1146,7 +1143,7 @@ void print_dimming_tp_output(struct dimming_lut *dim_lut, struct tp *tp, int siz
 				tpout[v].center[RED], tpout[v].center[GREEN], tpout[v].center[BLUE]);
 		}
 	}
-	pr_info("\n");
+	panel_info("\n");
 }
 
 static int generate_gamma_table(struct dimming_info *dim_info)
@@ -1163,12 +1160,12 @@ static int generate_gamma_table(struct dimming_info *dim_info)
 	u32 luminance;
 
 	if (unlikely(!calc_gray_order)) {
-		pr_err("%s, calc_gray_order not exist!!\n", __func__);
+		panel_err("calc_gray_order not exist!!\n");
 		return -EINVAL;
 	}
 
 	if (unlikely(!calc_vout_order)) {
-		pr_err("%s, calc_vout_order not exist!!\n", __func__);
+		panel_err("calc_vout_order not exist!!\n");
 		return -EINVAL;
 	}
 
@@ -1296,13 +1293,13 @@ void prepare_dim_info(struct dimming_info *dim_info)
 
 
 #ifdef DEBUG_DIMMING
-	pr_info("NR_TP %d\n", NR_TP);
+	panel_info("NR_TP %d\n", NR_TP);
 #endif
 
 	if (!calc_gray_order) {
 		calc_gray_order = generate_order(NR_TP - 1, 0, NR_TP - 2);
 		if (unlikely(!calc_gray_order)) {
-			pr_err("%s, calc_gray_order not exist!!\n", __func__);
+			panel_err("calc_gray_order not exist!!\n");
 			return;
 		}
 #ifdef DEBUG_DIMMING
@@ -1312,14 +1309,14 @@ void prepare_dim_info(struct dimming_info *dim_info)
 					max(MAX_PRINT_BUF_SIZE - len, 0), "[%d]%s ", i,
 					((calc_gray_order[i] >= 0 && calc_gray_order[i] < NR_TP) ?
 					tp[calc_gray_order[i]].name : "TP_ERR"));
-		pr_info("%s\n", buf);
+		panel_info("%s\n", buf);
 #endif
 	}
 
 	if (!calc_vout_order) {
 		calc_vout_order = generate_order(0, NR_TP - 1, 1);
 		if (unlikely(!calc_vout_order)) {
-			pr_err("%s, calc_vout_order not exist!!\n", __func__);
+			panel_err("calc_vout_order not exist!!\n");
 			return;
 		}
 #ifdef DEBUG_DIMMING
@@ -1329,7 +1326,7 @@ void prepare_dim_info(struct dimming_info *dim_info)
 					max(MAX_PRINT_BUF_SIZE - len, 0), "[%d]%s ", i,
 					((calc_vout_order[i] >= 0 && calc_vout_order[i] < NR_TP) ?
 					tp[calc_vout_order[i]].name : "TP_ERR"));
-		pr_info("%s\n", buf);
+		panel_info("%s\n", buf);
 #endif
 	}
 }
@@ -1373,7 +1370,7 @@ void print_tp_lut(struct dimming_info *dim_info)
 				break;
 			}
 		}
-		pr_info("%s\n", buf);
+		panel_info("%s\n", buf);
 	}
 }
 
@@ -1430,7 +1427,7 @@ void print_dim_lut(struct dimming_info *dim_info)
 				break;
 			}
 		}
-		pr_info("%s\n", buf);
+		panel_info("%s\n", buf);
 	}
 }
 
@@ -1441,18 +1438,18 @@ void print_dimming_info(struct dimming_info *dim_info, int tag)
 	int len, col, ncol, *fields;
 	struct dimming_lut_info *dim_lut_info = &dim_info->dim_lut_info;
 
-	pr_info("%s\n", tag_name[tag]);
+	panel_info("%s\n", tag_name[tag]);
 	switch (tag) {
 	case TAG_DIM_GLOBAL_INFO_START:
-		pr_info("%-15s %u\n", global_dim_info_name[GLOBAL_DIM_INFO_NR_TP],
+		panel_info("%-15s %u\n", global_dim_info_name[GLOBAL_DIM_INFO_NR_TP],
 				dim_info->nr_tp);
-		pr_info("%-15s %u\n", global_dim_info_name[GLOBAL_DIM_INFO_NR_LUMINANCE],
+		panel_info("%-15s %u\n", global_dim_info_name[GLOBAL_DIM_INFO_NR_LUMINANCE],
 				dim_info->nr_luminance);
-		pr_info("%-15s %lld %d\n", global_dim_info_name[GLOBAL_DIM_INFO_VREGOUT],
+		panel_info("%-15s %lld %d\n", global_dim_info_name[GLOBAL_DIM_INFO_VREGOUT],
 				dim_info->vregout, DIMMING_BITSHIFT);
-		pr_info("%-15s %lld %d\n", global_dim_info_name[GLOBAL_DIM_INFO_VREF],
+		panel_info("%-15s %lld %d\n", global_dim_info_name[GLOBAL_DIM_INFO_VREF],
 				dim_info->vref, DIMMING_BITSHIFT);
-		pr_info("%-15s %d\n", global_dim_info_name[GLOBAL_DIM_INFO_GAMMA],
+		panel_info("%-15s %d\n", global_dim_info_name[GLOBAL_DIM_INFO_GAMMA],
 				gamma_curve_lut[(int)dim_info->target_g_curve_degree].gamma);
 		len = snprintf(buf, MAX_PRINT_BUF_SIZE,
 				"%-15s ", global_dim_info_name[GLOBAL_DIM_INFO_VT_VOLTAGE]);
@@ -1460,7 +1457,7 @@ void print_dimming_info(struct dimming_info *dim_info, int tag)
 			len += snprintf(buf + len,
 					max(MAX_PRINT_BUF_SIZE - len, 0),
 					"%d  ", dim_info->vt_voltage[i]);
-		pr_info("%s\n", buf);
+		panel_info("%s\n", buf);
 		break;
 	case TAG_TP_LUT_INFO_START:
 		ncol = dim_info->tp_lut_info.ncol;
@@ -1469,7 +1466,7 @@ void print_dimming_info(struct dimming_info *dim_info, int tag)
 			len += snprintf(buf + len,
 					max(MAX_PRINT_BUF_SIZE - len, 0),
 					"%s    ", tp_lut_field_name[fields[col]]);
-		pr_info("%s\n", buf);
+		panel_info("%s\n", buf);
 		break;
 	case TAG_TP_LUT_START:
 		print_tp_lut(dim_info);
@@ -1493,7 +1490,7 @@ void print_dimming_info(struct dimming_info *dim_info, int tag)
 						dim_lut_info->rgb_color_offset_range.step].name);
 			}
 		}
-		pr_info("%s\n", buf);
+		panel_info("%s\n", buf);
 		break;
 	case TAG_DIM_LUT_START:
 		print_dim_lut(dim_info);
@@ -1511,7 +1508,7 @@ void print_dimming_info(struct dimming_info *dim_info, int tag)
 		print_gray_scale_vout(dim_info->gray_scale_lut);
 		break;
 	}
-	pr_info("%s\n\n", tag_name[tag + 1]);
+	panel_info("%s\n\n", tag_name[tag + 1]);
 }
 
 void print_input_data(struct dimming_info *dim_info)
@@ -1536,7 +1533,7 @@ void print_tbl(struct dimming_info *dim_info, s32 (*tbl)[MAX_COLOR])
 				max(MAX_PRINT_BUF_SIZE - len, 0),
 				"0x%03X 0x%03X 0x%03X\n",
 				tbl[i][RED], tbl[i][GREEN], tbl[i][RED]);
-	pr_info("%s\n", buf);
+	panel_info("%s\n", buf);
 }
 
 int init_dimming_info(struct dimming_info *dim_info, struct dimming_init_info *src)
@@ -1562,8 +1559,8 @@ int init_dimming_info(struct dimming_info *dim_info, struct dimming_init_info *s
 	dim_info->target_g_curve_degree =
 		gamma_value_to_degree(src->target_gamma);
 	if (unlikely(dim_info->target_g_curve_degree == GAMMA_NONE)) {
-		pr_err("%s, invalid target gamma degree %d\n",
-				__func__, dim_info->target_g_curve_degree);
+		panel_err("invalid target gamma degree %d\n",
+				dim_info->target_g_curve_degree);
 		return -EINVAL;
 	}
 
@@ -1579,7 +1576,7 @@ int init_dimming_mtp(struct dimming_info *dim_info, s32 (*mtp)[MAX_COLOR])
 		for_each_color(c)
 			dim_info->tp[i].offset[c] = mtp[i][c];
 
-	pr_info("%s, init mtp offset\n", __func__);
+	panel_info("init mtp offset\n");
 	print_mtp_offset(dim_info);
 
 	return 0;
@@ -1590,14 +1587,13 @@ int init_dimming_hbm_info(struct dimming_info *dim_info, s32 (*hbm_gamma_tbl)[MA
 	int i, c, nr_tp;
 
 	if (unlikely(!dim_info || !hbm_gamma_tbl)) {
-		pr_err("%s, invalid parameter\n", __func__);
+		panel_err("invalid parameter\n");
 		return -EINVAL;
 	}
 
 	if (unlikely(hbm_luminance < dim_info->target_luminance)) {
-		pr_err("%s, out of range (hbm_luminance %d < target_luminance %d)\n",
-				__func__, hbm_luminance,
-				dim_info->target_luminance);
+		panel_err("out of range (hbm_luminance %d < target_luminance %d)\n",
+				hbm_luminance, dim_info->target_luminance);
 		return -EINVAL;
 	}
 
@@ -1611,8 +1607,7 @@ int init_dimming_hbm_info(struct dimming_info *dim_info, s32 (*hbm_gamma_tbl)[MA
 			dim_info->hbm_gamma_tbl[i][c] = hbm_gamma_tbl[i][c];
 	dim_info->hbm_luminance = hbm_luminance;
 #ifdef DEBUG_DIMMING
-	pr_info("%s, init hbm gamma table (hbm_luminance %d)\n",
-			__func__, hbm_luminance);
+	panel_info("init hbm gamma table (hbm_luminance %d)\n", hbm_luminance);
 	print_hbm_gamma_tbl(dim_info);
 #endif
 
@@ -1632,7 +1627,7 @@ int process_dimming(struct dimming_info *dim_info)
 #endif
 
 	if (unlikely(!dim_info)) {
-		pr_err("%s, invalid dim_info\n", __func__);
+		panel_err("invalid dim_info\n");
 		return -EINVAL;
 	}
 	VREGOUT = dim_info->vregout;
@@ -1644,7 +1639,7 @@ int process_dimming(struct dimming_info *dim_info)
 
 	tp = dim_info->tp;
 	if (unlikely(!tp)) {
-		pr_err("%s, tuning point not prepared\n", __func__);
+		panel_err("tuning point not prepared\n");
 		return -EINVAL;
 	}
 
@@ -1656,8 +1651,7 @@ int process_dimming(struct dimming_info *dim_info)
 		for_each_color(c) {
 			tp[v].vout[c] = mtp_offset_to_vregout(dim_info, v, (enum color)c);
 			if (tp[v].vout[c] < 0) {
-				pr_warn("%s, invalid vout[%s][%s] %lld\n",
-						__func__, tp[v].name, color_name[c],
+				panel_warn("invalid vout[%s][%s] %lld\n", tp[v].name, color_name[c],
 						tp[v].vout[c]);
 			}
 			dim_info->gray_scale_lut[tp[v].level].vout[c] =
@@ -1691,7 +1685,7 @@ int process_dimming(struct dimming_info *dim_info)
 #endif
 #ifdef DEBUG_EXCUTION_TIME
 	gettime(te);
-	pr_info("elapsed time %u us\n", difftime(ts, te));
+	panel_info("elapsed time %u us\n", difftime(ts, te));
 #endif
 	/* TODO : free allocated heap */
 

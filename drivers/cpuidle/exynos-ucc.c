@@ -102,11 +102,22 @@ static void ucc_update(struct ucc_req *req, int value, int action)
 		update_cur_cstate();
 }
 
+static bool ucc_check_valid_req_val(int value)
+{
+	if (value < 0 || value >= ucc_config_count)
+		return false;
+
+	return true;
+}
+
 void ucc_add_request(struct ucc_req *req, int value)
 {
 	unsigned long flags;
 
 	if (!ucc_initialized)
+		return;
+
+	if (!ucc_check_valid_req_val(value))
 		return;
 
 	spin_lock_irqsave(&ucc_lock, flags);
@@ -126,6 +137,9 @@ void ucc_update_request(struct ucc_req *req, int value)
 	unsigned long flags;
 
 	if (!ucc_initialized)
+		return;
+
+	if (!ucc_check_valid_req_val(value))
 		return;
 
 	spin_lock_irqsave(&ucc_lock, flags);

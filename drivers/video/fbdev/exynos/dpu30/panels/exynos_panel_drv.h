@@ -96,6 +96,10 @@ struct exynos_panel_ops {
 	int (*sleepout)(struct exynos_panel_device *panel);
 	int (*notify)(struct exynos_panel_device *panel, void *data);
 	int (*set_error_cb)(struct exynos_panel_device *panel, void *data);
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	int (*get_display_mode)(struct exynos_panel_device *panel, void *data);
+	int (*set_display_mode)(struct exynos_panel_device *panel, void *data);
+#endif
 #endif
 };
 
@@ -166,7 +170,7 @@ int exynos_panel_calc_slice_width(u32 dsc_cnt, u32 slice_num, u32 xres);
 #define EXYNOS_PANEL_IOC_DUMP		_IOW('P', 9, u32)
 #define EXYNOS_PANEL_IOC_READ_STATE	_IOR('P', 10, u32)
 #define EXYNOS_PANEL_IOC_SET_LIGHT	_IOW('P', 11, u32)
-#define EXYNOS_PANEL_IOC_SET_VRRFRESH	_IOW('P', 12, struct vrr_config_data *)
+#define EXYNOS_PANEL_IOC_SET_VREFRESH	_IOW('P', 12, struct vrr_config_data *)
 
 #if defined(CONFIG_EXYNOS_COMMON_PANEL)
 #define EXYNOS_PANEL_IOC_INIT	_IOW('P', 21, u32)
@@ -178,6 +182,10 @@ int exynos_panel_calc_slice_width(u32 dsc_cnt, u32 slice_num, u32 xres);
 #define EXYNOS_PANEL_IOC_NOTIFY	_IOW('P', 27, u32)
 #define EXYNOS_PANEL_IOC_SET_ERROR_CB	_IOW('P', 28, u32)
 #define EXYNOS_PANEL_IOC_PROBE	_IOW('P', 29, u32)
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+#define EXYNOS_PANEL_IOC_GET_DISPLAY_MODE	_IOR('P', 30, void *)
+#define EXYNOS_PANEL_IOC_SET_DISPLAY_MODE	_IOW('P', 31, void *)
+#endif
 #endif
 
 #endif /* __EXYNOS_PANEL_DRV_H__ */

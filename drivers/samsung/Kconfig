@@ -82,6 +82,11 @@ config SAMSUNG_PRODUCT_SHIP
 	depends on SEC_EXT
 	default n
 
+config DELAY_CHECKER
+	bool "enable delay checker"
+	depends on !SAMSUNG_PRODUCT_SHIP
+	default n
+
 comment "Samsung TN option for VTS test"
 config SEC_VTS_TEST
 	bool "VTS TEST"

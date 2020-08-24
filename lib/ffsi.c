@@ -715,16 +715,16 @@ static inline randomness __gs_on_kld(struct tpdf *targ,
 				     unsigned int **mold,
 				     unsigned int max_var)
 {
-	int cur;
-	int min_idx = 0;
-	int min_kld = __INFTY;
+	unsigned int cur;
+	unsigned int min_idx = 0;
+	unsigned int min_kld = __INFTY;
 
-	int lmost = 0;
-	int rmost = (int)max_var - 1;
+	unsigned int lmost = 0;
+	unsigned int rmost = max_var - 1;
 
-	int width = (int)max_var;
-	int hop_total = ilog2((unsigned int)width);
-	int hop_width = (1 << hop_total) / hop_total;
+	unsigned int width = max_var;
+	unsigned int hop_total = ilog2((unsigned int)width);
+	unsigned int hop_width = (1 << hop_total) / hop_total;
 	int kld_ref[16];
 
 	memset(kld_ref, 0xEF, sizeof(kld_ref));
@@ -734,37 +734,36 @@ static inline randomness __gs_on_kld(struct tpdf *targ,
 	 */
 	do {
 		for (cur = lmost; cur <= (rmost + 1); cur += hop_width) {
-			cur = cur > rmost ? rmost : cur;
+			cur = min(cur, rmost);
 
 #ifndef ASYMMETRIC_INFERENCE
-			if (kld_ref[cur] == __INFTY)
+			if (kld_ref[cur] == __INFTY) {
 				kld_ref[cur] = kl_diversity(targ,
 					(unsigned int *)mold + cur * FFSI_QUANT_STEP);
-
-			if (abs(kld_ref[cur]) < abs(min_kld)) {
-				min_kld = kld_ref[cur];
-				min_idx = cur;
 			}
 #else
 			if (kld_ref[cur] == __INFTY) {
 				kld_ref[cur] = kl_asymm_diversity(targ,
 					(unsigned int *)mold + cur * FFSI_QUANT_STEP, KLD_RPLANE);
 			}
-
-			if (abs(kld_ref[cur]) < abs(min_kld)) {
-				min_kld = kld_ref[cur];
-				min_idx = cur;
-			}
 #endif
 		}
 
-		lmost = max(min_idx - hop_width + 1, lmost);
-		rmost = min(min_idx + hop_width - 1, rmost);
+		lmost = (unsigned int)(max((int)min_idx - (int)hop_width + 1, (int)lmost));
+		rmost = (unsigned int)(min((int)min_idx + (int)hop_width - 1, (int)rmost));
 
 		width = rmost - lmost + 1;
-		hop_total = ilog2((unsigned int)width);
+		hop_total = ilog2(width + 1);
 		hop_width = (1 << hop_total) / hop_total;
-	} while (rmost - lmost > 2);
+		lmost += (kld_ref[lmost] != __INFTY);
+	} while (rmost > lmost);
+
+	for (cur = 0; cur < max_var; cur++) {
+		if (abs(kld_ref[cur]) < abs(min_kld)) {
+			min_kld = kld_ref[cur];
+			min_idx = cur;
+		}
+	}
 
 	return (randomness)min_idx;
 }
@@ -802,17 +801,11 @@ static int ffsi_search_nearest_job_tpdf(struct ffsi_class *self)
 static inline void ffsi_tpdf_carving_out(struct tpdf *self)
 {
 	unsigned int scope;
-	unsigned int mult = ffsi_window_size(self) / FFSI_TPDF_CUMSUM;
 
 	self->rescaler(self);
 
-	self->pc_cnt++;
-
 	scope = tfifo_out(&self->cache);
 	self->qtbl[scope] = self->qtbl[scope] ? self->qtbl[scope] - 1 : 0;
-
-	if (self->pc_cnt == ffsi_window_size(self) / mult)
-		self->pc_cnt = 0;
 }
 
 /**
@@ -836,6 +829,10 @@ static void ffsi_job_probability_collapse(struct ffsi_class *self,
 		list_for_each_entry(level, &self->tpdf_cascade, pos) {
 			scope = (unsigned int)RV_TAILORED(level, v);
 
+#ifdef ASYMMETRIC_INFERENCE
+			if (scope < level->qlvl >> 1)
+				continue;
+#endif
 			level->qtbl[scope]++;
 
 			if (is_ffsi_window_infty(level)) {
@@ -900,14 +897,25 @@ static unsigned int ffsi_cap_soft_bettor(struct ffsi_class *self,
 		if (level->irand == FFSI_DIVERGING) {
 			new_cap = cap_legacy;
 		} else {
-			new_cap += level->weight *
-					((level->irand > self->stats.rand_neutral) ?
-					 max_cap >> self->capa_denom : min_cap >> self->capa_denom);
+			if (level->irand < self->stats.rand_neutral) {
+				new_cap += level->weight *
+					((min_cap + mult_frac((cap_legacy - min_cap),
+				 			      level->irand,
+							      self->stats.rand_neutral))
+					  >> self->capa_denom);
+			} else if (level->irand > self->stats.rand_neutral) {
+				new_cap += level->weight *
+					((max_cap - mult_frac((max_cap - cap_legacy),
+							      (self->resilience - level->irand - 1),
+							      (self->resilience - self->stats.rand_neutral - 1)))
+					  >> self->capa_denom);
+			} else {
+				new_cap += level->weight * (cap_legacy >> self->capa_denom);
+			}
 		}
 	}
 
 	self->stats.save_total += ((long long)cap_legacy - (long long)new_cap) / 1000;
-
 	return new_cap;
 }
 
@@ -958,7 +966,6 @@ static unsigned int ffsi_cap_strict_bettor(struct ffsi_class *self,
 	}
 
 	self->stats.save_total += ((long long)cap_legacy - (long long)new_cap) / 1000;
-
 	return new_cap;
 }
 
@@ -1001,6 +1008,7 @@ static void ffsi_stopper(struct ffsi_class *self)
 				tfifo_alloc(&cur->cache, ffsi_window_size(cur));
 
 				cur->pc_cnt = 0;
+				cur->win_size &= ~FFSI_WINDOW_CNT_MASK;
 			}
 		}
 	}
@@ -1015,6 +1023,7 @@ static void ffsi_finalizer(struct ffsi_class *self)
 {
 	if (self->extif)
 		destroy_ffsinst_obj(self->extif);
+
 	ffsi_tpdf_cleaning(self);
 }
 
@@ -1051,7 +1060,7 @@ struct ffsi_class *ffsi_obj_creator(const char *alias,
 
 		.tpdf_cascade	= LIST_HEAD_INIT(vessel->tpdf_cascade),
 		.capa_denom	= 0,
-		.stats		= {0, 0L, FFSI_DEF_RAND_NEUTRAL, 0},
+		.stats		= {0, 0LL, FFSI_DEF_RAND_NEUTRAL, 0},
 
 		.initializer	= ffsi_initializer,
 		.stopper	= ffsi_stopper,

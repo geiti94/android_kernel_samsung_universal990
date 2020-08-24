@@ -70,14 +70,14 @@ static void dwc3_exynos_set_vbus_current_work(struct work_struct *w)
 	switch (dwc->vbus_current) {
 	case USB_CURRENT_SUSPENDED:
 	/* set vbus current for suspend state is called in usb_notify. */
-		send_otg_notify(o_notify, NOTIFY_EVENT_USBD_SUSPEND, 1);
+		send_otg_notify(o_notify, NOTIFY_EVENT_USBD_SUSPENDED, 1);
 		goto skip;
 	case USB_CURRENT_UNCONFIGURED:
-		send_otg_notify(o_notify, NOTIFY_EVENT_USBD_UNCONFIGURE, 1);
+		send_otg_notify(o_notify, NOTIFY_EVENT_USBD_UNCONFIGURED, 1);
 		break;
 	case USB_CURRENT_HIGH_SPEED:
 	case USB_CURRENT_SUPER_SPEED:
-		send_otg_notify(o_notify, NOTIFY_EVENT_USBD_CONFIGURE, 1);
+		send_otg_notify(o_notify, NOTIFY_EVENT_USBD_CONFIGURED, 1);
 		break;
 	default:
 		break;
@@ -817,6 +817,7 @@ void dwc3_event_buffers_cleanup(struct dwc3 *dwc)
 
 	left = dwc3_readl(dwc->regs, DWC3_GEVNTCOUNT(0));
 	left &= DWC3_GEVNTCOUNT_MASK;
+
 	while (left > 0) {
 		dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(0), 4);
 		left -= 4;

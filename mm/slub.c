@@ -314,10 +314,9 @@ static inline void set_freepointer(struct kmem_cache *s, void *object, void *fp)
 	if (rkp_cred_enable && s->name && 
 		(!strcmp(s->name, CRED_JAR_RO)|| !strcmp(s->name, TSEC_JAR) 
 		 || !strcmp(s->name, VFSMNT_JAR))) {
-		uh_call(UH_APP_RKP, RKP_KDP_X44, (u64)object, (u64)s->offset, (u64)fp, 0);
-	} else 
+		uh_call(UH_APP_KDP, RKP_KDP_X44, (u64)object, (u64)s->offset, (u64)fp, 0);
+	} else
 #endif
-
 	*(void **)freeptr_addr = freelist_ptr(s, fp, freeptr_addr);
 }
 
@@ -1701,7 +1700,7 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 {
 	struct page *page;
 	struct kmem_cache_order_objects oo = s->oo;
-#ifdef CONFIG_KDP_CRED
+#if (defined CONFIG_KDP_CRED && (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP))
 	void *virt_page = NULL;
 #endif
 	gfp_t alloc_gfp;
@@ -1723,12 +1722,11 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	alloc_gfp = (flags | __GFP_NOWARN | __GFP_NORETRY) & ~__GFP_NOFAIL;
 	if ((alloc_gfp & __GFP_DIRECT_RECLAIM) && oo_order(oo) > oo_order(s->min))
 		alloc_gfp = (alloc_gfp | __GFP_NOMEMALLOC) & ~(__GFP_RECLAIM|__GFP_NOFAIL);
-#ifdef CONFIG_KDP_CRED
+#if (defined CONFIG_KDP_CRED && (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP))
 	if (s->name && 
 		(!strcmp(s->name, CRED_JAR_RO) ||  
 		!strcmp(s->name, TSEC_JAR)|| 
 		!strcmp(s->name, VFSMNT_JAR))) {
-	
 		virt_page = rkp_ro_alloc();
 		if(!virt_page)
 			goto def_alloc;
@@ -1752,8 +1750,8 @@ def_alloc:
 			goto out;
 		stat(s, ORDER_FALLBACK);
 	}
-#ifdef CONFIG_KDP_CRED
-	} 
+#if (defined CONFIG_KDP_CRED && (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP))
+	}
 #endif
 
 	page->objects = oo_objects(oo);
@@ -1779,25 +1777,25 @@ def_alloc:
 	if (s->name) {
 		u64	sc,va_page;
 		va_page = (u64)__va(page_to_phys(page));
-		
+
 		if(!strcmp(s->name, CRED_JAR_RO)) {
 			for(sc = 0; sc < (1 << oo_order(oo)) ; sc++) {
-				uh_call(UH_APP_RKP, RKP_KDP_X50, va_page, 0, 0, 0);
+				uh_call(UH_APP_KDP, RKP_KDP_X50, va_page, 0, 0, 0);
 				va_page += PAGE_SIZE;
 			}
-		} 
+		}
 #if 1
 		if(!strcmp(s->name, TSEC_JAR)) {
 			for(sc = 0; sc < (1 << oo_order(oo)) ; sc++) {
-				uh_call(UH_APP_RKP, RKP_KDP_X4E, va_page, 0, 0, 0);
+				uh_call(UH_APP_KDP, RKP_KDP_X4E, va_page, 0, 0, 0);
 				va_page += PAGE_SIZE;
 			}
 		}
 #endif
-#if 1 
+#if 1
 		if(!strcmp(s->name, VFSMNT_JAR)) {
 			for(sc = 0; sc < (1 << oo_order(oo)) ; sc++) {
-				uh_call(UH_APP_RKP, RKP_KDP_X4F, va_page, 0, 0, 0);
+				uh_call(UH_APP_KDP, RKP_KDP_X4F, va_page, 0, 0, 0);
 				va_page += PAGE_SIZE;
 			}
 		}
@@ -1876,7 +1874,9 @@ int rkp_from_vfsmnt_cache(unsigned long addr)
 	return 0;
 }
 
+#if (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP)
 extern unsigned int is_rkp_ro_page(u64 addr);
+#endif
 void free_ro_pages(struct kmem_cache *s,struct page *page, int order)
 {
 	unsigned long flags;
@@ -1884,18 +1884,20 @@ void free_ro_pages(struct kmem_cache *s,struct page *page, int order)
 
 	sc = 0;
 	va_page = (unsigned long long)__va(page_to_phys(page));
+#if (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP)
 	if(is_rkp_ro_page(va_page)){
 		for(sc = 0; sc < (1 << order); sc++) {
-			uh_call(UH_APP_RKP,RKP_KDP_X48,va_page,0,0,0);
+			uh_call(UH_APP_KDP,RKP_KDP_X48,va_page,0,0,0);
 			rkp_ro_free((void *)va_page);
 			va_page += PAGE_SIZE;
 		}
 		return;
 	}
+#endif
 
 	spin_lock_irqsave(&ro_pages_lock,flags);
 	for(sc = 0; sc < (1 << order); sc++) {
-		uh_call(UH_APP_RKP,RKP_KDP_X48,va_page,0,0,0);
+		uh_call(UH_APP_KDP,RKP_KDP_X48,va_page,0,0,0);
 		va_page += PAGE_SIZE;
 	}
 	memcg_uncharge_slab(page, order, s);

@@ -465,7 +465,7 @@ static void pktproc_perftest_gen_rx_packet_sktbuf_mode(
 
 	for (i = 0 ; i < packet_num ; i++) {
 		/* set desc */
-		desc[rear_ptr].status = 0x11;
+		desc[rear_ptr].status = PKTPROC_STATUS_DONE | PKTPROC_STATUS_TCPC | PKTPROC_STATUS_IPCS;
 		desc[rear_ptr].length = perftest_data[perf->mode].packet_len;
 		desc[rear_ptr].filter_result = 0x9;
 		desc[rear_ptr].channel_id = perf->ch;
@@ -661,7 +661,8 @@ static ssize_t region_show(struct device *dev, struct device_attribute *attr, ch
 	switch (ppa->version) {
 	case PKTPROC_V2:
 		info_v2 = (struct pktproc_info_v2 *)ppa->info_base;
-		count += sprintf(&buf[count], "Control:0x%08x\n", info_v2->control);
+		count += sprintf(&buf[count], "Num Queus: %d Mode: %d Max packet size: %d\n",
+				info_v2->num_queues, info_v2->mode, info_v2->max_packet_size);
 		break;
 	default:
 		break;
@@ -941,7 +942,10 @@ int pktproc_create(struct platform_device *pdev, struct mem_link_device *mld, u3
 			break;
 		case PKTPROC_V2:
 			q->info_v2 = (struct pktproc_info_v2 *)ppa->info_base;
-			q->info_v2->control = ((ppa->desc_mode & 0x1) << 4) | (ppa->num_queue & 0xF);
+			q->info_v2->num_queues = ppa->num_queue;
+			q->info_v2->mode = ppa->desc_mode;
+			q->info_v2->max_packet_size = PKTPROC_MAX_PACKET_SIZE;
+
 			q->q_info = &q->info_v2->q_info[i];
 			break;
 		default:

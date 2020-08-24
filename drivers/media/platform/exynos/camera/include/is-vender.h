@@ -165,14 +165,14 @@ int is_vender_fw_sel(struct is_vender *vender);
 int is_vender_setfile_sel(struct is_vender *vender, char *setfile_name, int position);
 int is_vender_preprocessor_gpio_on_sel(struct is_vender *vender, u32 scenario, u32 *gpio_scenario);
 int is_vender_preprocessor_gpio_on(struct is_vender *vender, u32 scenario, u32 gpio_scenario);
-int is_vender_sensor_gpio_on_sel(struct is_vender *vender, u32 scenario, u32 *gpio_scenario);
+int is_vender_sensor_gpio_on_sel(struct is_vender *vender, u32 scenario, u32 *gpio_scenario, void *module_data);
 int is_vender_sensor_gpio_on(struct is_vender *vender, u32 scenario, u32 gpio_scenario);
 int is_vender_preprocessor_gpio_off_sel(struct is_vender *vender, u32 scenario, u32 *gpio_scenario,
 	void *module_data);
 int is_vender_preprocessor_gpio_off(struct is_vender *vender, u32 scenario, u32 gpio_scenario);
 int is_vender_sensor_gpio_off_sel(struct is_vender *vender, u32 scenario, u32 *gpio_scenario,
 	void *module_data);
-int is_vender_sensor_gpio_off(struct is_vender *vender, u32 scenario, u32 gpio_scenario);
+int is_vender_sensor_gpio_off(struct is_vender *vender, u32 scenario, u32 gpio_scenario, void *module_data);
 void is_vendor_sensor_suspend(void);
 #ifdef CONFIG_SENSOR_RETENTION_USE
 void is_vender_check_retention(struct is_vender *vender, void *module_data);

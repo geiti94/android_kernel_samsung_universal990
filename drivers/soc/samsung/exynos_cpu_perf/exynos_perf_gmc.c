@@ -71,6 +71,10 @@ enum {
 	POWER_SCENARIO_MODE,
 	PERFORMANCE_MODE,
 	LIGHT_GAME_MODE,
+	LIGHT_VIDEO_MODE,
+	BALANCED_MODE,
+	PINNED_MODE,
+	GAME_MODE,
 };
 
 #define CL1_MAX_SSE	2314000
@@ -84,7 +88,6 @@ static int gmc_thread(void *data)
 	int sus_array[2];
 	int gpu_max_lock = 0;
 	uint time_cnt = 1;
-	int delay_cnt = 0;
 	int online_cpus = 0;
 	int cpu = 0;
 	int cpu_util_avg = 0;
@@ -134,14 +137,6 @@ static int gmc_thread(void *data)
 
 		if (is_game) {
 
-			if (delay_cnt++ >= maxlock_delay_sec) {
-				//pr_info("[%s] gmc [game] >>> pm_qos limit all %d %d %d %d %d\n", prefix, cl2_max, cl1_max, cl0_max, mif_max, mif_min);
-				pm_qos_update_request(&pm_qos_cl2_max, cl2_max);
-				pm_qos_update_request(&pm_qos_cl1_max, cl1_max);
-				pm_qos_update_request(&pm_qos_cl0_max, cl0_max);
-				pm_qos_update_request(&pm_qos_mif_max, mif_max);
-				pm_qos_update_request(&pm_qos_mif_min, mif_min);
-			}
 #if 0
 			ta_sse_ur_sum = 0;
 			ta_sse_cnt = 0;
@@ -183,30 +178,11 @@ static int gmc_thread(void *data)
 				cl1_max = cl1_max_org;
 			}
 #endif
-
-#if 1
-			//emstune_mode_change(NORMAL_MODE);
-			//emstune_update_request(&emstune_req_gmc, 0);
-#else
-			if (gpu_freq <= gpu_lite) {
-				// light game
-				emstune_mode_change(LIGHT_GAME_MODE);
-				emstune_update_request(&emstune_req_gmc, 0);
-			} else {
-				// heavy game
-				emstune_mode_change(NORMAL_MODE);
-				emstune_update_request(&emstune_req_gmc, 0);
-			}
-#endif
 			prev_is_game = 1;
 
 		} else {
-			delay_cnt = 0;
-
 			if (gpu_dvfs_get_need_cpu_qos()) {
 				pr_info("[%s] gmc >> sus time=%d", prefix, time_cnt);
-				emstune_mode_change(LIGHT_GAME_MODE);
-				emstune_update_request(&emstune_req_gmc, 0);
 				pm_qos_update_request(&pm_qos_cl2_max, PM_QOS_CLUSTER2_FREQ_MAX_DEFAULT_VALUE);
 				pm_qos_update_request(&pm_qos_cl1_max, PM_QOS_CLUSTER1_FREQ_MAX_DEFAULT_VALUE);
 				//pm_qos_update_request(&pm_qos_cl1_max, 1898000);
@@ -214,17 +190,13 @@ static int gmc_thread(void *data)
 				pm_qos_update_request(&pm_qos_mif_max, PM_QOS_BUS_THROUGHPUT_MAX_DEFAULT_VALUE);
 				pm_qos_update_request(&pm_qos_mif_min, PM_QOS_BUS_THROUGHPUT_DEFAULT_VALUE);
 			} else {
-				if (emstune_get_cur_mode() == LIGHT_GAME_MODE && !prev_is_game) {
-					pr_info("[%s] gmc >> restore to normal, time=%d", prefix, time_cnt);
-					emstune_mode_change(NORMAL_MODE);
-					emstune_update_request(&emstune_req_gmc, 0);
-				}
 				pm_qos_update_request(&pm_qos_cl2_max, PM_QOS_CLUSTER2_FREQ_MAX_DEFAULT_VALUE);
 				pm_qos_update_request(&pm_qos_cl1_max, PM_QOS_CLUSTER1_FREQ_MAX_DEFAULT_VALUE);
 				pm_qos_update_request(&pm_qos_cl0_max, PM_QOS_CLUSTER0_FREQ_MAX_DEFAULT_VALUE);
 				pm_qos_update_request(&pm_qos_mif_max, PM_QOS_BUS_THROUGHPUT_MAX_DEFAULT_VALUE);
 				pm_qos_update_request(&pm_qos_mif_min, PM_QOS_BUS_THROUGHPUT_DEFAULT_VALUE);
 			}
+
 #if 0
 			// cause: conflicting between MCD and slsi
 			if (gpu_freq <= gpu_lite) {

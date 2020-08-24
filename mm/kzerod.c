@@ -448,6 +448,17 @@ static unsigned long hugepage_avail_low[MAX_NR_ZONES];
 /* fill pool if available memory is above this value */
 static unsigned long hugepage_avail_high[MAX_NR_ZONES];
 
+/* If RANK_BIT position in physical address is zero, it is main rank */
+#define is_main_rank(page)	!rankid(page)
+
+static inline void rank_list_add(struct page *page, struct list_head *list)
+{
+	if (is_main_rank(page))
+		list_add(&(page)->lru, list);
+	else
+		list_add_tail(&(page)->lru, list);
+}
+
 /* default policy : 1GB@8GB, 2GB@12GB */
 static inline unsigned long get_hugepage_quota(void)
 {
@@ -714,7 +725,7 @@ void zeroing_nonzero_list(enum zone_type ht)
 		spin_lock(&hugepage_list_lock[ht]);
 		if (nr_pages_to_fill(ht)) {
 			prep_new_page(page, HUGEPAGE_ORDER, __GFP_ZERO, 0);
-			list_add(&page->lru, &hugepage_list[ht]);
+			rank_list_add(page, &hugepage_list[ht]);
 			nr_hugepages[ht]++;
 		} else
 			___free_pages_ok(page, HUGEPAGE_ORDER, true);
@@ -758,7 +769,7 @@ void fill_hugepage_pool(enum zone_type ht)
 		}
 		nr_hugepages_fill_done[ht]++;
 		spin_lock(&hugepage_list_lock[ht]);
-		list_add(&page->lru, &hugepage_list[ht]);
+		rank_list_add(page, &hugepage_list[ht]);
 		nr_hugepages[ht]++;
 		spin_unlock(&hugepage_list_lock[ht]);
 	}
@@ -1045,10 +1056,10 @@ static int kzerod_enabled_param_set(const char *val,
 	if (!prev && kzerod_enabled) {
 		kzerod_state = KZEROD_RUNNING,
 		wake_up(&kzerod_wait);
-		trace_printk("kzerod: enabled\n");
+		trace_printk("%s\n", "kzerod: enabled");
 	} else if (prev && !kzerod_enabled) {
 		drain_zeroed_page();
-		trace_printk("kzerod: disabled\n");
+		trace_printk("%s\n", "kzerod: disabled");
 	}
 	return error;
 }

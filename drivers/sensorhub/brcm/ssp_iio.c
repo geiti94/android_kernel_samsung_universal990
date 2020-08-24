@@ -119,7 +119,7 @@ static int ssp_push_iio_buffer(struct iio_dev *indio_dev, u64 timestamp, u8 *dat
 		iRet = iio_push_to_buffers(indio_dev, buf);
 	} while(iRet < 0 && retry-- > 0);
 
-	if(retry == 0 && iRet < 0)
+	if(iRet < 0)
 		pr_err("[SSP] %s - %s push fail erro %d", __func__, indio_dev->name, iRet);
 
 	mutex_unlock(&indio_dev->mlock);

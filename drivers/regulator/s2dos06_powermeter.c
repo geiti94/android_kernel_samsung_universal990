@@ -194,9 +194,9 @@ static ssize_t adc_en_show(struct device *dev,
 
 	s2dos06_read_reg(adc_meter->i2c, S2DOS06_REG_PWRMT_CTRL2, &adc_ctrl3);
 	if ((adc_ctrl3 & ADC_EN_MASK) == ADC_EN_MASK)
-		return snprintf(buf, PAGE_SIZE, "ADC enable (%x)\n", adc_ctrl3);
+		return snprintf(buf, PAGE_SIZE, "ADC enable (0x%02hhx)\n", adc_ctrl3);
 	else
-		return snprintf(buf, PAGE_SIZE, "ADC disable (%x)\n", adc_ctrl3);
+		return snprintf(buf, PAGE_SIZE, "ADC disable (0x%02hhx)\n", adc_ctrl3);
 }
 
 static ssize_t adc_en_store(struct device *dev, struct device_attribute *attr,
@@ -242,7 +242,7 @@ static ssize_t adc_mode_show(struct device *dev,
 	case POWER_MODE:
 		return snprintf(buf, PAGE_SIZE, "POWER MODE (%d)\n", POWER_METER);
 	default:
-		return snprintf(buf, PAGE_SIZE, "error (%x)\n", adc_ctrl3);
+		return snprintf(buf, PAGE_SIZE, "error (0x%02hhx)\n", adc_ctrl3);
 	}
 }
 
@@ -404,7 +404,7 @@ static ssize_t adc_ctrl1_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
 	struct adc_info *adc_meter = dev_get_drvdata(dev);
-	return snprintf(buf, PAGE_SIZE, "0x%2x\n", adc_meter->adc_ctrl1);
+	return snprintf(buf, PAGE_SIZE, "0x%02hhx\n", adc_meter->adc_ctrl1);
 }
 
 static ssize_t adc_ctrl1_store(struct device *dev, struct device_attribute *attr,

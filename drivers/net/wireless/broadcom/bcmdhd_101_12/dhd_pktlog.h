@@ -35,13 +35,17 @@
 
 #ifdef DHD_PKT_LOGGING
 #define DHD_PKT_LOG(args)	DHD_INFO(args)
-#define MIN_PKTLOG_LEN			(32 * 10 * 2)
-#define MAX_PKTLOG_LEN			(32 * 100 * 2)
+#define DEFAULT_MULTIPLE_PKTLOG_BUF	1
+#ifndef CUSTOM_MULTIPLE_PKTLOG_BUF
+#define CUSTOM_MULTIPLE_PKTLOG_BUF	DEFAULT_MULTIPLE_PKTLOG_BUF
+#endif /* CUSTOM_MULTIPLE_PKTLOG_BUF */
+#define MIN_PKTLOG_LEN			(32 * 10 * 2 * CUSTOM_MULTIPLE_PKTLOG_BUF)
+#define MAX_PKTLOG_LEN			(32 * 10 * 2 * 10)
 #define MAX_DHD_PKTLOG_FILTER_LEN	14
 #define MAX_MASK_PATTERN_FILTER_LEN	64
-#define PKTLOG_TXPKT_CASE			0x0001
+#define PKTLOG_TXPKT_CASE		0x0001
 #define PKTLOG_TXSTATUS_CASE		0x0002
-#define PKTLOG_RXPKT_CASE			0x0004
+#define PKTLOG_RXPKT_CASE		0x0004
 /* MAX_FILTER_PATTERN_LEN is buf len to print bitmask/pattern with string */
 #define MAX_FILTER_PATTERN_LEN \
 	((MAX_MASK_PATTERN_FILTER_LEN * HD_BYTE_SIZE) + HD_PREFIX_SIZE + 1) * 2
@@ -136,15 +140,16 @@ extern int dhd_pktlog_ring_get_nextbuf(dhd_pktlog_ring_t *ringbuf, void **data);
 extern int dhd_pktlog_ring_set_prevpos(dhd_pktlog_ring_t *ringbuf);
 extern int dhd_pktlog_ring_get_prevbuf(dhd_pktlog_ring_t *ringbuf, void **data);
 extern int dhd_pktlog_ring_get_writebuf(dhd_pktlog_ring_t *ringbuf, void **data);
-extern int dhd_pktlog_ring_add_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid, bool direction);
+extern int dhd_pktlog_ring_add_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid, uint32 direction);
 extern int dhd_pktlog_ring_tx_status(dhd_pub_t *dhdp, void *pkt, uint32 pktid,
 		uint16 status);
 extern dhd_pktlog_ring_t* dhd_pktlog_ring_change_size(dhd_pktlog_ring_t *ringbuf, int size);
 extern void dhd_pktlog_filter_pull_forward(dhd_pktlog_filter_t *filter,
 		uint32 del_filter_id, uint32 list_cnt);
 
-#define PKT_TX 1
 #define PKT_RX 0
+#define PKT_TX 1
+#define PKT_WAKERX 2
 #define DHD_INVALID_PKTID (0U)
 #define PKTLOG_TRANS_TX 0x01
 #define PKTLOG_TRANS_RX 0x02
@@ -233,6 +238,24 @@ extern void dhd_pktlog_filter_pull_forward(dhd_pktlog_filter_t *filter,
 						(&(dhdp)->pktlog->pktlog_ring->start))) { \
 					dhd_pktlog_ring_add_pkts(dhdp, pkt, \
 						DHD_INVALID_PKTID, PKT_RX); \
+				} \
+			} \
+			PKTLOG_CLEAR_IN_RX(dhdp); \
+		} \
+	} while (0); \
+}
+
+#define DHD_PKTLOG_WAKERX(dhdp, pkt) \
+{ \
+	do { \
+		if ((dhdp) && (dhdp)->pktlog && (pkt)) { \
+			PKTLOG_SET_IN_RX(dhdp); \
+			if (ntoh16((pkt)->protocol) != ETHER_TYPE_BRCM) { \
+				if ((dhdp)->pktlog->pktlog_ring && \
+					OSL_ATOMIC_READ((dhdp)->osh, \
+						(&(dhdp)->pktlog->pktlog_ring->start))) { \
+					dhd_pktlog_ring_add_pkts(dhdp, pkt, \
+						DHD_INVALID_PKTID, PKT_WAKERX); \
 				} \
 			} \
 			PKTLOG_CLEAR_IN_RX(dhdp); \

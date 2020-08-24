@@ -1317,11 +1317,8 @@ static void dma_reg_dump_debug_regs(int id)
 
 static void dpp_reg_dump_debug_regs(int id)
 {
-	u32 sel_gf[3] = {0x0000, 0x0100, 0x0101};
-	u32 sel_vg_vgf[19] = {0x0000, 0x0100, 0x0101, 0x0200, 0x0201, 0x0202,
-		0x0203, 0x0204, 0x0205, 0x0206, 0x0207, 0x0208, 0x0300, 0x0301,
-		0x0302, 0x0303, 0x0304, 0x0400, 0x0401};
-	u32 sel_vgs_vgrfs[37] = {0x0000, 0x0100, 0x0101, 0x0200, 0x0201, 0x0210,
+	u32 sel_layer_01[3] = {0x0000, 0x0100, 0x0101};
+	u32 sel_layer_2345[37] = {0x0000, 0x0100, 0x0101, 0x0200, 0x0201, 0x0210,
 		0x0211, 0x0220, 0x0221, 0x0230, 0x0231, 0x0240, 0x0241, 0x0250,
 		0x0251, 0x0300, 0x0301, 0x0302, 0x0303, 0x0304, 0x0305, 0x0306,
 		0x0307, 0x0308, 0x0400, 0x0401, 0x0402, 0x0403, 0x0404, 0x0500,
@@ -1330,13 +1327,10 @@ static void dpp_reg_dump_debug_regs(int id)
 	u32 *sel = NULL;
 
 	if (id == 0 || id == 1) { /* GF0, GF1 */
-		sel =  sel_gf;
+		sel =  sel_layer_01;
 		cnt = 3;
-	} else if (id == 2 || id == 4) { /* VG, VGF */
-		sel = sel_vg_vgf;
-		cnt = 19;
-	} else if (id == 3 || id == 5) { /* VGS, VGRFS */
-		sel = sel_vgs_vgrfs;
+	} else if (id >= 2 && id <= 5) { /* VG, VGF, VGS, VGRFS */
+		sel = sel_layer_2345;
 		cnt = 37;
 	} else {
 		dpp_err("DPP%d is wrong ID\n", id);

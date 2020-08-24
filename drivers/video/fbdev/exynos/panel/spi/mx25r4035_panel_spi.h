@@ -43,10 +43,12 @@ static struct spi_cmd mx25r4035_busy_check = {
 //	.delay_after_usecs = 1000
 };
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static struct spi_cmd mx25r4035_delay_15000us = {
 	.opt = PANEL_SPI_CMD_OPTION_ONLY_DELAY,
 	.delay_before_usecs = 15000
 };
+#endif
 
 static struct spi_cmd mx25r4035_erase_4k = {
 	.reg = 0x20,
@@ -142,6 +144,8 @@ static struct spi_data mx25r4035_spi_data = {
 	.speed_hz = 12500000,
 	.erase_type = PANEL_SPI_ERASE_TYPE_BLOCK,
 	.cmd_list = mx25r4035_spi_cmd_list,
+	.byte_per_write = 256,
+	.byte_per_read = 2048,
 };
 
 #endif

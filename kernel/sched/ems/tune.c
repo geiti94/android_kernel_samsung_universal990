@@ -29,14 +29,6 @@ static char *stune_group_name[] = {
 	"rt",
 };
 
-static char *stune_group_simple_name[] = {
-	"root",
-	"fg",
-	"bg",
-	"ta",
-	"rt",
-};
-
 static bool emstune_initialized = false;
 
 static struct emstune_mode *emstune_modes;
@@ -49,222 +41,6 @@ int emstune_hungry = true;
 
 static int emstune_mode_count;
 static int emstune_level_count;
-
-/******************************************************************************
- * structure for sysfs                                                        *
- ******************************************************************************/
-struct emstune_attr {
-	struct attribute attr;
-	ssize_t (*show)(struct kobject *, char *);
-	ssize_t (*store)(struct kobject *, const char *, size_t count);
-};
-
-static ssize_t show(struct kobject *kobj, struct attribute *at, char *buf)
-{
-	struct emstune_attr *attr = container_of(at, struct emstune_attr, attr);
-	return attr->show(kobj, buf);
-}
-
-static ssize_t store(struct kobject *kobj, struct attribute *at,
-					const char *buf, size_t count)
-{
-	struct emstune_attr *attr = container_of(at, struct emstune_attr, attr);
-	return attr->store(kobj, buf, count);
-}
-
-static const struct sysfs_ops emstune_sysfs_ops = {
-	.show	= show,
-	.store	= store,
-};
-
-/******************************************************************************
- * common macro & API                                                         *
- ******************************************************************************/
-#define set_of(_name)								\
-	container_of(_name, struct emstune_set, _name)
-
-#define set_of_kobj(_kobject)							\
-	container_of(_kobject, struct emstune_set, kobj)
-
-static void update_cur_set(struct emstune_set *set);
-
-/* macro for per-cpu x per-group */
-#define emstune_attr_per_cpu_per_group(_name, _member)				\
-static ssize_t show_##_name(struct kobject *k, char *buf)			\
-{										\
-	int cpu, group, ret = 0;						\
-	struct emstune_##_name *_name = container_of(k,				\
-				struct emstune_##_name, kobj);			\
-										\
-	if (!(_name->overriding)) 						\
-		return sprintf(buf + ret, "inherit from default set");		\
-										\
-	ret += sprintf(buf + ret, "     ");					\
-	for (group = 0; group < STUNE_GROUP_COUNT; group++)			\
-		ret += sprintf(buf + ret, "%5s",				\
-				stune_group_simple_name[group]);		\
-	ret += sprintf(buf + ret, "\n");					\
-										\
-	for_each_possible_cpu(cpu) {						\
-		ret += sprintf(buf + ret, "cpu%d:", cpu);			\
-		for (group = 0; group < STUNE_GROUP_COUNT; group++)		\
-			ret += sprintf(buf + ret, "%5d",			\
-				_name->_member[cpu][group]);			\
-		ret += sprintf(buf + ret, "\n");				\
-	}									\
-										\
-	ret += sprintf(buf + ret, "\n");					\
-	ret += sprintf(buf + ret, "usage:");					\
-	ret += sprintf(buf + ret,						\
-		"	# echo <cpu> <group> <ratio> > %s\n", #_member);	\
-	ret += sprintf(buf + ret,						\
-		"	(group0/1/2/3/4=root/fg/bg/ta/rt)\n");			\
-										\
-	return ret;								\
-}										\
-										\
-static ssize_t									\
-store_##_name(struct kobject *k, const char *buf, size_t count)			\
-{										\
-	int cpu, group, val;							\
-	struct emstune_##_name *_name = container_of(k,				\
-				struct emstune_##_name, kobj);			\
-										\
-	if (sscanf(buf, "%d %d %d", &cpu, &group, &val) != 3)			\
-		return -EINVAL;							\
-										\
-	if (cpu < 0 || cpu >= NR_CPUS ||					\
-	    group < 0 || group >= STUNE_GROUP_COUNT || val < 0)			\
-		return -EINVAL;							\
-										\
-	_name->_member[cpu][group] = val;					\
-	_name->overriding = true;						\
-										\
-	update_cur_set(set_of(_name));						\
-										\
-	return count;								\
-}										\
-										\
-static struct emstune_attr _name##_attr =					\
-__ATTR(_member, 0644, show_##_name, store_##_name)
-
-/* macro for per-group */
-#define emstune_attr_per_group(_name, _member, _max)				\
-static ssize_t show_##_name(struct kobject *k, char *buf)			\
-{										\
-	int group, ret = 0;							\
-	struct emstune_##_name *_name = container_of(k,				\
-				struct emstune_##_name, kobj);			\
-										\
-	if (!(_name->overriding)) 						\
-		return sprintf(buf + ret, "inherit from default set");		\
-										\
-	for (group = 0; group < STUNE_GROUP_COUNT; group++) {			\
-		ret += sprintf(buf + ret, "%4s: %d\n",				\
-				stune_group_simple_name[group],			\
-				_name->_member[group]);				\
-	}									\
-										\
-	ret += sprintf(buf + ret, "\n");					\
-	ret += sprintf(buf + ret, "usage:");					\
-	ret += sprintf(buf + ret,						\
-		"	# echo <group> <enable> > %s\n", #_member);		\
-	ret += sprintf(buf + ret,						\
-		"	(group0/1/2/3/4=root/fg/bg/ta/rt)\n");			\
-										\
-	return ret;								\
-}										\
-										\
-static ssize_t									\
-store_##_name(struct kobject *k, const char *buf, size_t count)			\
-{										\
-	int group, val;								\
-	struct emstune_##_name *_name = container_of(k,				\
-				struct emstune_##_name, kobj);			\
-										\
-	if (sscanf(buf, "%d %d", &group, &val) != 2)				\
-		return -EINVAL;							\
-										\
-	if (group < 0 || group >= STUNE_GROUP_COUNT ||				\
-	    val < 0 || val > _max)						\
-		return -EINVAL;							\
-										\
-	_name->_member[group] = val;						\
-	_name->overriding = true;						\
-										\
-	update_cur_set(set_of(_name));						\
-										\
-	return count;								\
-}										\
-										\
-static struct emstune_attr _name##_attr =					\
-__ATTR(_member, 0644, show_##_name, store_##_name)
-
-/* macro for per coregroup */
-#define emstune_attr_per_coregroup(_name, _member)				\
-static ssize_t									\
-show_##_name##_##_member(struct kobject *k, char *buf)				\
-{										\
-	int cpu, ret = 0;							\
-	struct emstune_##_name *_name = container_of(k,				\
-				struct emstune_##_name, kobj);			\
-										\
-	if (!(_name->overriding))						\
-		return sprintf(buf + ret, "inherit from default set");		\
-										\
-	for_each_possible_cpu(cpu)						\
-		ret += sprintf(buf + ret, "cpu%d: %3d\n",			\
-			cpu, _name->_member[cpu]);				\
-										\
-	ret += sprintf(buf + ret, "\n");					\
-	ret += sprintf(buf + ret, "usage:");					\
-	ret += sprintf(buf + ret, "	# echo <cpu> <%s> > %s\n",		\
-						#_member, #_member);		\
-										\
-	return ret;								\
-}										\
-										\
-static ssize_t									\
-store_##_name##_##_member(struct kobject *k, const char *buf, size_t count)	\
-{										\
-	int cpu, val, cursor;							\
-	struct emstune_##_name *_name = container_of(k,				\
-				struct emstune_##_name, kobj);			\
-										\
-	if (sscanf(buf, "%d %d", &cpu, &val) != 2)				\
-		return -EINVAL;							\
-										\
-	for_each_cpu(cursor, cpu_coregroup_mask(cpu))				\
-		_name->_member[cursor] = val;					\
-										\
-	_name->overriding = true;						\
-										\
-	update_cur_set(set_of(_name));						\
-										\
-	return count;								\
-}										\
-										\
-static struct emstune_attr _name##_##_member##_attr =				\
-__ATTR(_member, 0644, show_##_name##_##_member, store_##_name##_##_member);
-
-#define declare_kobj_type(_name)						\
-static struct kobj_type ktype_emstune_##_name = {				\
-	.sysfs_ops	= &emstune_sysfs_ops,					\
-	.default_attrs	= emstune_##_name##_attrs,				\
-};
-
-#define STR_LEN 10
-static void cut_hexa_prefix(char *str)
-{
-	int i;
-
-	if (str[0] == '0' && str[1] == 'x') {
-		for (i = 0; i+2 < STR_LEN; i++) {
-			str[i] = str[i + 2];
-			str[i+2] = '\n';
-		}
-	}
-}
 
 /******************************************************************************
  * mode update                                                                *
@@ -303,7 +79,7 @@ static void __update_cur_set(struct emstune_set *next_set)
 	cur_set.unique_id = next_set->unique_id;
 
 	/* update each field of emstune */
-	update_cur_set_field(prefer_idle);
+	update_cur_set_field(sched_policy);
 	update_cur_set_field(weight);
 	update_cur_set_field(idle_weight);
 	update_cur_set_field(freq_boost);
@@ -314,34 +90,31 @@ static void __update_cur_set(struct emstune_set *next_set)
 	update_cur_set_field(prio_pinning);
 	update_cur_set_field(init_util);
 	update_cur_set_field(frt);
+	update_cur_set_field(migov);
 
 	emstune_notify_mode_update();
 }
 
-static DEFINE_SPINLOCK(emstune_mode_lock);
+static struct mutex emstune_mode_lock;
 
 static void update_cur_set(struct emstune_set *set)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&emstune_mode_lock, flags);
+	mutex_lock(&emstune_mode_lock);
 	/* update only when there is a change in the currently active set */
 	if (cur_set.unique_id == set->unique_id)
 		__update_cur_set(set);
-	spin_unlock_irqrestore(&emstune_mode_lock, flags);
+	mutex_unlock(&emstune_mode_lock);
 }
 
 void emstune_mode_change(int next_mode_idx)
 {
-	unsigned long flags;
 
-	spin_lock_irqsave(&emstune_mode_lock, flags);
-
+	mutex_lock(&emstune_mode_lock);
 	cur_mode = &emstune_modes[next_mode_idx];
 	__update_cur_set(&cur_mode->sets[emstune_cur_level]);
 	trace_emstune_mode(cur_mode->idx, emstune_cur_level);
 
-	spin_unlock_irqrestore(&emstune_mode_lock, flags);
+	mutex_unlock(&emstune_mode_lock);
 }
 
 int emstune_get_cur_mode()
@@ -372,13 +145,11 @@ static int get_mode_level(void)
 
 static inline int emstune_request_active(struct emstune_mode_request *req)
 {
-	unsigned long flags;
 	int active;
 
-	spin_lock_irqsave(&emstune_mode_lock, flags);
+	mutex_lock(&emstune_mode_lock);
 	active = req->active;
-	spin_unlock_irqrestore(&emstune_mode_lock, flags);
-
+	mutex_unlock(&emstune_mode_lock);
 	return active;
 }
 
@@ -393,9 +164,8 @@ __emstune_update_request(struct emstune_mode_request *req,
 			enum emstune_req_type type, s32 new_level)
 {
 	int prev_level;
-	unsigned long flags;
 
-	spin_lock_irqsave(&emstune_mode_lock, flags);
+	mutex_lock(&emstune_mode_lock);
 
 	switch (type) {
 	case REQ_REMOVE:
@@ -417,7 +187,7 @@ __emstune_update_request(struct emstune_mode_request *req,
 	emstune_cur_level = get_mode_level();
 
 	if (!emstune_initialized) {
-		spin_unlock_irqrestore(&emstune_mode_lock, flags);
+		mutex_unlock(&emstune_mode_lock);
 		return;
 	}
 
@@ -426,7 +196,7 @@ __emstune_update_request(struct emstune_mode_request *req,
 		trace_emstune_mode(cur_mode->idx, emstune_cur_level);
 	}
 
-	spin_unlock_irqrestore(&emstune_mode_lock, flags);
+	mutex_unlock(&emstune_mode_lock);
 }
 
 static void emstune_work_fn(struct work_struct *work)
@@ -527,11 +297,10 @@ static ssize_t emstune_mode_read(struct file *filp, char __user *buf,
 		size_t count, loff_t *f_pos)
 {
 	s32 value;
-	unsigned long flags;
 
-	spin_lock_irqsave(&emstune_mode_lock, flags);
+	mutex_lock(&emstune_mode_lock);
 	value = cur_mode->idx;
-	spin_unlock_irqrestore(&emstune_mode_lock, flags);
+	mutex_unlock(&emstune_mode_lock);
 
 	return simple_read_from_buffer(buf, count, f_pos, &value, sizeof(s32));
 }
@@ -584,38 +353,9 @@ static int register_emstune_mode_misc(void)
 }
 
 /******************************************************************************
- * basic field of emstune                                                     *
+ * sched policy                                                                *
  ******************************************************************************/
-static ssize_t
-show_set_idx(struct kobject *k, char *buf)
-{
-	return sprintf(buf, "%d\n", set_of_kobj(k)->idx);
-}
-
-static struct emstune_attr set_idx_attr =
-__ATTR(idx, 0444, show_set_idx, NULL);
-
-static ssize_t
-show_set_desc(struct kobject *k, char *buf)
-{
-	return sprintf(buf, "%s\n", set_of_kobj(k)->desc);
-}
-
-static struct emstune_attr set_desc_attr =
-__ATTR(desc, 0444, show_set_desc, NULL);
-
-static struct attribute *emstune_set_attrs[] = {
-	&set_idx_attr.attr,
-	&set_desc_attr.attr,
-	NULL
-};
-
-declare_kobj_type(set);
-
-/******************************************************************************
- * prefer idle                                                                *
- ******************************************************************************/
-int emstune_prefer_idle(struct task_struct *p)
+int emstune_sched_policy(struct task_struct *p)
 {
 	int st_idx;
 
@@ -624,36 +364,27 @@ int emstune_prefer_idle(struct task_struct *p)
 
 	st_idx = schedtune_task_group_idx(p);
 
-	return cur_set.prefer_idle.enabled[st_idx];
+	return cur_set.sched_policy.policy[st_idx];
 }
 
-emstune_attr_per_group(prefer_idle, enabled, 1);
-
-static struct attribute *emstune_prefer_idle_attrs[] = {
-	&prefer_idle_attr.attr,
-	NULL
-};
-
-declare_kobj_type(prefer_idle);
-
 static int
-parse_prefer_idle(struct device_node *dn, struct emstune_set *set)
+parse_sched_policy(struct device_node *dn, struct emstune_set *set)
 {
-	struct emstune_prefer_idle *prefer_idle = &set->prefer_idle;
+	struct emstune_sched_policy *sched_policy = &set->sched_policy;
 	u32 val[STUNE_GROUP_COUNT];
 	int idx;
 
 	if (!dn)
 		return 0;
 
-	if (of_property_read_u32_array(dn, "enabled",
+	if (of_property_read_u32_array(dn, "policy",
 				(u32 *)&val, STUNE_GROUP_COUNT))
 		return -EINVAL;
 
 	for (idx = 0; idx < STUNE_GROUP_COUNT; idx++)
-		prefer_idle->enabled[idx] = val[idx];
+		sched_policy->policy[idx] = val[idx];
 
-	prefer_idle->overriding = true;
+	sched_policy->overriding = true;
 
 	of_node_put(dn);
 
@@ -681,16 +412,6 @@ int emstune_eff_weight(struct task_struct *p, int cpu, int idle)
 	return weight;
 }
 
-/* efficiency weight for running cpu */
-emstune_attr_per_cpu_per_group(weight, ratio);
-
-static struct attribute *emstune_weight_attrs[] = {
-	&weight_attr.attr,
-	NULL
-};
-
-declare_kobj_type(weight);
-
 static int
 parse_weight(struct device_node *dn, struct emstune_set *set)
 {
@@ -716,16 +437,6 @@ parse_weight(struct device_node *dn, struct emstune_set *set)
 
 	return 0;
 }
-
-/* efficiency weight for idle cpu */
-emstune_attr_per_cpu_per_group(idle_weight, ratio);
-
-static struct attribute *emstune_idle_weight_attrs[] = {
-	&idle_weight_attr.attr,
-	NULL
-};
-
-declare_kobj_type(idle_weight);
 
 static int
 parse_idle_weight(struct device_node *dn, struct emstune_set *set)
@@ -830,15 +541,6 @@ void emstune_cpu_update(int cpu, u64 now)
 	per_cpu(freq_boost_max, cpu) = boost_max;
 }
 
-emstune_attr_per_cpu_per_group(freq_boost, ratio);
-
-static struct attribute *emstune_freq_boost_attrs[] = {
-	&freq_boost_attr.attr,
-	NULL
-};
-
-declare_kobj_type(freq_boost);
-
 static int
 parse_freq_boost(struct device_node *dn, struct emstune_set *set)
 {
@@ -868,15 +570,6 @@ parse_freq_boost(struct device_node *dn, struct emstune_set *set)
 /******************************************************************************
  * energy step governor                                                       *
  ******************************************************************************/
-emstune_attr_per_coregroup(esg, step);
-
-static struct attribute *emstune_esg_attrs[] = {
-	&esg_step_attr.attr,
-	NULL
-};
-
-declare_kobj_type(esg);
-
 static int
 parse_esg(struct device_node *dn, struct emstune_set *set)
 {
@@ -889,7 +582,7 @@ parse_esg(struct device_node *dn, struct emstune_set *set)
 
 	cnt = of_property_count_u32_elems(dn, "step");
 	if (of_property_read_u32_array(dn, "step", (u32 *)&val, cnt))
-		return -EINVAL;
+		goto fail;
 
 	cnt = 0;
 	for_each_possible_cpu(cpu) {
@@ -902,8 +595,22 @@ parse_esg(struct device_node *dn, struct emstune_set *set)
 		cnt++;
 	}
 
-	esg->overriding = true;
+	cnt = of_property_count_u32_elems(dn, "patient_mode");
+	if (of_property_read_u32_array(dn, "patient_mode", (u32 *)&val, cnt))
+		goto fail;
+	cnt = 0;
+	for_each_possible_cpu(cpu) {
+		if (cpu != cpumask_first(cpu_coregroup_mask(cpu)))
+			continue;
 
+		for_each_cpu(cursor, cpu_coregroup_mask(cpu))
+			esg->patient_mode[cursor] = val[cnt];
+
+		cnt++;
+	}
+
+	esg->overriding = true;
+fail:
 	of_node_put(dn);
 
 	return 0;
@@ -923,8 +630,6 @@ int emstune_ontime(struct task_struct *p)
 
 	return cur_set.ontime.enabled[st_idx];
 }
-
-emstune_attr_per_group(ontime, enabled, 1);
 
 static void init_ontime_list(struct emstune_ontime *ontime)
 {
@@ -1005,101 +710,6 @@ enum {
 	EVENT_REMOVE,
 	EVENT_UPDATE
 };
-
-#define emstune_attr_rw_ontime(_name)						\
-static ssize_t show_##_name(struct kobject *k, char *buf)			\
-{										\
-	struct emstune_ontime *ontime = container_of(k,				\
-				struct emstune_ontime, kobj);			\
-	struct ontime_dom *dom;							\
-	int ret = 0;								\
-										\
-	if (!(ontime->overriding)) 						\
-		return sprintf(buf + ret, "inherit from default set");		\
-										\
-	ret += sprintf(buf + ret, 						\
-		"-----------------------------\n");				\
-	list_for_each_entry_reverse(dom, &ontime->_name, node) {		\
-		ret += sprintf(buf + ret,					\
-			" cpus           : %*pbl\n",				\
-			cpumask_pr_args(&dom->cpus));				\
-		ret += sprintf(buf + ret,					\
-			" upper boundary : %lu\n",				\
-			dom->upper_boundary);					\
-		ret += sprintf(buf + ret,					\
-			" lower boundary : %lu\n",				\
-			dom->lower_boundary);					\
-		ret += sprintf(buf + ret,					\
-			"-----------------------------\n");			\
-	}									\
-										\
-	ret += sprintf(buf + ret, "\n");					\
-	ret += sprintf(buf + ret, "usage:");					\
-	ret += sprintf(buf + ret,						\
-			"	# echo <event> <cpu> <ub> <lb> > list\n");	\
-	ret += sprintf(buf + ret,						\
-			"	(event 0:ADD 1:REMOVE 2:UPDATE)\n");		\
-										\
-	return ret;								\
-}										\
-										\
-static ssize_t									\
-store_##_name(struct kobject *k, const char *buf, size_t count)			\
-{										\
-	struct emstune_ontime *ontime = container_of(k,				\
-					struct emstune_ontime, kobj);		\
-	int event, ub, lb, ret;							\
-	long cpu;								\
-	char arg[STR_LEN];							\
-	struct cpumask mask;							\
-										\
-	if (!sscanf(buf, "%d %s %d %d", &event, &arg, &ub, &lb))		\
-		return -EINVAL;							\
-										\
-	switch (event) {							\
-	case EVENT_ADD:								\
-		cut_hexa_prefix(arg);						\
-		cpumask_parse(arg, &mask);					\
-		add_ontime_domain(&ontime->_name, &mask, ub, lb);		\
-		ontime->p_##_name = &ontime->_name;				\
-		break;								\
-	case EVENT_REMOVE:							\
-		ret = kstrtol(arg, 10, &cpu);					\
-		if (ret)							\
-			return ret;						\
-		remove_ontime_domain(&ontime->_name, (int)cpu);			\
-		break;								\
-	case EVENT_UPDATE:							\
-		ret = kstrtol(arg, 10, &cpu);					\
-		if (ret)							\
-			return ret;						\
-		update_ontime_domain(&ontime->_name, (int)cpu, ub, lb);		\
-		break;								\
-	default:								\
-		return -EINVAL;							\
-	}									\
-										\
-	ontime->overriding = true;						\
-										\
-	update_cur_set(set_of(ontime));						\
-										\
-	return count;								\
-}										\
-										\
-static struct emstune_attr _name##_attr =					\
-__ATTR(_name, 0644, show_##_name, store_##_name)
-
-emstune_attr_rw_ontime(dom_list_u);
-emstune_attr_rw_ontime(dom_list_s);
-
-static struct attribute *emstune_ontime_attrs[] = {
-	&ontime_attr.attr,
-	&dom_list_u_attr.attr,
-	&dom_list_s_attr.attr,
-	NULL
-};
-
-declare_kobj_type(ontime);
 
 static int __init
 __init_dom_list(struct device_node *dom_list_dn,
@@ -1188,15 +798,6 @@ int emstune_util_est_group(int st_idx)
 	return cur_set.util_est.enabled[st_idx];
 }
 
-emstune_attr_per_group(util_est, enabled, 1);
-
-static struct attribute *emstune_util_est_attrs[] = {
-	&util_est_attr.attr,
-	NULL
-};
-
-declare_kobj_type(util_est);
-
 static int
 parse_util_est(struct device_node *dn, struct emstune_set *set)
 {
@@ -1274,7 +875,7 @@ const struct cpumask *emstune_cpus_allowed(struct task_struct *p)
 		return &cur_set.prio_pinning.mask;
 
 	class_idx = get_sched_class_idx(p->sched_class);
-	if (!(cpus_allowed->target_sched_class & (1 << class_idx)))
+	if (!(cpus_allowed->target_sched_class & class_idx))
 		return cpu_active_mask;
 
 	st_idx = schedtune_task_group_idx(p);
@@ -1288,137 +889,6 @@ bool emstune_can_migrate_task(struct task_struct *p, int dst_cpu)
 {
 	return cpumask_test_cpu(dst_cpu, emstune_cpus_allowed(p));
 }
-
-static ssize_t
-show_target_sched_class(struct kobject *k, char *buf)
-{
-	int ret = 0, i;
-	struct emstune_cpus_allowed *cpus_allowed =
-			container_of(k, struct emstune_cpus_allowed, kobj);
-	int target_sched_class = cpus_allowed->target_sched_class;
-
-	if (!(cpus_allowed->overriding))
-		return sprintf(buf + ret, "inherit from default set");
-
-	for (i = 0; i < NUM_OF_SCHED_CLASS; i++) {
-		ret += sprintf(buf + ret, "%4s: %d\n",
-			get_sched_class_str(1 << i),
-			(target_sched_class & (1 << i) ? 1 : 0));
-	}
-
-	ret += sprintf(buf + ret, "\n");
-	ret += sprintf(buf + ret, "usage:");
-	ret += sprintf(buf + ret, "	# echo <class_mask> > target_sched_class\n");
-	ret += sprintf(buf + ret, "	(hexadecimal, class0/1/2/3/4=stop/dl/rt/fair/idle)\n");
-
-	return ret;
-}
-
-static ssize_t
-store_target_sched_class(struct kobject *k, const char *buf, size_t count)
-{
-	char str[STR_LEN];
-	int i;
-	long cand_class;
-	struct emstune_cpus_allowed *cpus_allowed = container_of(k,
-					struct emstune_cpus_allowed, kobj);
-
-	if (strlen(buf) >= STR_LEN)
-		return -EINVAL;
-
-	if (!sscanf(buf, "%s", str))
-		return -EINVAL;
-
-	cut_hexa_prefix(str);
-
-	kstrtol(str, 16, &cand_class);
-	cand_class &= EMS_SCHED_CLASS_MASK;
-
-	cpus_allowed->target_sched_class = 0;
-
-	for (i = 0; i < NUM_OF_SCHED_CLASS; i++)
-		if (cand_class & (1 << i))
-			cpus_allowed->target_sched_class |= 1 << i;
-
-	if (!cpus_allowed->overriding)
-		for (i = 0; i < STUNE_GROUP_COUNT; i++)
-			cpumask_copy(&cpus_allowed->mask[i], cpu_possible_mask);
-
-	cpus_allowed->overriding = true;
-
-	update_cur_set(set_of(cpus_allowed));
-
-	return count;
-}
-
-static struct emstune_attr target_sched_class_attr =
-	__ATTR(target_sched_class, 0644,
-	show_target_sched_class, store_target_sched_class);
-
-static ssize_t
-show_cpus_allowed(struct kobject *k, char *buf)
-{
-	int ret = 0, i;
-	struct emstune_cpus_allowed *cpus_allowed = container_of(k,
-					struct emstune_cpus_allowed, kobj);
-
-	if (!(cpus_allowed->overriding))
-		return sprintf(buf + ret, "inherit from default set");
-
-	for (i = 0; i < STUNE_GROUP_COUNT; i++) {
-		ret += sprintf(buf + ret, "%4s: %*pbl\n",
-			stune_group_simple_name[i],
-			cpumask_pr_args(&cpus_allowed->mask[i]));
-	}
-
-	ret += sprintf(buf + ret, "\n");
-	ret += sprintf(buf + ret, "usage:");
-	ret += sprintf(buf + ret, "	# echo <group> <cpumask> > mask\n");
-	ret += sprintf(buf + ret, "	(hexadecimal, group0/1/2/3/4=root/fg/bg/ta/rt)\n");
-
-	return ret;
-}
-
-static ssize_t
-store_cpus_allowed(struct kobject *k, const char *buf, size_t count)
-{
-	char str[STR_LEN];
-	int group;
-	struct cpumask mask;
-	struct emstune_cpus_allowed *cpus_allowed = container_of(k,
-					struct emstune_cpus_allowed, kobj);
-
-	if (strlen(buf) >= STR_LEN)
-		return -EINVAL;
-
-	if (!sscanf(buf, "%d %s", &group, str))
-		return -EINVAL;
-
-	if (group < 0 || group >= NUM_OF_SCHED_CLASS)
-		return -EINVAL;
-
-	cut_hexa_prefix(str);
-
-	cpumask_parse(str, &mask);
-	cpumask_copy(&cpus_allowed->mask[group], &mask);
-
-	cpus_allowed->overriding = true;
-
-	update_cur_set(set_of(cpus_allowed));
-
-	return count;
-}
-
-static struct emstune_attr mask_attr =
-	__ATTR(mask, 0644, show_cpus_allowed, store_cpus_allowed);
-
-static struct attribute *emstune_cpus_allowed_attrs[] = {
-	&target_sched_class_attr.attr,
-	&mask_attr.attr,
-	NULL
-};
-
-declare_kobj_type(cpus_allowed);
 
 static int
 parse_cpus_allowed(struct device_node *dn, struct emstune_set *set)
@@ -1481,106 +951,6 @@ parse_cpus_allowed(struct device_node *dn, struct emstune_set *set)
 	return 0;
 }
 
-static ssize_t
-show_pp_mask(struct kobject *k, char *buf)
-{
-	struct emstune_prio_pinning *prio_pinning = container_of(k,
-					struct emstune_prio_pinning, kobj);
-	int ret = 0;
-
-	if (!(prio_pinning->overriding))
-		return sprintf(buf + ret, "inherit from default set");
-
-	ret += sprintf(buf + ret, "mask : %*pbl\n",
-				cpumask_pr_args(&prio_pinning->mask));
-	ret += sprintf(buf + ret, "\n");
-	ret += sprintf(buf + ret, "usage:");
-	ret += sprintf(buf + ret,
-			"	# echo <mask> > pinning_mask\n");
-	ret += sprintf(buf + ret,
-			"	(hexadecimal)\n");
-
-	return ret;
-}
-
-static ssize_t
-store_pp_mask(struct kobject *k, const char *buf, size_t count)
-{
-	struct emstune_prio_pinning *prio_pinning = container_of(k,
-					struct emstune_prio_pinning, kobj);
-	char arg[STR_LEN];
-
-	if (sscanf(buf, "%s", &arg) != 1)
-		return -EINVAL;
-
-	cut_hexa_prefix(arg);
-	cpumask_parse(arg, &prio_pinning->mask);
-
-	prio_pinning->overriding = true;
-
-	update_cur_set(set_of(prio_pinning));
-
-	return count;
-}
-
-static struct emstune_attr pp_mask_attr =
-__ATTR(mask, 0644, show_pp_mask, store_pp_mask);
-
-emstune_attr_per_group(prio_pinning, enabled, 1);
-
-static ssize_t
-show_pp_prio(struct kobject *k, char *buf)
-{
-	struct emstune_prio_pinning *prio_pinning = container_of(k,
-					struct emstune_prio_pinning, kobj);
-	int ret = 0;
-
-	if (!(prio_pinning->overriding))
-		return sprintf(buf + ret, "inherit from default set");
-
-	ret += sprintf(buf + ret, "prio : %d\n", prio_pinning->prio);
-	ret += sprintf(buf + ret, "\n");
-	ret += sprintf(buf + ret, "usage:");
-	ret += sprintf(buf + ret,
-			"	# echo <prio> > prio\n");
-
-	return ret;
-}
-
-static ssize_t
-store_pp_prio(struct kobject *k, const char *buf, size_t count)
-{
-	struct emstune_prio_pinning *prio_pinning = container_of(k,
-					struct emstune_prio_pinning, kobj);
-	int val;
-
-	if (sscanf(buf, "%d", &val) != 1)
-		return -EINVAL;
-
-	if (val < 0 || val >= MAX_PRIO)
-		return -EINVAL;
-
-	prio_pinning->prio = val;
-
-	prio_pinning->overriding = true;
-
-	update_cur_set(set_of(prio_pinning));
-
-	return count;
-}
-
-static struct emstune_attr pp_prio_attr =
-__ATTR(prio, 0644, show_pp_prio, store_pp_prio);
-
-static struct attribute *emstune_prio_pinning_attrs[] = {
-	&pp_mask_attr.attr,
-	&prio_pinning_attr.attr,
-	&pp_prio_attr.attr,
-	NULL
-};
-
-declare_kobj_type(prio_pinning);
-
 static int
 parse_prio_pinning(struct device_node *dn, struct emstune_set *set)
 {
@@ -1629,15 +999,6 @@ int emstune_init_util(struct task_struct *p)
 	return cur_set.init_util.ratio[st_idx];
 }
 
-emstune_attr_per_group(init_util, ratio, 100);
-
-static struct attribute *emstune_init_util_attrs[] = {
-	&init_util_attr.attr,
-	NULL
-};
-
-declare_kobj_type(init_util);
-
 static int
 parse_init_util(struct device_node *dn, struct emstune_set *set)
 {
@@ -1665,17 +1026,6 @@ parse_init_util(struct device_node *dn, struct emstune_set *set)
 /******************************************************************************
  * FRT                                                                        *
  ******************************************************************************/
-emstune_attr_per_coregroup(frt, coverage_ratio);
-emstune_attr_per_coregroup(frt, active_ratio);
-
-static struct attribute *emstune_frt_attrs[] = {
-	&frt_coverage_ratio_attr.attr,
-	&frt_active_ratio_attr.attr,
-	NULL
-};
-
-declare_kobj_type(frt);
-
 static int
 parse_frt(struct device_node *dn, struct emstune_set *set)
 {
@@ -1724,6 +1074,29 @@ parse_frt(struct device_node *dn, struct emstune_set *set)
 }
 
 /******************************************************************************
+ * MIGOV initialization							      *
+ ******************************************************************************/
+static int
+parse_migov(struct device_node *dn, struct emstune_set *set)
+{
+	struct emstune_migov *migov = &set->migov;
+	u32 val;
+
+	if (!dn)
+		return 0;
+
+	if (of_property_read_u32(dn, "migov_en", &val))
+		val = 0;
+
+	migov->migov_en = val;
+	migov->overriding = true;
+
+	of_node_put(dn);
+
+	return 0;
+}
+
+/******************************************************************************
  * show mode	                                                              *
  ******************************************************************************/
 static struct emstune_mode_request emstune_user_req;
@@ -1733,9 +1106,8 @@ show_req_mode_level(struct kobject *k, struct kobj_attribute *attr, char *buf)
 	struct emstune_mode_request *req;
 	int ret = 0;
 	int tot_reqs = 0;
-	unsigned long flags;
 
-	spin_lock_irqsave(&emstune_mode_lock, flags);
+	mutex_lock(&emstune_mode_lock);
 	plist_for_each_entry(req, &emstune_req_list, node) {
 		tot_reqs++;
 		ret += sprintf(buf + ret, "%d: %d (%s:%d)\n", tot_reqs,
@@ -1746,8 +1118,8 @@ show_req_mode_level(struct kobject *k, struct kobj_attribute *attr, char *buf)
 
 	ret += sprintf(buf + ret, "current level: %d, requests: total=%d\n",
 						emstune_cur_level, tot_reqs);
-	spin_unlock_irqrestore(&emstune_mode_lock, flags);
 
+	mutex_unlock(&emstune_mode_lock);
 	return ret;
 }
 
@@ -1810,6 +1182,14 @@ store_req_mode(struct kobject *k, struct kobj_attribute *attr,
 static struct kobj_attribute req_mode_attr =
 __ATTR(req_mode, 0644, show_req_mode, store_req_mode);
 
+static char *stune_group_simple_name[] = {
+	"root",
+	"fg",
+	"bg",
+	"ta",
+	"rt",
+};
+
 static ssize_t
 show_cur_set(struct kobject *k, struct kobj_attribute *attr, char *buf)
 {
@@ -1819,13 +1199,13 @@ show_cur_set(struct kobject *k, struct kobj_attribute *attr, char *buf)
 	ret += sprintf(buf + ret, "current set: %d (%s)\n", cur_set.idx, cur_set.desc);
 	ret += sprintf(buf + ret, "\n");
 
-	ret += sprintf(buf + ret, "[prefer-idle]\n");
+	ret += sprintf(buf + ret, "[sched_policy]\n");
 	for (group = 0; group < STUNE_GROUP_COUNT; group++)
 		ret += sprintf(buf + ret, "%5s", stune_group_simple_name[group]);
 	ret += sprintf(buf + ret, "\n");
 	for (group = 0; group < STUNE_GROUP_COUNT; group++)
 		ret += sprintf(buf + ret, "%5d",
-				cur_set.prefer_idle.enabled[group]);
+				cur_set.sched_policy.policy[group]);
 	ret += sprintf(buf + ret, "\n\n");
 
 	ret += sprintf(buf + ret, "[weight]\n");
@@ -1871,10 +1251,12 @@ show_cur_set(struct kobject *k, struct kobj_attribute *attr, char *buf)
 	ret += sprintf(buf + ret, "\n");
 
 	ret += sprintf(buf + ret, "[esg]\n");
-	ret += sprintf(buf + ret, "      step\n");
-	for_each_possible_cpu(cpu)
-		ret += sprintf(buf + ret, "cpu%d:%5d\n",
-				cpu, cur_set.esg.step[cpu]);
+	ret += sprintf(buf + ret, "      step   patient_mode\n");
+	for_each_possible_cpu(cpu) {
+		ret += sprintf(buf + ret, "cpu%d:%5d %5d\n",
+				cpu, cur_set.esg.step[cpu],
+				cur_set.esg.patient_mode[cpu]);
+	}
 	ret += sprintf(buf + ret, "\n");
 
 	ret += sprintf(buf + ret, "[ontime]\n");
@@ -1976,6 +1358,11 @@ show_cur_set(struct kobject *k, struct kobj_attribute *attr, char *buf)
 				cpu,
 				cur_set.frt.coverage_ratio[cpu],
 				cur_set.frt.active_ratio[cpu]);
+	ret += sprintf(buf + ret, "\n\n");
+
+	ret += sprintf(buf + ret, "[multi ip gov]\n");
+	ret += sprintf(buf + ret, "migov_en: %d\n", cur_set.migov.migov_en);
+
 	ret += sprintf(buf + ret, "\n");
 
 	return ret;
@@ -1983,6 +1370,22 @@ show_cur_set(struct kobject *k, struct kobj_attribute *attr, char *buf)
 
 static struct kobj_attribute cur_set_attr =
 __ATTR(cur_set, 0444, show_cur_set, NULL);
+
+#define STR_LEN 10
+static int cut_hexa_prefix(char *str)
+{
+	int i;
+
+	if (!(str[0] == '0' && str[1] == 'x'))
+		return -EINVAL;
+
+	for (i = 0; i + 2 < STR_LEN; i++) {
+		str[i] = str[i + 2];
+		str[i + 2] = '\n';
+	}
+
+	return 0;
+}
 
 static ssize_t
 show_aio_tuner(struct kobject *k, struct kobj_attribute *attr, char *buf)
@@ -1992,9 +1395,9 @@ show_aio_tuner(struct kobject *k, struct kobj_attribute *attr, char *buf)
 	ret = sprintf(buf + ret, "\n");
 	ret += sprintf(buf + ret, "echo <mode,level,index,...> <value> > aio_tuner\n");
 	ret += sprintf(buf + ret, "\n");
-	ret += sprintf(buf + ret, "prefer-idle(index=0)\n");
-	ret += sprintf(buf + ret, "	# echo <mode,level,0,group> <en/dis> > aio_tuner\n");
-	ret += sprintf(buf + ret, "	(enable=1 disable=0)\n");
+	ret += sprintf(buf + ret, "sched-policy(index=0)\n");
+	ret += sprintf(buf + ret, "	# echo <mode,level,0,group> <policy> > aio_tuner\n");
+	ret += sprintf(buf + ret, "	(policy0/1/2=SCHED_POLICY_EFF/ENERGY/PI)\n");
 	ret += sprintf(buf + ret, "	(group0/1/2/3/4=root/fg/bg/ta/rt)\n");
 	ret += sprintf(buf + ret, "\n");
 	ret += sprintf(buf + ret, "weight(index=1)\n");
@@ -2049,7 +1452,7 @@ show_aio_tuner(struct kobject *k, struct kobj_attribute *attr, char *buf)
 	ret += sprintf(buf + ret, "	(hexadecimal)\n");
 	ret += sprintf(buf + ret, "\n");
 	ret += sprintf(buf + ret, "prio_pinning enable(index=13)\n");
-	ret += sprintf(buf + ret, "	# echo <mode,level,13, group> <enable> > aio_tuner\n");
+	ret += sprintf(buf + ret, "	# echo <mode,level,13,group> <enable> > aio_tuner\n");
 	ret += sprintf(buf + ret, "	(enable=1 disable=0)\n");
 	ret += sprintf(buf + ret, "	(group0/1/2/3/4=root/fg/bg/ta/rt)\n");
 	ret += sprintf(buf + ret, "\n");
@@ -2057,20 +1460,32 @@ show_aio_tuner(struct kobject *k, struct kobj_attribute *attr, char *buf)
 	ret += sprintf(buf + ret, "	# echo <mode,level,14> <prio> > aio_tuner\n");
 	ret += sprintf(buf + ret, "	(0 <= prio < 140\n");
 	ret += sprintf(buf + ret, "\n");
-	ret += sprintf(buf + ret, "frt_coverage_ratio(index=15)\n");
-	ret += sprintf(buf + ret, "	# echo <mode,level,15,cpu> <ratio> > aio_tuner\n");
-	ret += sprintf(buf + ret, "	(set one cpu, coregroup to which cpu belongs is set))\n");
+	ret += sprintf(buf + ret, "initial utilization(index=15)\n");
+	ret += sprintf(buf + ret, "	# echo <mode,level,15,group> <ratio> > aio_tuner\n");
+	ret += sprintf(buf + ret, "	(group0/1/2/3/4=root/fg/bg/ta/rt)\n");
 	ret += sprintf(buf + ret, "\n");
-	ret += sprintf(buf + ret, "frt_active_ratio(index=16)\n");
+	ret += sprintf(buf + ret, "frt_coverage_ratio(index=16)\n");
 	ret += sprintf(buf + ret, "	# echo <mode,level,16,cpu> <ratio> > aio_tuner\n");
 	ret += sprintf(buf + ret, "	(set one cpu, coregroup to which cpu belongs is set))\n");
+	ret += sprintf(buf + ret, "\n");
+	ret += sprintf(buf + ret, "frt_active_ratio(index=17)\n");
+	ret += sprintf(buf + ret, "	# echo <mode,level,17,cpu> <ratio> > aio_tuner\n");
+	ret += sprintf(buf + ret, "	(set one cpu, coregroup to which cpu belongs is set))\n");
+	ret += sprintf(buf + ret, "\n");
+	ret += sprintf(buf + ret, "patient_mode(index=18)\n");
+	ret += sprintf(buf + ret, "	# echo <mode,level,18,cpu> <count> > aio_tuner\n");
+	ret += sprintf(buf + ret, "	(set one cpu, coregroup to which cpu belongs is set))\n");
+	ret += sprintf(buf + ret, "\n");
+	ret += sprintf(buf + ret, "migov_mode(index=19)\n");
+	ret += sprintf(buf + ret, "	# echo <mode,level,19> <enable> > aio_tuner\n");
+	ret += sprintf(buf + ret, "	(set enabled for this mode, level ))\n");
 	ret += sprintf(buf + ret, "\n");
 
 	return ret;
 }
 
 enum {
-	prefer_idle,
+	sched_policy,
 	weight,
 	idle_weight,
 	freq_boost,
@@ -2088,7 +1503,76 @@ enum {
 	init_util,
 	frt_coverage_ratio,
 	frt_active_ratio,
+	patient_mode,
+	migov,
+	field_count,
 };
+
+static int sanity_check_default(int mode, int level, int field)
+{
+	if (mode < 0 || mode >= emstune_mode_count)
+		return -EINVAL;
+
+	if (level < 0 || level >= emstune_level_count)
+		return -EINVAL;
+
+	if (field < 0 || field >= field_count)
+		return -EINVAL;
+
+	return 0;
+}
+
+static int sanity_check_option(int cpu, int group, int sse, int type)
+{
+	if (cpu < 0 || cpu > NR_CPUS)
+		return -EINVAL;
+	if (group < 0 || group >= STUNE_GROUP_COUNT)
+		return -EINVAL;
+	if (!(sse == 0 || sse == 1))
+		return -EINVAL;
+	if (!(type == 0 || type == 1))
+		return -EINVAL;
+
+	return 0;
+}
+
+enum val_type {
+	VAL_TYPE_ONOFF,
+	VAL_TYPE_RATIO,
+	VAL_TYPE_LEVEL,
+	VAL_TYPE_CPU,
+	VAL_TYPE_MASK,
+};
+
+static int sanity_check_convert_value(char *arg, enum val_type type, void *v)
+{
+	int ret = 0;
+	long value;
+
+	switch (type) {
+	case VAL_TYPE_ONOFF:
+		if (kstrtol(arg, 10, &value))
+			return -EINVAL;
+		*(int *)v = !!(int)value;
+		break;
+	case VAL_TYPE_RATIO:
+	case VAL_TYPE_LEVEL:
+	case VAL_TYPE_CPU:
+		if (kstrtol(arg, 10, &value) || value < 0)
+			return -EINVAL;
+		*(int *)v = (int)value;
+		break;
+	case VAL_TYPE_MASK:
+		if (cut_hexa_prefix(arg))
+			return -EINVAL;
+		if (cpumask_parse(arg, (struct cpumask *)v) ||
+		    cpumask_empty((struct cpumask *)v))
+			return -EINVAL;
+		break;
+	}
+
+	return ret;
+}
 
 #define NUM_OF_KEY	(10)
 static ssize_t
@@ -2097,13 +1581,13 @@ store_aio_tuner(struct kobject *k, struct kobj_attribute *attr,
 {
 	struct emstune_set *set;
 	char arg0[100], arg1[100], *_arg, *ptr;
-	int keys[NUM_OF_KEY], i, ret;
-	long v;
+	int keys[NUM_OF_KEY], i, ret, v;
+	long val;
 	int mode, level, field, sse, cpu, group, type;
 	struct list_head *list;
 	struct cpumask mask;
 
-	if (sscanf(buf, "%s %s", &arg0, &arg1) != 2)
+	if (sscanf(buf, "%99s %99s", &arg0, &arg1) != 2)
 		return -EINVAL;
 
 	/* fill keys with default value(-1) */
@@ -2115,11 +1599,11 @@ store_aio_tuner(struct kobject *k, struct kobj_attribute *attr,
 	ptr = strsep(&_arg, ",");
 	i = 0;
 	while (ptr != NULL) {
-		ret = kstrtol(ptr, 10, &v);
+		ret = kstrtol(ptr, 10, &val);
 		if (ret)
 			return ret;
 
-		keys[i] = (int)v;
+		keys[i] = (int)val;
 		i++;
 
 		ptr = strsep(&_arg, ",");
@@ -2129,79 +1613,78 @@ store_aio_tuner(struct kobject *k, struct kobj_attribute *attr,
 	level = keys[1];
 	field = keys[2];
 
+	if (sanity_check_default(mode, level, field))
+		return -EINVAL;
+
 	set = &emstune_modes[mode].sets[level];
 
 	switch (field) {
-	case prefer_idle:
+	case sched_policy:
 		group = keys[3];
-		if (group == -1)
+		if (sanity_check_option(0, group, 0, 0))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
-		set->prefer_idle.enabled[group] = !!(int)v;
-		set->prefer_idle.overriding = true;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_ONOFF, &v))
+			return -EINVAL;
+		if (v >= NUM_OF_SCHED_POLICY)
+			return -EINVAL;
+		set->sched_policy.policy[group] = (int)v;
+		set->sched_policy.overriding = true;
 		break;
 	case weight:
 		cpu = keys[3];
 		group = keys[4];
-		if (group == -1 || cpu == -1)
+		if (sanity_check_option(cpu, group, 0, 0))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
-		set->weight.ratio[cpu][group] = (int)v;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_RATIO, &v))
+			return -EINVAL;
+		set->weight.ratio[cpu][group] = v;
 		set->weight.overriding = true;
 		break;
 	case idle_weight:
 		cpu = keys[3];
 		group = keys[4];
-		if (group == -1 || cpu == -1)
+		if (sanity_check_option(cpu, group, 0, 0))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
-		set->idle_weight.ratio[cpu][group] = (int)v;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_RATIO, &v))
+			return -EINVAL;
+		set->idle_weight.ratio[cpu][group] = v;
 		set->idle_weight.overriding = true;
 		break;
 	case freq_boost:
 		cpu = keys[3];
 		group = keys[4];
-		if (group == -1 || cpu == -1)
+		if (sanity_check_option(cpu, group, 0, 0))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
-		set->freq_boost.ratio[cpu][group] = (int)v;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_RATIO, &v))
+			return -EINVAL;
+		set->freq_boost.ratio[cpu][group] = v;
 		set->freq_boost.overriding = true;
 		break;
 	case esg:
 		cpu = keys[3];
-		if (cpu == -1)
+		if (sanity_check_option(cpu, 0, 0, 0))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_LEVEL, &v))
+			return -EINVAL;
 		for_each_cpu(i, cpu_coregroup_mask(cpu))
-			set->esg.step[i] = (int)v;
+			set->esg.step[i] = v;
 		set->esg.overriding = true;
 		break;
 	case ontime_en:
 		group = keys[3];
-		if (group == -1)
+		if (sanity_check_option(0, group, 0, 0))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
-		set->ontime.enabled[group] = !!(int)v;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_ONOFF, &v))
+			return -EINVAL;
+		set->ontime.enabled[group] = v;
 		set->ontime.overriding = true;
 		break;
 	case ontime_add_dom:
 		sse = keys[3];
-		if (sse == -1)
+		if (sanity_check_option(0, 0, sse, 0))
 			return -EINVAL;
-		cut_hexa_prefix(arg1);
-		cpumask_parse(arg1, &mask);
+		if (sanity_check_convert_value(arg1, VAL_TYPE_MASK, &mask))
+			return -EINVAL;
 		list = sse ? &set->ontime.dom_list_s :
 			     &set->ontime.dom_list_u;
 		add_ontime_domain(list, &mask, 1024, 0);
@@ -2209,50 +1692,47 @@ store_aio_tuner(struct kobject *k, struct kobj_attribute *attr,
 		break;
 	case ontime_remove_dom:
 		sse = keys[3];
-		if (sse == -1)
+		if (sanity_check_option(0, 0, sse, 0))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_CPU, &v))
+			return -EINVAL;
 		list = sse ? &set->ontime.dom_list_s :
 			     &set->ontime.dom_list_u;
-		remove_ontime_domain(list, (int)v);
+		remove_ontime_domain(list, v);
 		break;
 	case ontime_bdr:
 		sse = keys[3];
 		cpu = keys[4];
 		type = keys[5];
-		if (sse == -1 || cpu == -1 || type == -1)
+		if (sanity_check_option(cpu, 0, sse, type))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_LEVEL, &v))
+			return -EINVAL;
 		list = sse ? &set->ontime.dom_list_s :
 			     &set->ontime.dom_list_u;
 		if (type)
-			update_ontime_domain(list, cpu, (int)v, -1);
+			update_ontime_domain(list, cpu, v, -1);
 		else
-			update_ontime_domain(list, cpu, -1, (int)v);
+			update_ontime_domain(list, cpu, -1, v);
 		set->ontime.overriding = true;
 		break;
 	case util_est:
 		group = keys[3];
-		if (group == -1)
+		if (sanity_check_option(0, group, 0, 0))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
-		set->util_est.enabled[group] = !!(int)v;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_ONOFF, &v))
+			return -EINVAL;
+		set->util_est.enabled[group] = v;
 		set->util_est.overriding = true;
 		break;
 	case cpus_allowed_tsc:
-		cut_hexa_prefix(arg1);
-		kstrtol(arg1, 16, &v);
-		v &= EMS_SCHED_CLASS_MASK;
+		if (kstrtol(arg1, 0, &val))
+			return -EINVAL;
+		val &= EMS_SCHED_CLASS_MASK;
 		set->cpus_allowed.target_sched_class = 0;
 		for (i = 0; i < NUM_OF_SCHED_CLASS; i++)
-			if (v & (1 << i))
-				set->cpus_allowed.target_sched_class |= 1 << i;
+			if (test_bit(i, &val))
+				set_bit(i, &set->cpus_allowed.target_sched_class);
 		if (!set->cpus_allowed.overriding)
 			for (i = 0; i < STUNE_GROUP_COUNT; i++)
 				cpumask_copy(&set->cpus_allowed.mask[i],
@@ -2261,70 +1741,79 @@ store_aio_tuner(struct kobject *k, struct kobj_attribute *attr,
 		break;
 	case cpus_allowed:
 		group = keys[3];
-		if (group == -1)
+		if (sanity_check_option(0, group, 0, 0))
 			return -EINVAL;
-		cut_hexa_prefix(arg1);
-		cpumask_parse(arg1, &set->cpus_allowed.mask[group]);
+		if (sanity_check_convert_value(arg1, VAL_TYPE_MASK, &mask))
+			return -EINVAL;
+		cpumask_copy(&set->cpus_allowed.mask[group], &mask);
 		set->cpus_allowed.overriding = true;
 		break;
 	case prio_pinning_mask:
-		group = keys[3];
-		if (group == -1)
+		if (sanity_check_convert_value(arg1, VAL_TYPE_MASK, &mask))
 			return -EINVAL;
-		cut_hexa_prefix(arg1);
-		cpumask_parse(arg1, &set->prio_pinning.mask);
+		cpumask_copy(&set->prio_pinning.mask, &mask);
 		set->prio_pinning.overriding = true;
+		break;
 	case prio_pinning:
 		group = keys[3];
-		if (group == -1)
+		if (sanity_check_option(0, group, 0, 0))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
-		set->prio_pinning.enabled[group] = !!(int)v;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_ONOFF, &v))
+			return -EINVAL;
+		set->prio_pinning.enabled[group] = v;
 		set->prio_pinning.overriding = true;
 		break;
 	case prio_pinning_prio:
-		group = keys[3];
-		if (group == -1)
+		if (sanity_check_convert_value(arg1, VAL_TYPE_LEVEL, &v))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
 		set->prio_pinning.prio = (int)v;
 		set->prio_pinning.overriding = true;
 		break;
 	case init_util:
 		group = keys[3];
-		if (group == -1)
+		if (sanity_check_option(0, group, 0, 0))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
-		set->init_util.ratio[group] = !!(int)v;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_RATIO, &v))
+			return -EINVAL;
+		set->init_util.ratio[group] = v;
 		set->init_util.overriding = true;
 		break;
 	case frt_coverage_ratio:
 		cpu = keys[3];
-		if (cpu == -1)
+		if (sanity_check_option(cpu, 0, 0, 0))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_RATIO, &v))
+			return -EINVAL;
 		for_each_cpu(i, cpu_coregroup_mask(cpu))
-			set->frt.coverage_ratio[i] = (int)v;
+			set->frt.coverage_ratio[i] = v;
 		set->frt.overriding = true;
 		break;
 	case frt_active_ratio:
 		cpu = keys[3];
-		if (cpu == -1)
+		if (sanity_check_option(cpu, 0, 0, 0))
 			return -EINVAL;
-		ret = kstrtol(arg1, 10, &v);
-		if (ret)
-			return ret;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_RATIO, &v))
+			return -EINVAL;
 		for_each_cpu(i, cpu_coregroup_mask(cpu))
-			set->frt.active_ratio[i] = (int)v;
+			set->frt.active_ratio[i] = v;
 		set->frt.overriding = true;
+		break;
+	case patient_mode:
+		cpu = keys[3];
+		if (sanity_check_option(cpu, 0, 0, 0))
+			return -EINVAL;
+		if (sanity_check_convert_value(arg1, VAL_TYPE_LEVEL, &v))
+			return -EINVAL;
+		for_each_cpu(i, cpu_coregroup_mask(cpu))
+			set->esg.patient_mode[i] = v;
+		set->esg.overriding = true;
+		break;
+	case migov:
+		group = keys[3];
+		if (group == -1)
+			return -EINVAL;
+		set->migov.migov_en = !!(int)group;
+		set->migov.overriding = true;
 		break;
 	}
 
@@ -2394,7 +1883,7 @@ emstune_set_init(struct device_node *dn, struct emstune_set *set)
 	if (of_property_read_string(dn, "desc", &set->desc))
 		return -ENODATA;
 
-	parse(prefer_idle);
+	parse(sched_policy);
 	parse(weight);
 	parse(idle_weight);
 	parse(freq_boost);
@@ -2405,6 +1894,7 @@ emstune_set_init(struct device_node *dn, struct emstune_set *set)
 	parse(prio_pinning);
 	parse(init_util);
 	parse(frt);
+	parse(migov);
 
 	return 0;
 }
@@ -2486,44 +1976,9 @@ static struct kobject *emstune_kobj;
 
 static int __init emstune_sysfs_init(void)
 {
-	int mode_idx, level;
-
 	emstune_kobj = kobject_create_and_add("emstune", ems_kobj);
 	if (!emstune_kobj)
 		return -EINVAL;
-
-	for (mode_idx = 0; mode_idx < emstune_mode_count; mode_idx++) {
-		struct emstune_mode *mode = &emstune_modes[mode_idx];
-		struct kobject *mode_kobj;
-		char node_name[STR_LEN];
-
-		snprintf(node_name, sizeof(node_name), "mode%d", mode_idx);
-		mode_kobj = kobject_create_and_add(node_name, emstune_kobj);
-		if (!mode_kobj)
-			return -EINVAL;
-
-		for (level = 0; level < emstune_level_count; level++) {
-			struct emstune_set *set = &mode->sets[level];
-			char *name;
-
-			snprintf(node_name, sizeof(node_name), "level%d", level);
-			if (kobject_init_and_add(&set->kobj, &ktype_emstune_set,
-					mode_kobj, node_name))
-				return -EINVAL;
-
-			init_kobj(prefer_idle);
-			init_kobj(weight);
-			init_kobj(idle_weight);
-			init_kobj(freq_boost);
-			init_kobj(esg);
-			init_kobj(ontime);
-			init_kobj(util_est);
-			init_kobj(cpus_allowed);
-			init_kobj(prio_pinning);
-			init_kobj(init_util);
-			init_kobj(frt);
-		}
-	}
 
 	if (sysfs_create_file(emstune_kobj, &req_mode_attr.attr))
 		return -ENOMEM;
@@ -2550,6 +2005,7 @@ static int __init emstune_init(void)
 {
 	int ret;
 
+	mutex_init(&emstune_mode_lock);
 	ret = emstune_mode_init();
 	if (ret) {
 		pr_err("failed to initialize emstune mode with err=%d\n", ret);

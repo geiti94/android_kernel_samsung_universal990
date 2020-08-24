@@ -24,8 +24,8 @@ struct dsp_bus_scenario {
 	bool		enabled;
 };
 
-int dsp_bus_mo_get(struct dsp_bus *bus, unsigned int scenario_id);
-int dsp_bus_mo_put(struct dsp_bus *bus, unsigned int scenario_id);
+int dsp_bus_mo_get(struct dsp_bus *bus, unsigned char *scenario_name);
+int dsp_bus_mo_put(struct dsp_bus *bus, unsigned char *scenario_name);
 
 int dsp_bus_open(struct dsp_bus *bus);
 int dsp_bus_close(struct dsp_bus *bus);

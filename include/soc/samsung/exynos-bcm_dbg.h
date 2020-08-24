@@ -213,6 +213,28 @@ struct exynos_bcm_dbg_data {
 #endif
 	unsigned int			bcm_cnt_nr;
 	struct notifier_block		itmon_notifier;
+	struct exynos_bcm_calc		*bcm_calc;
+};
+
+struct exynos_bcm_calc_data {
+        u64 dump_time;
+        u64 ccnt;
+        u64 pmcnt[BCM_EVT_EVENT_MAX];
+};
+
+struct exynos_bcm_calc {
+	struct exynos_bcm_dbg_data *data;
+	struct exynos_bcm_calc_data *acc_data;
+	unsigned int sample_time;
+	struct mutex lock;
+	unsigned int num_ip;
+	char **ip_name;
+	int *bus_width;
+	int *ip_cnt;
+	unsigned int *ip_idx;
+	struct delayed_work work;
+	bool enable;
+	unsigned int perf_define_event;
 };
 
 #ifdef CONFIG_EXYNOS_BCM_DBG_GNR
@@ -242,6 +264,9 @@ int exynos_bcm_dbg_ipc_send_data(enum exynos_bcm_dbg_ipc_type ipc_type,
 int exynos_bcm_dbg_pd_sync(unsigned int cal_pdid, bool on);
 void exynos_bcm_dbg_start(void);
 void exynos_bcm_dbg_stop(unsigned int bcm_stop_owner);
+void exynos_bcm_get_data(u64 *rwdata_transfer, u64 *rdata_transfer_cnt, u64
+				*rdata_latency_sum, u64 *output_bw);
+bool exynos_bcm_calc_enable(int enable);
 #else
 #define exynos_bcm_dbg_pd(a, b) do {} while (0)
 #define exynos_bcm_dbg_ipc_send_data(a, b, c) do {} while (0)

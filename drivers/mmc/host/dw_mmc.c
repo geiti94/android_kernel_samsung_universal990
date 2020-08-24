@@ -1013,8 +1013,10 @@ static inline int dw_mci_prepare_desc64(struct dw_mci *host,
 	host->bu_count = 0;
 	desc_first = desc_last = desc = host->sg_cpu;
 
-	if (host->bounce_buffer_addr == NULL)
+	if (host->bounce_buffer_addr == NULL) {
+		dev_err(host->dev, "bounce buffer is NULL!\n");
 		return -EINVAL;
+	}
 
 	memset(host->bounce_buffer_addr, 0, (4096 * 512));
 	bounce_buffer_addr = host->bounce_buffer_addr;
@@ -1874,9 +1876,15 @@ static void __dw_mci_start_request(struct dw_mci *host,
 		mod_timer(&host->sto_timer, jiffies + msecs_to_jiffies(500));
 	else if (host->pdata->sw_timeout)
 		mod_timer(&host->sto_timer, jiffies + msecs_to_jiffies(host->pdata->sw_timeout));
+#if defined(CONFIG_HDM)
+	else if (!cmd->data)
+		mod_timer(&host->sto_timer, jiffies + msecs_to_jiffies(1000));
 	else
 		mod_timer(&host->sto_timer, jiffies + msecs_to_jiffies(10000));
-
+#else
+	else
+		mod_timer(&host->sto_timer, jiffies + msecs_to_jiffies(10000));
+#endif
 	host->slot = slot;
 	host->mrq = mrq;
 
@@ -4236,7 +4244,6 @@ static struct dw_mci_board *dw_mci_parse_dt(struct dw_mci *host)
 		pdata->caps2 |= MMC_CAP2_CD_ACTIVE_HIGH;
 	if (of_find_property(np, "card-detect-gpio", NULL)) {
 		pdata->cd_type = DW_MCI_CD_GPIO;
-		pdata->caps2 |= MMC_CAP2_DETECT_ON_ERR;
 		/* to remove power on period without tray, default enable */
 		pdata->caps2 |= MMC_CAP2_NO_PRESCAN_POWERUP;
 	}
@@ -4532,7 +4539,7 @@ int dw_mci_probe(struct dw_mci *host)
 	/* bounce buffer size 4K * 512 */
 	host->bounce_buffer_addr = kmalloc((4096 * SG_MAX_LEN), GFP_KERNEL);
 	if (host->bounce_buffer_addr) {
-		dev_err(host->dev, "mmc bounce_buffer_addr = 0x%llx\n", host->bounce_buffer_addr);
+		dev_err(host->dev, "mmc bounce_buffer_addr = 0x%px\n", host->bounce_buffer_addr);
 		memset(host->bounce_buffer_addr, 0, (4096 * SG_MAX_LEN));
 	} else {
 		dev_err(host->dev, "mmc bounce_buffer alloc fail\n");

@@ -69,3 +69,4 @@ obj-$(CONFIG_KEYBOARD_XTKBD)		+= xtkbd.o
 obj-$(CONFIG_KEYBOARD_W90P910)		+= w90p910_keypad.o
 obj-$(CONFIG_KEYBOARD_STM_FSR)		+= stm/fsr1ad04/
 
+CFLAGS_gpio_keys.o = -Wformat

@@ -8,8 +8,10 @@ obj-$(CONFIG_NFC_PN547)		+= pn547.o
 obj-$(CONFIG_NFC_PN547_ESE_SUPPORT)		+= p61.o
 obj-$(CONFIG_ESE_P3_LSI)	+= ese_p3.o
 obj-$(CONFIG_SNVM_K250A)	+= k250a_i2c.o
+obj-$(CONFIG_NFC_FEATURE_SN100U)	+= cold_reset.o
 ccflags-$(CONFIG_NFC_DEBUG) := -DDEBUG
 
+obj-$(CONFIG_SEC_STAR)		+= sec-star/
 obj-$(CONFIG_NFC_FDP)		+= fdp/
 obj-$(CONFIG_NFC_PN544)		+= pn544/
 obj-$(CONFIG_NFC_MICROREAD)	+= microread/

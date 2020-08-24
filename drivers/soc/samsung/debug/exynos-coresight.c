@@ -347,10 +347,10 @@ unsigned long exynos_cs_read_pc(int cpu)
 			exynos_cpu.power_state(cpu), cpu_is_offline(cpu));
 		target_cpu_pc = 0;
 	} else {
-		dev_emerg(dbg.dev, "cpu%d is power on\n", cpu);
+		dev_dbg(dbg.dev, "cpu%d is power on\n", cpu);
 		exynos_cs_get_pc(cpu, 1);
 		target_cpu_pc = exynos_cs_pc[cpu][1].pc;
-		dev_emerg(dbg.dev, "cpu%d PC = [0x%lx]\n", cpu, target_cpu_pc);
+		dev_dbg(dbg.dev, "cpu%d PC = [0x%lx]\n", cpu, target_cpu_pc);
 	}
 	raw_spin_unlock_irqrestore(&state->lock, flags);
 

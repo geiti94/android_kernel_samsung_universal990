@@ -40,6 +40,8 @@ static DEFINE_STATIC_PACKET(s6e3hab_aod_l3_key_disable, DSI_PKT_TYPE_WR, S6E3HAB
 static DEFINE_PANEL_UDELAY(s6e3hab_aod_self_spsram_sel_delay, 1);
 static DEFINE_PANEL_UDELAY(s6e3hab_aod_self_mask_checksum_1frame_delay, 16700);
 static DEFINE_PANEL_UDELAY(s6e3hab_aod_self_mask_checksum_2frame_delay, 33400);
+static DEFINE_PANEL_UDELAY(s6e3hab_aod_time_update_delay, 33400);
+
 
 static DEFINE_PANEL_KEY(s6e3hab_aod_l1_key_enable, CMD_LEVEL_1,
 	KEY_ENABLE, &PKTINFO(s6e3hab_aod_l1_key_enable));
@@ -497,6 +499,7 @@ static void *s6e3hab_aod_analog_init_cmdtbl[] = {
 	&PKTINFO(s6e3hab_aod_analog_mem),
 	&PKTINFO(s6e3hab_aod_analog_mask),
 	&PKTINFO(s6e3hab_aod_analog_pos),
+	&DLYINFO(s6e3hab_aod_time_update_delay),
 	&PKTINFO(s6e3hab_aod_analog_en),
 	&PKTINFO(s6e3hab_aod_timer_rate),
 	&KEYINFO(s6e3hab_aod_l2_key_disable),
@@ -505,7 +508,8 @@ static void *s6e3hab_aod_analog_init_cmdtbl[] = {
 // --------------------- End of analog clock ---------------------
 
 // --------------------- check sum control ----------------------------
-static DEFINE_STATIC_PACKET(s6e3hab_aod_self_mask_img_pkt, DSI_PKT_TYPE_WR_SR, S6E3HAB_CRC_SELF_MASK_IMG, 0);
+static DEFINE_STATIC_PACKET_WITH_OPTION(s6e3hab_aod_self_mask_img_pkt,
+		DSI_PKT_TYPE_WR_SR, S6E3HAB_CRC_SELF_MASK_IMG, 0, PKT_OPTION_SR_ALIGN_16);
 
 static char S6E3HAB_AOD_SELF_MASK_CRC_ON1[] = {
 	0xD8,
@@ -731,8 +735,9 @@ static char S6E3HAB_AOD_SELF_MOVE_OFF[] = {
 };
 DEFINE_STATIC_PACKET(s6e3hab_aod_self_move_off, DSI_PKT_TYPE_WR, S6E3HAB_AOD_SELF_MOVE_OFF, 0);
 
-
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_PANEL_MDELAY(s6e3hab_aod_move_off_delay, 34);
+#endif
 
 static void *s6e3hab_aod_self_move_off_cmdtbl[] = {
 	&KEYINFO(s6e3hab_aod_l2_key_enable),

@@ -263,6 +263,9 @@ static int vts_s_lif_gain_mode_put(struct snd_kcontrol *kcontrol,
 
 	dev_info(dev, "%s(%#x, %u)\n", __func__, reg, val);
 
+	if (val < mc->min || val > mc->max)
+		return -EINVAL;
+
 	return vts_s_lif_soc_dmic_aud_gain_mode_put(data, reg, val);
 }
 
@@ -304,6 +307,9 @@ static int vts_s_lif_max_scale_gain_put(struct snd_kcontrol *kcontrol,
 	unsigned int val = (unsigned int)ucontrol->value.integer.value[0];
 
 	dev_info(dev, "%s(%#x, %u)\n", __func__, reg, val);
+
+	if (val < mc->min || val > mc->max)
+		return -EINVAL;
 
 	return vts_s_lif_soc_dmic_aud_max_scale_gain_put(data, reg, val);
 }
@@ -349,6 +355,9 @@ static int vts_s_lif_dmic_aud_control_gain_put(
 
 	dev_info(dev, "%s(%#x, %u)\n", __func__, reg, val);
 
+	if (val < mc->min || val > mc->max)
+		return -EINVAL;
+
 	return vts_s_lif_soc_dmic_aud_control_gain_put(data, reg, val);
 }
 
@@ -392,6 +401,9 @@ static int vts_s_lif_vol_set_put(
 	unsigned int val = (unsigned int)ucontrol->value.integer.value[0];
 
 	dev_info(dev, "%s(%#x, %u)\n", __func__, reg, val);
+
+	if (val < mc->min || val > mc->max)
+		return -EINVAL;
 
 	return vts_s_lif_soc_vol_set_put(data, reg, val);
 }
@@ -481,6 +493,9 @@ static int vts_s_lif_channel_map_put(
 
 	dev_dbg(dev, "%s(%#x, %u)\n", __func__, reg, val);
 
+	if (val < mc->min || val > mc->max)
+		return -EINVAL;
+
 	return vts_s_lif_soc_channel_map_put(data, reg, val);
 }
 
@@ -510,6 +525,9 @@ static int vts_s_lif_init_mute_ms_put(
 	unsigned int val = (unsigned int)ucontrol->value.integer.value[0];
 
 	dev_info(dev, "%s(%#x, %u)\n", __func__, reg, val);
+
+	if (val < mc->min || val > mc->max)
+		return -EINVAL;
 
 	if ((val < 10) && (val != 0))
 		val = 10;

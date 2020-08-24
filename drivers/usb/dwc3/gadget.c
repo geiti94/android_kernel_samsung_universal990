@@ -29,6 +29,10 @@
 #include <linux/phy/phy.h>
 #include <linux/usb_notify.h>
 #include <linux/workqueue.h>
+#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
+#include <linux/of_platform.h>
+#include <linux/usb/typec/manager/usb_typec_manager_notifier.h>
+#endif
 
 #include "debug.h"
 #include "core.h"
@@ -123,17 +127,28 @@ int dwc3_gadget_set_test_mode(struct dwc3 *dwc, int mode)
  * extern module can check dwc3 core link state  This function will
  * return 1 link is on compliance of loopback mode else 0.
  */
-int dwc3_gadget_get_cmply_link_state(struct usb_gadget *g)
+static int dwc3_gadget_get_cmply_link_state(void)
 {
-	struct dwc3 *dwc = gadget_to_dwc(g);
+	struct device_node	*np = NULL;
+	struct platform_device	*pdev = NULL;
+	struct dwc3	*dwc;
 	u32		reg = 0;
 	u32		ret = -ENODEV;
 
- 	if (!dwc)
+	np = of_find_compatible_node(NULL, NULL, "synopsys,dwc3");
+
+	if (np) {
+		pdev = of_find_device_by_node(np);
+		of_node_put(np);
+		if (pdev)
+			dwc = pdev->dev.driver_data;
+	}
+
+	 if (!dwc)
 		return ret;
 
 	if (dwc->pullups_connected) {
-		reg= dwc3_gadget_get_link_state(dwc);
+		reg = dwc3_gadget_get_link_state(dwc);
 
 		dev_info(dwc->dev, "%s: link state = %d\n", __func__, reg);
 		if ((reg == DWC3_LINK_STATE_CMPLY) || (reg == DWC3_LINK_STATE_LPBK))
@@ -145,7 +160,10 @@ int dwc3_gadget_get_cmply_link_state(struct usb_gadget *g)
 
 	return ret;
 }
-EXPORT_SYMBOL(dwc3_gadget_get_cmply_link_state);
+
+static struct typec_manager_gadget_ops manager_dwc3_gadget_ops = {
+	.gadget_get_cmply_link_state = dwc3_gadget_get_cmply_link_state,
+};
 #endif
 
 /**
@@ -2219,6 +2237,10 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 	unsigned long		flags;
 	int			ret;
 
+#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
+	if(is_on)
+		set_usb_enable_state();
+#endif
 	if (pm_runtime_suspended(dwc->dev))
 		return 0;
 
@@ -3237,7 +3259,7 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 			dwc->rst_err_noti = true;
 		}
 
-		pr_info("%s rst_err_cnt: %d, time_current: %d, time_before: %d\n",
+		pr_info("%s rst_err_cnt: %d, time_current: %lld, time_before: %lld\n",
 			__func__, dwc->rst_err_cnt, current_time, dwc->rst_time_before);
 
 		dwc->rst_time_before = current_time;
@@ -3336,6 +3358,10 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 		dwc3_otg_qos_lock(dwc, -1);
 	else
 		dwc3_otg_qos_lock(dwc, 1);
+#endif
+
+#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
+	set_usb_enumeration_state(dwc->gadget.speed);
 #endif
 
 	dwc->eps[1]->endpoint.maxpacket = dwc->gadget.ep0->maxpacket;
@@ -4016,6 +4042,10 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 			goto err4;
 		}
 	}
+
+#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
+	probe_typec_manager_gadget_ops(&manager_dwc3_gadget_ops);
+#endif
 	/* Kernel minor update - 4.19.36
 	dwc3_gadget_set_speed(&dwc->gadget, dwc->maximum_speed);
 	*/

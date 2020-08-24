@@ -46,7 +46,7 @@ static int parse_qos_data(struct device *dev,
 		}
 
 #if defined(DEBUG_NAD_BALANCER)
-		NAD_PRINT("qos desc : %s, 0x%x\n", cqos->desc, &cqos->desc);
+		NAD_PRINT("qos desc : %s\n", cqos->desc);
 #endif
 
 		if (of_property_read_u32(cnp, "qos,delay_time", &cqos->delay_time)) {

@@ -111,6 +111,7 @@ static int auto_sleep_thread_thrfunc(void *data)
 	BUG_ON(!thrctx);
 	BUG_ON(!(thrctx->do_task));
 
+	thrctx->idle_start_ns = 0;
 	while (!kthread_should_stop()) {
 		/* Execute thread task */
 		if (!(thrctx->do_task)) {
@@ -210,7 +211,7 @@ int auto_sleep_thread_start(struct auto_sleep_thread *thrctx, struct auto_sleep_
 	auto_sleep_thread_set_state(thrctx, THREAD_STATE_RUNNING);
 
 	npu_info("calling kthread_run for (%s)...\n", thrctx->name);
-	thrctx->thread_ref = kthread_run(auto_sleep_thread_thrfunc, thrctx, thrctx->name);
+	thrctx->thread_ref = kthread_run(auto_sleep_thread_thrfunc, thrctx, "%s", thrctx->name);
 	if (IS_ERR(thrctx->thread_ref)) {
 		npu_err("NPU: kthread_run failed(%pK) [%s]\n", thrctx->thread_ref, thrctx->name);
 		return -EFAULT;

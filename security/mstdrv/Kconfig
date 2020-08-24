@@ -59,12 +59,6 @@ config MST_TEEGRIS
 	help
 	This enables the MST TEEGRIS function
 
-config MFC_LDO_COMMAND
-	bool "i2c patch for LDO on MFC IC IDT chip"
-	default n
-	help
-	This enables the i2c patch for LDO on MFC IC IDT chip
-
 config MST_LPM_DISABLE
 	bool "MST LPM Disable, this works only in eng binary version"
 	default n

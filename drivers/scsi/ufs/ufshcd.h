@@ -405,6 +405,7 @@ struct ufs_hba_variant_ops {
 					struct ufshcd_lrb *lrbp);
 	int	(*crypto_sec_cfg)(struct ufs_hba *hba, bool init);
 	int	(*access_control_abort)(struct ufs_hba *hba);
+	void	(*perf_mode)(struct ufs_hba *, struct scsi_cmnd *);
 };
 
 /* clock gating state  */
@@ -1184,6 +1185,8 @@ u32 ufshcd_get_local_unipro_ver(struct ufs_hba *hba);
 #if defined(CONFIG_UFSFEATURE)
 int ufshcd_comp_scsi_upiu(struct ufs_hba *hba, struct ufshcd_lrb *lrbp);
 int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp);
+int ufshcd_query_flag_retry(struct ufs_hba *hba, enum query_opcode opcode,
+			    enum flag_idn idn, bool *flag_res);
 #endif
 #if defined(CONFIG_UFSFEATURE) && defined(CONFIG_UFSHPB) && defined(SEC_UFS_ERROR_COUNT)
 void SEC_ufs_hpb_rb_count(struct ufs_hba *hba, struct ufshpb_region *rgn);
@@ -1369,6 +1372,12 @@ static inline int ufshcd_vops_crypto_sec_cfg(struct ufs_hba *hba, bool init)
 	if (hba->vops && hba->vops->crypto_sec_cfg)
 		return hba->vops->crypto_sec_cfg(hba, init);
 	return 0;
+}
+
+static inline void ufshcd_vops_perf_mode(struct ufs_hba *hba, struct scsi_cmnd *cmd)
+{
+	if (hba->vops && hba->vops->perf_mode)
+		hba->vops->perf_mode(hba, cmd);
 }
 #define UFS_DEV_ATTR(name, fmt, args...)					\
 static ssize_t ufs_##name##_show (struct device *dev, struct device_attribute *attr, char *buf)	\

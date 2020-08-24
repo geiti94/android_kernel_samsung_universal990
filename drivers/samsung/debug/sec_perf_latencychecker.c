@@ -28,11 +28,15 @@
 #include <asm/stacktrace.h>
 #include <linux/delay.h>
 #include <asm/irq_regs.h>
+#include <linux/cpu.h>
+#include <linux/cpu_pm.h>
+#include "../../../kernel/sched/sched.h"
 
 #define MAX_LATENCYCHECKER_LOG 128
 #define MAX_LATENCYCHECKER_CALLER 32
 #define CALLSTACK_MAX_NUM 5
 #define LOG_LINE_MAX		512
+#define MIN_THRESHOLD_MS 10
 
 enum latency_type {
 	LATENCY_NONE,
@@ -42,6 +46,7 @@ enum latency_type {
 
 struct latencychecker_info {
 	unsigned long long time;
+	char task_comm[TASK_COMM_LEN];
 	void *pc;
 	void *fn;
 	int cpu;
@@ -51,12 +56,14 @@ struct latencychecker_info {
 
 struct latencychecker_caller {
 	unsigned long long time;
+	char task_comm[TASK_COMM_LEN];
 	void *addrs[CALLSTACK_MAX_NUM];
 	int cpu;
 };
 
 static cpumask_t __read_mostly latencychecker_cpus;
-static unsigned long __read_mostly hardlatency_thresh = 100;
+static cpumask_t __read_mostly online_cpus;
+static unsigned long __read_mostly hardlatency_thresh = 20;
 
 static DEFINE_PER_CPU(unsigned long, latencychecker_interrupts);
 static DEFINE_PER_CPU(unsigned long, latencychecker_interrupts_saved);
@@ -67,13 +74,13 @@ static const char * const latency_type_name[] = {
 	"NONE", "TASK", "IRQ"
 };
 
-static atomic_t latencychecker_info_idx;
-static atomic_t latencychecker_caller_idx;
-static atomic_t latencychecker_active;
-static atomic_t latencychecker_dumping;
+static atomic_t latencychecker_info_idx = ATOMIC_INIT(-1);
+static atomic_t latencychecker_caller_idx = ATOMIC_INIT(-1);
+static atomic_t latencychecker_active = ATOMIC_INIT(0);
+static atomic_t latencychecker_dumping = ATOMIC_INIT(0);
 static bool init_complete;
+static bool latencychecker_enable = true;
 static DEFINE_PER_CPU(call_single_data_t, latencychecker_csd);
-//static call_single_data_t latencychecker_csd;
 
 static struct latencychecker_info lc_info[MAX_LATENCYCHECKER_LOG];
 static struct latencychecker_caller lc_caller[MAX_LATENCYCHECKER_CALLER];
@@ -114,7 +121,7 @@ static void latencychecker_save_stack_handler(void *data)
 	struct pt_regs *regs;
 	unsigned long index;
 
-	if (atomic_read(&latencychecker_dumping) == 1)
+	if (atomic_read(&latencychecker_dumping) == 1 || !latencychecker_enable)
 		return;
 
 	atomic_inc(&latencychecker_active);
@@ -123,6 +130,7 @@ static void latencychecker_save_stack_handler(void *data)
 
 	lc_caller[index].time = local_clock();
 	lc_caller[index].cpu = smp_processor_id();
+	strncpy(lc_caller[index].task_comm, current->comm, TASK_COMM_LEN - 1);
 
 	if (regs) {
 #ifdef CONFIG_STACKTRACE
@@ -167,6 +175,7 @@ static void sec_perf_latencychecker_save_latency_info(unsigned int next_cpu)
 	lc_info[index].time = local_clock();
 	lc_info[index].cpu = next_cpu;
 	lc_info[index].detective = smp_processor_id();
+	strncpy(lc_info[index].task_comm, cpu_curr(next_cpu)->comm, TASK_COMM_LEN - 1);
 
 	if (dbg_snapshot_get_sjtag_status() == true)
 		lc_info[index].pc = 0;
@@ -178,23 +187,20 @@ static void sec_perf_latencychecker_save_latency_info(unsigned int next_cpu)
 		lc_info[index].type = LATENCY_IRQ;
 	} else {
 		lc_info[index].type = LATENCY_TASK;
-		if (atomic_read(per_cpu_ptr(&latencychecker_ipi_pending, next_cpu)) == 0) {
-			atomic_set(per_cpu_ptr(&latencychecker_ipi_pending, next_cpu), 1);
+		if (atomic_cmpxchg_acquire(per_cpu_ptr(&latencychecker_ipi_pending, next_cpu), 0, 1) == 0) {
 			smp_call_function_single_async(next_cpu, per_cpu_ptr(&latencychecker_csd, next_cpu));
 		}
 	}
 
-	pr_debug("LatencyChecker detected hard latency over %u ms on cpu %u. Where : %s Detective : %u PC : %pS FN : %pS",
+	pr_debug("LatencyChecker detected hard latency over %lu ms on cpu %u. Where : %s Detective : %u PC : %pS FN : %pS",
 		hardlatency_thresh, next_cpu, latency_type_name[lc_info[index].type], lc_info[index].detective, lc_info[index].pc, lc_info[index].fn);
 }
-
-
 
 void sec_perf_latencychecker_check_latency_other_cpu(void)
 {
 	unsigned int next_cpu;
 
-	if (!init_complete)
+	if (!init_complete || !latencychecker_enable)
 		return;
 
 	__touch_latencychecker();
@@ -219,20 +225,49 @@ out:
 	atomic_dec(&latencychecker_active);
 }
 
+void sec_perf_latencychecker_stop(void)
+{
+	latencychecker_enable = false;
+}
+
+static int sec_perf_latencychecker_start_cpu(unsigned int cpu)
+{
+	pr_info("cpu%u %s\n", cpu, __func__);
+	__touch_latencychecker();
+	cpumask_set_cpu(cpu, &online_cpus);
+	cpumask_set_cpu(cpu, &latencychecker_cpus);
+
+	return 0;
+}
+
+static int sec_perf_latencychecker_stop_cpu(unsigned int cpu)
+{
+	pr_info("cpu%u %s\n", cpu, __func__);
+	cpumask_clear_cpu(cpu, &online_cpus);
+	cpumask_clear_cpu(cpu, &latencychecker_cpus);
+
+	return 0;
+}
+
 int sec_perf_latencychecker_enable(unsigned int cpu)
 {
 	__touch_latencychecker();
-	cpumask_set_cpu(cpu, &latencychecker_cpus);
+
+	if(cpumask_test_cpu((cpu), &online_cpus))
+		cpumask_set_cpu(cpu, &latencychecker_cpus);
+
 	return 0;
 }
 
 int sec_perf_latencychecker_disable(unsigned int cpu)
 {
-	cpumask_clear_cpu(cpu, &latencychecker_cpus);
+	if(cpumask_test_cpu((cpu), &online_cpus))
+		cpumask_clear_cpu(cpu, &latencychecker_cpus);
+
 	return 0;
 }
 
-static int __init set_perf_latencychecker_set_thresh(char *str)
+static int __init sec_perf_latencychecker_set_thresh(char *str)
 {
 	unsigned long threshold;
 	int ret;
@@ -242,10 +277,15 @@ static int __init set_perf_latencychecker_set_thresh(char *str)
 	ret = kstrtoul(str, 0, &threshold);
 	if (ret < 0)
 		return 0;
-	hardlatency_thresh = threshold;
+
+	if (threshold < MIN_THRESHOLD_MS)
+		hardlatency_thresh = MIN_THRESHOLD_MS;
+	else
+		hardlatency_thresh = threshold;
+
 	return 1;
 }
-__setup("latencychecker_thresh=", set_perf_latencychecker_set_thresh);
+__setup("latencychecker_thresh=", sec_perf_latencychecker_set_thresh);
 
 static ssize_t sec_perf_latencychecker_threshold_read(struct file *file, char __user *user_buf,
 				size_t count, loff_t *ppos)
@@ -253,7 +293,7 @@ static ssize_t sec_perf_latencychecker_threshold_read(struct file *file, char __
 	char buf[80];
 	ssize_t ret;
 
-	ret = snprintf(buf, sizeof(buf), "Latency checker threshold : %lums\n", hardlatency_thresh);
+	ret = snprintf(buf, sizeof(buf), "%lu\n", hardlatency_thresh);
 	if (ret < 0)
 		return ret;
 
@@ -270,7 +310,10 @@ static ssize_t sec_perf_latencychecker_threshold_write(struct file *file, const 
 	if (retval)
 		return retval;
 
-	hardlatency_thresh = threshold;
+	if (threshold < MIN_THRESHOLD_MS)
+		hardlatency_thresh = MIN_THRESHOLD_MS;
+	else
+		hardlatency_thresh = threshold;
 
 	return count;
 }
@@ -282,16 +325,75 @@ static const struct file_operations sec_perf_latencychecker_threshold_fops = {
 	.llseek  = default_llseek,
 };
 
+static int __init sec_perf_latencychecker_activate(char *str)
+{
+	unsigned long enable;
+	int ret;
+
+	if (!str)
+		return 0;
+
+	ret = kstrtoul(str, 0, &enable);
+	if (ret < 0)
+		return 0;
+
+	if (enable)
+		latencychecker_enable = true;
+	else
+		latencychecker_enable = false;
+
+	return 1;
+}
+
+__setup("latencychecker_enable=", sec_perf_latencychecker_activate);
+
+static ssize_t sec_perf_latencychecker_enable_read(struct file *file, char __user *user_buf,
+				size_t count, loff_t *ppos)
+{
+	char buf[80];
+	ssize_t ret;
+
+	ret = snprintf(buf, sizeof(buf), "%u\n", (unsigned int)latencychecker_enable);
+	if (ret < 0)
+		return ret;
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, ret);
+}
+
+static ssize_t sec_perf_latencychecker_enable_write(struct file *file, const char __user *user_buf,
+				size_t count, loff_t *ppos)
+{
+	int enable;
+	ssize_t retval;
+
+	retval = kstrtoint_from_user(user_buf, count, 10, &enable);
+	if (retval)
+		return retval;
+
+	if (enable)
+		latencychecker_enable = true;
+	else
+		latencychecker_enable = false;
+
+	return count;
+}
+
+static const struct file_operations sec_perf_latencychecker_enable_fops = {
+	.open    = simple_open,
+	.read    = sec_perf_latencychecker_enable_read,
+	.write = sec_perf_latencychecker_enable_write,
+	.llseek  = default_llseek,
+};
 
 static void sec_perf_latencychecker_dump(struct seq_file *m, int index)
 {
 	char buf[LOG_LINE_MAX];
 	ssize_t offset = 0;
 
-	offset = snprintf(buf, LOG_LINE_MAX, "%llu  %d  %4s   %d       %pS",
-		lc_info[index].time, lc_info[index].cpu, latency_type_name[lc_info[index].type], lc_info[index].detective, lc_info[index].pc);
+	offset = snprintf(buf, LOG_LINE_MAX, "%16llu  %d   %16s   %4s    %d       %pS",
+		lc_info[index].time, lc_info[index].cpu, lc_info[index].task_comm, latency_type_name[lc_info[index].type], lc_info[index].detective, lc_info[index].pc);
 	if (lc_info[index].type == LATENCY_IRQ)
-		offset += snprintf(buf + offset, LOG_LINE_MAX, " %pS", lc_info[index].fn);
+		offset += snprintf(buf + offset, LOG_LINE_MAX - offset, " %pS", lc_info[index].fn);
 	seq_printf(m, "%s\n", buf);
 }
 
@@ -301,9 +403,9 @@ static void sec_perf_latencychecker_dump_caller(struct seq_file *m, int index)
 	char buf[LOG_LINE_MAX];
 	ssize_t offset = 0;
 
-	offset = snprintf(buf, LOG_LINE_MAX, "%llu  %d ", lc_caller[index].time, lc_caller[index].cpu);
+	offset = snprintf(buf, LOG_LINE_MAX, "%16llu  %d   %16s ", lc_caller[index].time, lc_caller[index].cpu, lc_caller[index].task_comm);
 	for (i = 0; i < CALLSTACK_MAX_NUM; i++)
-		offset += snprintf(buf + offset, LOG_LINE_MAX, "%c %pS ", (i == 0) ? ' ' : '<', lc_caller[index].addrs[i]);
+		offset += snprintf(buf + offset, LOG_LINE_MAX - offset, "%c %pS ", (i == 0) ? ' ' : '<', lc_caller[index].addrs[i]);
 	seq_printf(m, "%s\n", buf);
 }
 
@@ -330,9 +432,9 @@ static int sec_perf_latencychecker_dump_show(struct seq_file *m, void *v)
 	seq_puts(m, "\n");
 	seq_printf(m, "Latency Checker Info (threshold %lums)\n", hardlatency_thresh);
 	seq_puts(m, "\n");
-	seq_puts(m, "--- Latency Info --------------------------------------------------------\n");
-	seq_puts(m, "time         cpu where detective pc                              fn\n");
-	seq_puts(m, "-------------------------------------------------------------------------\n");
+	seq_puts(m, "--- Latency Info -------------------------------------------------------------------------\n");
+	seq_puts(m, "      time       cpu        task_comm    where  detective            pc               fn\n");
+	seq_puts(m, "------------------------------------------------------------------------------------------\n");
 
 	for (i = start_idx; total > 0; total--, i = (i + 1) & (MAX_LATENCYCHECKER_LOG - 1))
 		sec_perf_latencychecker_dump(m, i);
@@ -351,9 +453,9 @@ static int sec_perf_latencychecker_dump_show(struct seq_file *m, void *v)
 	if (total == 0)
 		goto out;
 
-	seq_puts(m, "--- Dump Stack ----------------------------------------------------------\n");
-	seq_puts(m, "time         cpu  caller\n");
-	seq_puts(m, "-------------------------------------------------------------------------\n");
+	seq_puts(m, "--- Dump Stack ---------------------------------------------------------------------------\n");
+	seq_puts(m, "      time       cpu        task_comm    caller\n");
+	seq_puts(m, "------------------------------------------------------------------------------------------\n");
 
 	for (i = start_idx; total > 0; total--, i = (i + 1) & (MAX_LATENCYCHECKER_CALLER - 1))
 		sec_perf_latencychecker_dump_caller(m, i);
@@ -375,34 +477,67 @@ static const struct file_operations sec_perf_latencychecker_dump_fops = {
 	.release = single_release,
 };
 
-int initial_value;
+static int sec_perf_latencychecker_count_show(struct seq_file *m, void *v)
+{
+	unsigned long count = atomic_read(&latencychecker_info_idx) + 1;
+
+	seq_printf(m, "%lu\n", count);
+	return 0;
+}
+
+static int sec_perf_latencychecker_count_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, sec_perf_latencychecker_count_show, NULL);
+}
+
+static const struct file_operations sec_perf_latencychecker_count_fops = {
+	.open    = sec_perf_latencychecker_count_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release,
+};
+
 static int __init sec_perf_latencychecker_init(void)
 {
-	struct dentry *den;
+	struct proc_dir_entry *proc_lc;
 	int i;
+	int ret;
 
-	atomic_set(&latencychecker_info_idx, -1);
-	atomic_set(&latencychecker_caller_idx, -1);
-	atomic_set(&latencychecker_active, 0);
-	atomic_set(&latencychecker_dumping, 0);
-
-	initial_value = atomic_read(&latencychecker_info_idx);
-
-	den = debugfs_create_dir("latency_checker", NULL);
-	debugfs_create_file("dump", 0644, den, NULL, &sec_perf_latencychecker_dump_fops);
-	debugfs_create_file("threshold", 0644, den, NULL, &sec_perf_latencychecker_threshold_fops);
-
+	// proc
+	proc_lc = proc_mkdir("latency_checker", NULL);
+	if (!proc_lc)
+		return -1;
+	if (!proc_create("dump", 0644, proc_lc, &sec_perf_latencychecker_dump_fops))
+		goto err;
+	if (!proc_create("threshold", 0664, proc_lc, &sec_perf_latencychecker_threshold_fops))
+		goto err;
+	if (!proc_create("count", 0644, proc_lc, &sec_perf_latencychecker_count_fops))
+		goto err;
+	if (!proc_create("enable", 0664, proc_lc, &sec_perf_latencychecker_enable_fops))
+		goto err;
 
 	for_each_present_cpu(i) {
-		call_single_data_t *csd = per_cpu_ptr(&latencychecker_csd, i);
+		if (i < nr_cpu_ids) {
+			call_single_data_t *csd = per_cpu_ptr(&latencychecker_csd, i);
 
-		csd->flags = 0;
-		csd->func = latencychecker_save_stack_handler;
-		csd->info = 0;
+			csd->flags = 0;
+			csd->func = latencychecker_save_stack_handler;
+			csd->info = 0;
+		}
 	}
+
+	/* register cpuhp state for hot plug(non-boot cores) */
+	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "latencychecker:online",
+				sec_perf_latencychecker_start_cpu, sec_perf_latencychecker_stop_cpu);
+
+	if (ret < 0)
+		goto err;
 
 	init_complete = true;
 	return 0;
+err:
+	remove_proc_subtree("latency_checker", NULL);
+	return -1;
 }
 
 late_initcall(sec_perf_latencychecker_init);

@@ -33,6 +33,9 @@
 #ifdef CONFIG_SEC_PM
 #include <linux/sec_class.h>
 #endif /* CONFIG_SEC_PM */
+#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
+#include <linux/sec_debug.h>
+#endif /* CONFIG_SEC_DEBUG_EXTRA_INFO */
 
 static struct s2mps22_info *s2mps22_static_info;
 static struct regulator_desc regulators[S2MPS22_REG_MAX];
@@ -458,7 +461,7 @@ void get_s2mps22_i2c(struct i2c_client **i2c)
 static irqreturn_t s2mps22_buck_ocp_irq(int irq, void *data)
 {
 	struct s2mps22_info *s2mps22 = data;
-	size_t i;
+	int i = 0;
 
 	mutex_lock(&s2mps22->lock);
 
@@ -470,6 +473,10 @@ static irqreturn_t s2mps22_buck_ocp_irq(int irq, void *data)
 			break;
 		}
 	}
+
+#if defined(CONFIG_SEC_DEBUG_EXTRA_INFO)
+	secdbg_exin_set_slave_ocp();
+#endif
 
 	mutex_unlock(&s2mps22->lock);
 	return IRQ_HANDLED;
@@ -499,7 +506,7 @@ static irqreturn_t s2mps22_temp_irq(int irq, void *data)
 static irqreturn_t s2mps22_buck_oi_irq(int irq, void *data)
 {
 	struct s2mps22_info *s2mps22 = data;
-	size_t i;
+	int i = 0;
 
 	mutex_lock(&s2mps22->lock);
 
@@ -512,6 +519,10 @@ static irqreturn_t s2mps22_buck_oi_irq(int irq, void *data)
 		}
 	}
 
+#if defined(CONFIG_SEC_DEBUG_EXTRA_INFO)
+	secdbg_exin_set_slave_ocp();
+#endif
+
 	mutex_unlock(&s2mps22->lock);
 
 	return IRQ_HANDLED;
@@ -520,7 +531,7 @@ static irqreturn_t s2mps22_buck_oi_irq(int irq, void *data)
 void s2mps22_oi_function(struct s2mps22_dev *iodev)
 {
 	struct i2c_client *i2c = iodev->pmic;
-	size_t i;
+	unsigned int i = 0;
 	u8 val;
 
 	/* BUCK 1~4 OI enable */
@@ -540,7 +551,7 @@ void s2mps22_oi_function(struct s2mps22_dev *iodev)
 	pr_info("%s\n", __func__);
 	for (i = S2MPS22_REG_BUCK_OI_EN; i <= S2MPS22_REG_BUCK_OI_CTRL3; i++) {
 		s2mps22_read_reg(i2c, i, &val);
-		pr_info("0x%x[0x%x], ", i, val);
+		pr_info("0x%x[0x%02hhx], ", i, val);
 	}
 	pr_info("\n");
 }
@@ -549,7 +560,7 @@ static void s2mps22_set_oi_interrupt(struct platform_device *pdev,
 				     struct s2mps22_info *s2mps22, int irq_base)
 {
 	int ret;
-	size_t i;
+	int i = 0;
 
 	for (i = 1; i < S2MPS22_BUCK_OI_MAX; i++) {
 		s2mps22->buck_oi_irq[i] = irq_base + S2MPS22_IRQ_OI_B1_INT4 + i;
@@ -614,7 +625,7 @@ static ssize_t s2mps22_read_store(struct device *dev,
 	if (ret < 0)
 		pr_info("%s: fail to read i2c address\n", __func__);
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg_addr, val);
+	pr_info("%s: reg(0x%02hhx) data(0x%02hhx)\n", __func__, reg_addr, val);
 	s2mps22->read_addr = reg_addr;
 	s2mps22->read_val = val;
 
@@ -627,7 +638,7 @@ static ssize_t s2mps22_read_show(struct device *dev,
 {
 	struct s2mps22_info *s2mps22 = dev_get_drvdata(dev);
 
-	return sprintf(buf, "0x%02x: 0x%02x\n", s2mps22->read_addr,
+	return sprintf(buf, "0x%02hhx: 0x%02hhx\n", s2mps22->read_addr,
 		       s2mps22->read_val);
 }
 
@@ -637,20 +648,20 @@ static ssize_t s2mps22_write_store(struct device *dev,
 {
 	struct s2mps22_info *s2mps22 = dev_get_drvdata(dev);
 	int ret;
-	u8 reg, data;
+	u8 reg = 0, data = 0;
 
 	if (buf == NULL) {
 		pr_info("%s: empty buffer\n", __func__);
 		return size;
 	}
 
-	ret = sscanf(buf, "%x %x", &reg, &data);
+	ret = sscanf(buf, "0x%02hhx 0x%02hhx", &reg, &data);
 	if (ret != 2) {
 		pr_info("%s: input error\n", __func__);
 		return size;
 	}
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg, data);
+	pr_info("%s: reg(0x%02hhx) data(0x%02hhx)\n", __func__, reg, data);
 
 	ret = s2mps22_write_reg(s2mps22->i2c, reg, data);
 	if (ret < 0)
@@ -706,7 +717,7 @@ static int s2mps22_pmic_probe(struct platform_device *pdev)
 	struct regulator_config config = { };
 	struct s2mps22_info *s2mps22;
 	int irq_base, ret;
-	size_t i;
+	int i = 0;
 
 	if (iodev->dev->of_node) {
 		ret = s2mps22_pmic_dt_parse_pdata(iodev, pdata);
@@ -849,7 +860,7 @@ static void s2mps22_pmic_WA(struct s2mps22_info *s2mps22)
 	s2mps22_update_reg(s2mps22->i2c, S2MPS22_REG_CTRL1, 0x80, 0x80);
 
 	s2mps22_read_reg(s2mps22->i2c, S2MPS22_REG_CTRL1, &reg2);
-	pr_info("%s: 0x%02x -> 0x%02x\n", __func__, reg1, reg2);
+	pr_info("%s: 0x%02hhx -> 0x%02hhx\n", __func__, reg1, reg2);
 }
 
 static void s2mps22_pmic_shutdown(struct platform_device *pdev)

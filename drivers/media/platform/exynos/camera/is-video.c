@@ -31,6 +31,7 @@
 #include <linux/dma-buf.h>
 
 #include <media/videobuf2-v4l2.h>
+#include <media/videobuf2-core.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-mem2mem.h>
@@ -1273,11 +1274,15 @@ int is_queue_buffer_prepare(struct vb2_buffer *vb)
 	return 0;
 }
 
+#define V4L2_BUF_FLAG_DISPOSAL	0x10000000
 void is_queue_buffer_finish(struct vb2_buffer *vb)
 {
 	struct vb2_v4l2_buffer *vb2_v4l2_buf = to_vb2_v4l2_buffer(vb);
 	struct is_vb2_buf *vbuf = vb_to_is_vb2_buf(vb2_v4l2_buf);
 	struct is_video_ctx *vctx = vb->vb2_queue->drv_priv;
+	struct vb2_queue *q = vb->vb2_queue;
+	int plane;
+	struct vb2_plane *p;
 
 #ifdef DBG_IMAGE_DUMP
 	is_debug_dma_dump(&vctx->queue, vb->index, vctx->video->id, DBG_DMA_DUMP_IMAGE);
@@ -1294,6 +1299,27 @@ void is_queue_buffer_finish(struct vb2_buffer *vb)
 
 	if (test_bit(IS_QUEUE_NEED_TO_REMAP, &vctx->queue.state))
 		vbuf->ops->unremap_attr(vbuf, 0);
+
+	if ((vb2_v4l2_buf->flags & V4L2_BUF_FLAG_DISPOSAL) &&
+			q->memory == VB2_MEMORY_DMABUF) {
+		is_queue_buffer_cleanup(vb);
+
+		for (plane = 0; plane < vb->num_planes; plane++) {
+			p = &vb->planes[plane];
+
+			if (!p->mem_priv)
+				continue;
+
+			if (p->dbuf_mapped)
+				q->mem_ops->unmap_dmabuf(p->mem_priv, 0);
+
+			q->mem_ops->detach_dmabuf(p->mem_priv);
+			dma_buf_put(p->dbuf);
+			p->mem_priv = NULL;
+			p->dbuf = NULL;
+			p->dbuf_mapped = 0;
+		}
+	}
 }
 
 void is_queue_wait_prepare(struct vb2_queue *vbq)
@@ -1909,6 +1935,12 @@ int is_video_prepare(struct file *file,
 	vbq = queue->vbq;
 	video = GET_VIDEO(vctx);
 	index = buf->index;
+	if (index >= VB2_MAX_FRAME) {
+                mverr("buffer index[%d] range over", vctx, video, buf->index);
+                ret = -EINVAL;
+                goto p_err;
+	}
+
         vb = queue->vbq->bufs[index];
         if (!vb) {
                 mverr("vb is NULL", vctx, video);

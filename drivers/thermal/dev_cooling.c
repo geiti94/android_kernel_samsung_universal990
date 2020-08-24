@@ -26,6 +26,7 @@
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/dev_cooling.h>
+#include <linux/debug-snapshot.h>
 
 /**
  * struct dev_cooling_device - data for cooling device with dev
@@ -117,6 +118,7 @@ static int dev_set_cur_state(struct thermal_cooling_device *cdev,
 
 	dev->dev_state = (unsigned int)state;
 	dev->dev_val = dev->freq_table[state].freq;
+	dbg_snapshot_thermal(NULL, 0, cdev->type, dev->dev_val);
 	pm_qos_update_request(&dev->thermal_pm_qos_max, dev->dev_val);
 
 	return 0;
@@ -183,6 +185,10 @@ __dev_cooling_register(struct device_node *np, struct exynos_devfreq_data *data)
 
 	snprintf(dev_name, sizeof(dev_name), "thermal-dev-%d", dev->id);
 
+	dev->dev_state = 0;
+	dev->freq_table = data->opp_list;
+	dev->max_state = data->max_state;
+
 	cool_dev = thermal_of_cooling_device_register(np, dev_name, dev,
 						      &dev_cooling_ops);
 
@@ -192,9 +198,6 @@ __dev_cooling_register(struct device_node *np, struct exynos_devfreq_data *data)
 	}
 
 	dev->cool_dev = cool_dev;
-	dev->dev_state = 0;
-	dev->freq_table = data->opp_list;
-	dev->max_state = data->max_state;
 
 	pm_qos_add_request(&dev->thermal_pm_qos_max, (int)data->pm_qos_class_max, data->max_freq);
 

@@ -199,7 +199,7 @@ static DECLARE_DEFERRABLE_WORK(abox_log_flush_all_work,
 static void abox_log_flush_all_work_func(struct work_struct *work)
 {
 	abox_log_flush_all(NULL);
-	schedule_delayed_work(&abox_log_flush_all_work, msecs_to_jiffies(3000));
+	schedule_delayed_work(&abox_log_flush_all_work, msecs_to_jiffies(1000));
 	set_bit(0, &abox_log_flush_all_work_rearm_self);
 }
 

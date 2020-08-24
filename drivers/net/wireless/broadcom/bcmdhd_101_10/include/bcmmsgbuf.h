@@ -4,7 +4,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -21,7 +21,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #ifndef _bcmmsgbuf_h_
 #define	_bcmmsgbuf_h_
@@ -213,22 +213,24 @@ typedef enum bcmpcie_msgtype {
 	MSG_TYPE_API_MAX_RSVD		= 0x3F
 } bcmpcie_msg_type_t;
 
+/* message type used in internal queue */
 typedef enum bcmpcie_msgtype_int {
-	MSG_TYPE_INTERNAL_USE_START	= 0x40,
-	MSG_TYPE_EVENT_PYLD		= 0x41,
-	MSG_TYPE_IOCT_PYLD		= 0x42,
+	MSG_TYPE_INTERNAL_USE_START	= 0x40,	/* internal pkt */
+	MSG_TYPE_EVENT_PYLD		= 0x41,	/* wl event pkt */
+	MSG_TYPE_IOCT_PYLD		= 0x42,	/* ioctl compl pkt */
 	MSG_TYPE_RX_PYLD		= 0x43,
 	MSG_TYPE_HOST_FETCH		= 0x44,
-	MSG_TYPE_LPBK_DMAXFER_PYLD	= 0x45,
-	MSG_TYPE_TXMETADATA_PYLD	= 0x46,
-	MSG_TYPE_INDX_UPDATE		= 0x47,
+	MSG_TYPE_LPBK_DMAXFER_PYLD	= 0x45,	/* loopback pkt */
+	MSG_TYPE_TXMETADATA_PYLD	= 0x46,	/* transmit status pkt */
+	MSG_TYPE_INDX_UPDATE		= 0x47,	/* write indx updated */
 	MSG_TYPE_INFO_PYLD		= 0x48,
 	MSG_TYPE_TS_EVENT_PYLD		= 0x49,
 	MSG_TYPE_PVT_BTLOG_CMPLT	= 0x4A,
 	MSG_TYPE_BTLOG_PYLD		= 0x4B,
 	MSG_TYPE_HMAPTEST_PYLD		= 0x4C,
 	MSG_TYPE_PVT_BT_SNAPSHOT_CMPLT  = 0x4D,
-	MSG_TYPE_BT_SNAPSHOT_PYLD       = 0x4E
+	MSG_TYPE_BT_SNAPSHOT_PYLD       = 0x4E,
+	MSG_TYPE_LPBK_DMAXFER_PYLD_ADDR	= 0x4F	/* loopback from addr pkt */
 } bcmpcie_msgtype_int_t;
 
 typedef enum bcmpcie_msgtype_u {

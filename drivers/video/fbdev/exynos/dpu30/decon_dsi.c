@@ -23,10 +23,10 @@
 #if defined(CONFIG_EXYNOS_ALT_DVFS)
 #include <soc/samsung/exynos-alt.h>
 #endif
-#if defined(CONFIG_EXYNOS_LATENCY_MONITOR)
+
 #include <dt-bindings/soc/samsung/exynos9830-devfreq.h>
 #include <soc/samsung/exynos-devfreq.h>
-#endif
+#include <soc/samsung/exynos-debug.h>
 
 #include "decon.h"
 #include "dsim.h"
@@ -47,6 +47,10 @@ struct task_struct *devfreq_change_task;
 #include "../panel/panel_drv.h"
 #endif
 
+#ifdef CONFIG_EXYNOS_FPS_CHANGE_NOTIFY
+u64 frame_vsync_cnt;
+EXPORT_SYMBOL(frame_vsync_cnt);
+#endif
 
 /* DECON irq handler for DSI interface */
 static irqreturn_t decon_irq_handler(int irq, void *dev_data)
@@ -100,7 +104,7 @@ static irqreturn_t decon_irq_handler(int irq, void *dev_data)
 				frame_done_err_cnt++;
 				if (ktime_after(timestamp, frame_done_err_skip_timeout)) {
 					decon_warn("decon-%d FrameDone(%d) tearing occurs(%d)"
-							" elapsed(frame:%ld.%03ldms, vsync:%ld.%03ldms)\n",
+							" elapsed(frame:%lld.%03lldms, vsync:%lld.%03lldms)\n",
 							decon->id, decon->frame_cnt, frame_done_err_cnt,
 							frame_elapsed_us / 1000, frame_elapsed_us % 1000,
 							decon->vsync.period / 1000, decon->vsync.period % 1000);
@@ -108,7 +112,7 @@ static irqreturn_t decon_irq_handler(int irq, void *dev_data)
 						ktime_add_ms(timestamp, FRAME_DONE_ERR_CHECK_SKIP_TIMEOUT);
 				}
 			} else {
-				decon_dbg("Decon FrameDone(%d) elapsed(%ld.%03ldmsec)\n",
+				decon_dbg("Decon FrameDone(%d) elapsed(%lld.%03lldmsec)\n",
 						decon->frame_cnt, frame_elapsed_us / 1000,
 						frame_elapsed_us % 1000);
 			}
@@ -234,18 +238,20 @@ void decon_set_clocks(struct decon_device *decon)
 
 int decon_get_out_sd(struct decon_device *decon)
 {
-
-#ifdef CONFIG_DYNAMIC_FREQ
 	int ret = 0;
+#ifdef CONFIG_DYNAMIC_FREQ
 	struct df_status_info *status;
 #endif
 
 #if defined(CONFIG_EXYNOS_COMMON_PANEL)
 	int decon_error_cb(struct decon_device *decon,
 			struct disp_check_cb_info *info);
+	int decon_powerdown_cb(struct decon_device *decon,
+			struct disp_check_cb_info *info);
 
 	struct disp_error_cb_info decon_error_cb_info = {
 		.error_cb = (disp_error_cb *)decon_error_cb,
+		.powerdown_cb = (disp_powerdown_cb *)decon_powerdown_cb,
 		.data = decon,
 	};
 #endif
@@ -355,6 +361,9 @@ static irqreturn_t decon_ext_irq_handler(int irq, void *dev_id)
 	struct decon_device *decon = dev_id;
 	struct decon_mode_info psr;
 	ktime_t timestamp = ktime_get();
+#if defined(CONFIG_DECON_VRR_MODULATION)
+	u64 div_count;
+#endif
 
 	decon_systrace(decon, 'C', "decon_te_signal", 1);
 	DPU_EVENT_LOG(DPU_EVT_TE_INTERRUPT, &decon->sd, timestamp);
@@ -375,14 +384,23 @@ static irqreturn_t decon_ext_irq_handler(int irq, void *dev_id)
 			}
 		}
 	}
+#ifdef CONFIG_EXYNOS_FPS_CHANGE_NOTIFY
+	frame_vsync_cnt++;
+#endif
 
 	decon_systrace(decon, 'C', "decon_te_signal", 0);
 	decon->vsync.count++;
 #if defined(CONFIG_EXYNOS_COMMON_PANEL)
 	decon->vsync.period = ktime_us_delta(timestamp, decon->vsync.timestamp);
-	decon_dbg("Decon TE(%llu) elapsed(%2ld.%03ldmsec)\n",
+	decon_dbg("Decon TE(%llu) elapsed(%2lld.%03lldmsec)\n",
 			decon->vsync.count, decon->vsync.period / 1000,
 			decon->vsync.period % 1000);
+#endif
+#if defined(CONFIG_DECON_VRR_MODULATION)
+	div_count = IS_DECON_DOZE_STATE(decon) ?
+		1ULL : decon->vsync.div_count;
+	if ((decon->vsync.count % div_count) == 0)
+		decon->vsync.active_count++;
 #endif
 	decon->vsync.timestamp = timestamp;
 	wake_up_interruptible_all(&decon->vsync.wait);
@@ -456,11 +474,22 @@ static int decon_vsync_thread(void *data)
 
 	while (!kthread_should_stop()) {
 		ktime_t timestamp = decon->vsync.timestamp;
+#if defined(CONFIG_DECON_VRR_MODULATION)
+		u64 active_count = decon->vsync.active_count;
+#endif
 		int ret = wait_event_interruptible(decon->vsync.wait,
 			(timestamp != decon->vsync.timestamp) &&
 			decon->vsync.active);
-		if (!ret)
+		if (!ret) {
+#if defined(CONFIG_DECON_VRR_MODULATION)
+			if (active_count == decon->vsync.active_count) {
+				pr_debug("%s active_count:%llu div_count:%llu - notify skip\n",
+						__func__, decon->vsync.active_count, decon->vsync.div_count);
+				continue;
+			}
+#endif
 			sysfs_notify(&decon->dev->kobj, NULL, "vsync");
+		}
 	}
 
 	return 0;
@@ -639,7 +668,6 @@ int decon_error_cb(struct decon_device *decon,
 						__func__, status);
 				break;
 			}
-
 			ret = _decon_enable(decon, DECON_STATE_DOZE);
 			if (ret < 0) {
 				decon_err("decon-%d failed to set DECON_STATE_DOZE (ret %d)\n",
@@ -658,7 +686,6 @@ int decon_error_cb(struct decon_device *decon,
 						__func__, status);
 				break;
 			}
-
 			ret = _decon_enable(decon, DECON_STATE_ON);
 			if (ret < 0) {
 				decon_err("decon-%d failed to set DECON_STATE_ON (ret %d)\n",
@@ -708,6 +735,53 @@ int decon_error_cb(struct decon_device *decon,
 			decon_err("decon-%d failed to set DECON_STATE_DOZE_SUSPEND (ret %d)\n",
 					decon->id, ret);
 		}
+	}
+
+	decon_bypass_off(decon);
+	decon_hiber_unblock(decon);
+	mutex_unlock(&decon->lock);
+	decon_info("%s -\n", __func__);
+
+	return ret;
+}
+
+int decon_powerdown_cb(struct decon_device *decon, struct disp_check_cb_info *info)
+{
+	int ret = 0;
+	enum decon_state prev_state;
+
+	if (decon == NULL || info == NULL) {
+		decon_warn("%s invalid param\n", __func__);
+		return -EINVAL;
+	}
+
+	decon_info("%s +\n", __func__);
+	decon_bypass_on(decon);
+	mutex_lock(&decon->lock);
+	prev_state = decon->state;
+	if (decon->state == DECON_STATE_OFF) {
+		decon_warn("%s decon-%d already off state\n",
+				__func__, decon->id);
+		decon_bypass_off(decon);
+		mutex_unlock(&decon->lock);
+		return 0;
+	}
+
+	decon_hiber_block_exit(decon);
+	kthread_flush_worker(&decon->up.worker);
+	usleep_range(16900, 17000);
+	if (prev_state == DECON_STATE_DOZE_SUSPEND) {
+		ret = _decon_enable(decon, DECON_STATE_DOZE);
+		if (ret < 0) {
+			decon_err("decon-%d failed to set DECON_STATE_DOZE (ret %d)\n",
+					decon->id, ret);
+		}
+	}
+
+	ret = _decon_disable(decon, DECON_STATE_OFF);
+	if (ret < 0) {
+		decon_err("decon-%d failed to set DECON_STATE_OFF (ret %d)\n",
+				decon->id, ret);
 	}
 
 	decon_bypass_off(decon);
@@ -1260,6 +1334,10 @@ int decon_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 	aclk_khz = v4l2_subdev_call(decon->out_sd[0], core, ioctl,
 			EXYNOS_DPU_GET_ACLK, NULL) / 1000U;
 
+#if defined(CONFIG_EXYNOS_BTS)
+	decon->bts.ops->bts_pan_display(decon, &config);
+#endif
+
 	memcpy(&dpp_config.config, &config, sizeof(struct decon_win_config));
 	dpp_config.rcv_num = aclk_khz;
 
@@ -1272,7 +1350,9 @@ int decon_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 	}
 
 	decon_reg_all_win_shadow_update_req(decon->id);
-
+#if defined(CONFIG_DECON_VRR_MODULATION)
+	decon_wait_for_active_region(decon, VSYNC_TIMEOUT_MSEC);
+#endif
 	decon_reg_start(decon->id, &psr);
 err:
 	decon_wait_for_vsync(decon, VSYNC_TIMEOUT_MSEC);
@@ -1338,7 +1418,7 @@ int decon_exit_hiber(struct decon_device *decon)
 #ifdef CONFIG_PROFILE_WINCONFIG
 	hiber_lock_time = GET_HIBER_TIME(decon);
 	if (hiber_lock_time > TIME_HIBER_LOCK) {
-		decon_info("[DECON:PROFILE]%s time hiber exit lock %lld :%d\n",
+		decon_info("[DECON:PROFILE]%s time hiber exit lock %lld\n",
 			__func__, hiber_lock_time);
 	}
 #endif
@@ -1357,7 +1437,7 @@ int decon_exit_hiber(struct decon_device *decon)
 #ifdef CONFIG_PROFILE_WINCONFIG
 	hiber_dsim_time = GET_HIBER_TIME(decon) - hiber_lock_time;
 	if (hiber_dsim_time > TIME_HIBER_DSIM) {
-		decon_info("[DECON:PROFILE]%s time hiber exit for dsim %lld :%d\n",
+		decon_info("[DECON:PROFILE]%s time hiber exit for dsim %lld\n",
 			__func__, hiber_dsim_time);
 	}
 #endif
@@ -1407,7 +1487,7 @@ int decon_exit_hiber(struct decon_device *decon)
 #ifdef CONFIG_PROFILE_WINCONFIG
 	hiber_exit_time = GET_HIBER_TIME(decon);
 	if (hiber_exit_time > TIME_HIBER_EXIT) {
-		decon_info("[DECON:PROFILE]%s time hiber exit  %lld :%d\n",
+		decon_info("[DECON:PROFILE]%s time hiber exit  %lld\n",
 			__func__, hiber_exit_time);
 	}
 #endif
@@ -1898,7 +1978,7 @@ static int dpu_set_pre_df_dsim(struct decon_device *decon)
 		return -EINVAL;
 	}
 	if (df_set->hs == 0) {
-		decon_err("[DYN_FREQ]:ERR:%s:df index : %d hs is 0 : %d\n",
+		decon_err("[DYN_FREQ]:ERR:%s:df index : %d\n",
 			__func__, status->target_df);
 		return -EINVAL;
 	}
@@ -2032,3 +2112,51 @@ out:
 
 	return err;
 }
+
+#if defined(CONFIG_EXYNOS_PLL_SLEEP)
+/*
+ * 1. need to mask PLL_SLEEP to avoid DPU stuck by cmd_lock
+ *   add delay as much as the PLL lock time required
+ *   for PLL_SLEEP exit. (38.5ns * 450cycles = 17.327us for p=1)
+ * 2. PLL_SLEEP_MASK_OUTIF is non-shadow
+ *   set as soon as the value(1) is written. (mask)
+ *   this prevents PLL_SLEEP at blank time.
+ */
+void dpu_pll_sleep_mask(struct decon_device *decon)
+{
+	if (!decon)
+		return;
+
+	if (decon->dt.psr_mode == DECON_MIPI_COMMAND_MODE &&
+			decon->dt.dsi_mode != DSI_MODE_DUAL_DSI) {
+		if (IS_DECON_ON_STATE(decon)) {
+			decon_reg_set_pll_wakeup(decon->id, 1);
+			udelay(18 * decon->lcd_info->dphy_pms.p);
+			decon_info("%s +\n", __func__);
+		}
+	}
+}
+
+/*
+ * 1. need to unmask PLL_SLEEP when there is no pending command.
+ * 2. PLL_SLEEP_MASK_OUTIF is non-shadow
+ *    clear as soon as the value(0) is written. (unmask)
+ */
+void dpu_pll_sleep_unmask(struct decon_device *decon)
+{
+	
+	if (!decon)
+		return;
+
+	if (decon->dt.psr_mode == DECON_MIPI_COMMAND_MODE &&
+			decon->dt.dsi_mode != DSI_MODE_DUAL_DSI) {
+		if (IS_DECON_ON_STATE(decon)) {
+			decon_reg_set_pll_wakeup(decon->id, 0);
+			decon_info("%s +\n", __func__);
+		}
+	}
+}
+#else
+void dpu_pll_sleep_mask(struct decon_device * decon) {}
+void dpu_pll_sleep_unmask(struct decon_device * decon) {}
+#endif

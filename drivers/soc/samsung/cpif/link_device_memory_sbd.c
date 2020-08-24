@@ -480,8 +480,12 @@ int sbd_pio_tx(struct sbd_ring_buffer *rb, struct sk_buff *skb)
 	skb_copy_from_linear_data(skb, dst, count);
 
 	if (sipc_ps_ch(rb->ch)) {
+#ifdef CONFIG_USB_CONFIGFS_F_MBIM
+		unsigned int ch = skbpriv(skb)->sipc_ch;
+#else
 		struct io_device *iod = skbpriv(skb)->iod;
 		unsigned int ch = iod->ch;
+#endif
 
 		rb->buff_len_array[in] = (skb->len & 0xFFFF);
 		rb->buff_len_array[in] |= (ch << 16);

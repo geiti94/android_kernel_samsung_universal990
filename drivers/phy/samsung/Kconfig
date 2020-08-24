@@ -171,3 +171,10 @@ config PHY_EXYNOS_MIPI_DSIM
 	help
 	  Support for MIPI DSI DPHY found on Samsung
 	  and EXYNOS SoCs.
+
+config PHY_EXYNOS_EOM
+	bool "Exynos USB EOM"
+	depends on PHY_EXYNOS_USBDRD
+	default n
+	help
+	  Enable this to support EOM (Eye Opening Monitor)

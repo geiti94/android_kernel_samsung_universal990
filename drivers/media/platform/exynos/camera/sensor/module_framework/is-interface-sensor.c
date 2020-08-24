@@ -999,6 +999,7 @@ int get_sensor_flag(struct is_sensor_interface *itf,
 	int ex_mode, ret = 0;
 	struct is_device_sensor *sensor = NULL;
 	struct is_device_sensor_peri *sensor_peri = NULL;
+	struct is_module_enum *module = NULL;
 
 	FIMC_BUG(!itf);
 	FIMC_BUG(itf->magic != SENSOR_INTERFACE_MAGIC);
@@ -1015,14 +1016,24 @@ int get_sensor_flag(struct is_sensor_interface *itf,
 		return -ENODEV;
 	}
 
+	module = get_subdev_module_enum(itf);
+	if (!module) {
+		err("failed to get module enum");
+		return -ENODEV;
+	}
+
 	ex_mode = is_sensor_g_ex_mode(sensor);
 	if (ex_mode == EX_AEB) {
 		*stat_control_type = SENSOR_STAT_NOTHING;
 		*exposure_count = EXPOSURE_GAIN_COUNT_2;
 		*hdr_mode_type = SENSOR_HDR_MODE_2AEB;
 	} else if (sensor_peri->cis.cis_data->is_data.wdr_enable) {
-		if (ex_mode == EX_3DHDR) {
-			*stat_control_type = SENSOR_STAT_LSI_3DHDR;
+		if (ex_mode == EX_3DHDR || ex_mode == EX_SEAMLESS_TETRA) {
+			if (!strcmp(module->sensor_maker, "SLSI"))
+				*stat_control_type = SENSOR_STAT_LSI_3DHDR;
+			else if (!strcmp(module->sensor_maker, "SONY"))
+				*stat_control_type = SENSOR_STAT_IMX_3DHDR;
+
 			*exposure_count = EXPOSURE_GAIN_COUNT_3;
 			*hdr_mode_type = SENSOR_HDR_MODE_3HDR;
 		} else {
@@ -1055,10 +1066,17 @@ int set_sensor_stat_control_mode_change(struct is_sensor_interface *itf,
 
 	sensor_peri = container_of(itf, struct is_device_sensor_peri, sensor_interface);
 
-	if (stat_control_type == SENSOR_STAT_LSI_3DHDR)
-		sensor_peri->cis.sensor_stats = stat_control;
-	else
-		sensor_peri->cis.sensor_stats = NULL;
+	if (stat_control_type == SENSOR_STAT_LSI_3DHDR) {
+		sensor_peri->cis.lsi_sensor_stats
+			= *(struct sensor_lsi_3hdr_stat_control_mode_change *)stat_control;
+		sensor_peri->cis.sensor_stats = true;
+	} else if (stat_control_type == SENSOR_STAT_IMX_3DHDR) {
+		sensor_peri->cis.imx_sensor_stats
+			= *(struct sensor_imx_3hdr_stat_control_mode_change *)stat_control;
+		sensor_peri->cis.sensor_stats = true;
+	} else {
+		sensor_peri->cis.sensor_stats = false;
+	}
 
 	dbg_sensor(1, "[%s] sensor stat control mode change %s\n", __func__,
 		sensor_peri->cis.sensor_stats ? "Enabled" : "Disabled");
@@ -1086,7 +1104,8 @@ int set_sensor_roi_control(struct is_sensor_interface *itf,
 		sensor_ctl = get_sensor_ctl_from_module(itf, frame_count + i);
 		BUG_ON(!sensor_ctl);
 
-		if (stat_control_type == SENSOR_STAT_LSI_3DHDR) {
+		if ((stat_control_type == SENSOR_STAT_LSI_3DHDR)
+			|| (stat_control_type == SENSOR_STAT_IMX_3DHDR)) {
 			sensor_ctl->roi_control = *(struct roi_setting_t *)roi_control;
 			sensor_ctl->update_roi = true;
 		} else {
@@ -1120,8 +1139,12 @@ int set_sensor_stat_control_per_frame(struct is_sensor_interface *itf,
 		BUG_ON(!sensor_ctl);
 
 		if (stat_control_type == SENSOR_STAT_LSI_3DHDR) {
-			sensor_ctl->stat_control
+			sensor_ctl->lsi_stat_control
 				= *(struct sensor_lsi_3hdr_stat_control_per_frame *)stat_control;
+			sensor_ctl->update_3hdr_stat = true;
+		} else if (stat_control_type == SENSOR_STAT_IMX_3DHDR) {
+			sensor_ctl->imx_stat_control
+				= *(struct sensor_imx_3hdr_stat_control_per_frame *)stat_control;
 			sensor_ctl->update_3hdr_stat = true;
 		} else {
 			sensor_ctl->update_3hdr_stat = false;
@@ -1129,6 +1152,97 @@ int set_sensor_stat_control_per_frame(struct is_sensor_interface *itf,
 	}
 
 	dbg_sensor(1, "[%s][F:%d]: %d\n", __func__, frame_count, sensor_ctl->update_3hdr_stat);
+
+	return 0;
+}
+
+int set_sensor_lsc_table_init(struct is_sensor_interface *itf,
+		enum is_sensor_stat_control stat_control_type,
+		void *lsc_table)
+{
+	struct is_device_sensor_peri *sensor_peri = NULL;
+
+	FIMC_BUG(!itf);
+	FIMC_BUG(itf->magic != SENSOR_INTERFACE_MAGIC);
+	FIMC_BUG(!lsc_table);
+
+	sensor_peri = container_of(itf, struct is_device_sensor_peri, sensor_interface);
+
+	if (stat_control_type == SENSOR_STAT_IMX_3DHDR) {
+		sensor_peri->cis.imx_lsc_table_3hdr = *(struct sensor_imx_3hdr_lsc_table_init *)lsc_table;
+		sensor_peri->cis.lsc_table_status = true;
+	} else {
+		sensor_peri->cis.lsc_table_status = false;
+	}
+
+	dbg_sensor(1, "[%s] sensor 3hdr lsc table %s\n", __func__,
+			sensor_peri->cis.lsc_table_status ? "Loaded" : "Unloaded");
+
+	return 0;
+}
+
+int set_sensor_tone_control(struct is_sensor_interface *itf,
+		enum is_sensor_stat_control stat_control_type,
+		void *tone_control)
+{
+	u32 frame_count = 0;
+	struct is_sensor_ctl *sensor_ctl = NULL;
+	u32 num_of_frame = 1;
+	u32 i = 0;
+
+	FIMC_BUG(!itf);
+	FIMC_BUG(itf->magic != SENSOR_INTERFACE_MAGIC);
+	FIMC_BUG(!tone_control);
+
+	frame_count = get_frame_count(itf);
+	get_num_of_frame_per_one_3aa(itf, &num_of_frame);
+
+	for (i = 0; i < num_of_frame; i++) {
+		sensor_ctl = get_sensor_ctl_from_module(itf, frame_count + i);
+		BUG_ON(!sensor_ctl);
+
+		if (stat_control_type == SENSOR_STAT_IMX_3DHDR) {
+			sensor_ctl->imx_tone_control = *(struct sensor_imx_3hdr_tone_control *)tone_control;
+			sensor_ctl->update_tone = true;
+		} else {
+			sensor_ctl->update_tone = false;
+		}
+	}
+
+	dbg_sensor(1, "[%s][F:%d]: %d\n", __func__, frame_count, sensor_ctl->update_tone);
+
+	return 0;
+}
+
+int set_sensor_ev_control(struct is_sensor_interface *itf,
+		enum is_sensor_stat_control stat_control_type,
+		void *ev_control)
+{
+	u32 frame_count = 0;
+	struct is_sensor_ctl *sensor_ctl = NULL;
+	u32 num_of_frame = 1;
+	u32 i = 0;
+
+	FIMC_BUG(!itf);
+	FIMC_BUG(itf->magic != SENSOR_INTERFACE_MAGIC);
+	FIMC_BUG(!ev_control);
+
+	frame_count = get_frame_count(itf);
+	get_num_of_frame_per_one_3aa(itf, &num_of_frame);
+
+	for (i = 0; i < num_of_frame; i++) {
+		sensor_ctl = get_sensor_ctl_from_module(itf, frame_count + i);
+		BUG_ON(!sensor_ctl);
+
+		if (stat_control_type == SENSOR_STAT_IMX_3DHDR) {
+			sensor_ctl->imx_ev_control = *(struct sensor_imx_3hdr_ev_control *)ev_control;
+			sensor_ctl->update_ev = true;
+		} else {
+			sensor_ctl->update_ev = false;
+		}
+	}
+
+	dbg_sensor(1, "[%s][F:%d]: %d\n", __func__, frame_count, sensor_ctl->update_ev);
 
 	return 0;
 }
@@ -1923,6 +2037,24 @@ int update_sensor_dynamic_meta(struct is_sensor_interface *itf,
 	udm->sensor.shortDigitalGain = sensor_peri->cis.expecting_sensor_udm[index].shortDigitalGain;
 	udm->sensor.midDigitalGain = sensor_peri->cis.expecting_sensor_udm[index].midDigitalGain;
 
+#ifdef USE_OIS_HALL_DATA_FOR_VDIS
+	/* update ois hall data */
+	dm->aa.vendor_oisHallData.readTimeStamp = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.readTimeStamp;
+	dm->aa.vendor_oisHallData.counter = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.counter;
+	dm->aa.vendor_oisHallData.X_AngVel[0] = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.X_AngVel[0];
+	dm->aa.vendor_oisHallData.Y_AngVel[0] = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.Y_AngVel[0];
+	dm->aa.vendor_oisHallData.Z_AngVel[0] = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.Z_AngVel[0];
+	dm->aa.vendor_oisHallData.X_AngVel[1] = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.X_AngVel[1];
+	dm->aa.vendor_oisHallData.Y_AngVel[1] = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.Y_AngVel[1];
+	dm->aa.vendor_oisHallData.Z_AngVel[1] = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.Z_AngVel[1];
+	dm->aa.vendor_oisHallData.X_AngVel[2] = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.X_AngVel[2];
+	dm->aa.vendor_oisHallData.Y_AngVel[2] = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.Y_AngVel[2];
+	dm->aa.vendor_oisHallData.Z_AngVel[2] = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.Z_AngVel[2];
+	dm->aa.vendor_oisHallData.X_AngVel[3] = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.X_AngVel[3];
+	dm->aa.vendor_oisHallData.Y_AngVel[3] = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.Y_AngVel[3];
+	dm->aa.vendor_oisHallData.Z_AngVel[3] = sensor_peri->cis.expecting_aa_dm[index].vendor_oisHallData.Z_AngVel[3];
+#endif
+
 	dbg_sensor(1, "[%s] (F:%d): expo(%lld), duration(%lld), sensitivity(%d), rollingShutterSkew(%lld)\n",
 		__func__, frame_count,
 		dm->sensor.exposureTime,
@@ -1991,6 +2123,11 @@ int copy_sensor_ctl(struct is_sensor_interface *itf,
 			sensor_peri->ois->coef = (u8)shot->uctl.lensUd.oisCoefVal;
 		}
 #endif
+		if (sensor_peri->laser_af) {
+			sensor_peri->laser_af->rs_mode = shot->uctl.isModeUd.range_sensor_mode;
+		}
+
+		cis_data->is_data.scene_mode = shot->ctl.aa.sceneMode;
 		cis_data->video_mode = shot->ctl.aa.vendor_videoMode;
 
 		if (shot->uctl.isModeUd.wdr_mode == CAMERA_WDR_ON ||
@@ -2179,6 +2316,27 @@ int get_initial_exposure_gain_of_sensor(struct is_sensor_interface *itf,
 		(num_data == 3) ? dgain[EXPOSURE_GAIN_MIDDLE] : 0);
 
 	return 0;
+}
+
+u32 get_sensor_frameid(struct is_sensor_interface *itf, u32 *frameid)
+{
+	u32 ret = 0;
+	struct is_device_sensor_peri *sensor_peri = NULL;
+	cis_shared_data *cis_data = NULL;
+
+	FIMC_BUG(!itf);
+	FIMC_BUG(itf->magic != SENSOR_INTERFACE_MAGIC);
+
+	sensor_peri = container_of(itf, struct is_device_sensor_peri, sensor_interface);
+	FIMC_BUG(!sensor_peri);
+
+	cis_data = sensor_peri->cis.cis_data;
+	FIMC_BUG(!cis_data);
+
+	dbg_sensor(1, "[%s] sen_frame_id(%d)\n", __func__, cis_data->sen_frame_id);
+	*frameid = cis_data->sen_frame_id;
+
+	return ret;
 }
 
 u32 set_adjust_sync(struct is_sensor_interface *itf, u32 setsync)
@@ -2770,6 +2928,12 @@ int get_vc_dma_buf(struct is_sensor_interface *itf,
 	switch (request_data_type) {
 	case VC_BUF_DATA_TYPE_SENSOR_STAT1:
 		vc_type = VC_TAILPDAF;
+		for (ch = CSI_VIRTUAL_CH_1; ch < CSI_VIRTUAL_CH_MAX; ch++) {
+			if (sensor->cfg->output[ch].type == VC_EMBEDDED2) {
+				vc_type = VC_EMBEDDED2;
+				break;
+			}
+		}
 		break;
 	case VC_BUF_DATA_TYPE_SENSOR_STAT2:
 		vc_type = VC_EMBEDDED;
@@ -2885,6 +3049,12 @@ int put_vc_dma_buf(struct is_sensor_interface *itf,
 	switch (request_data_type) {
 	case VC_BUF_DATA_TYPE_SENSOR_STAT1:
 		vc_type = VC_TAILPDAF;
+		for (ch = CSI_VIRTUAL_CH_1; ch < CSI_VIRTUAL_CH_MAX; ch++) {
+			if (sensor->cfg->output[ch].type == VC_EMBEDDED2) {
+				vc_type = VC_EMBEDDED2;
+				break;
+			}
+		}
 		break;
 	case VC_BUF_DATA_TYPE_SENSOR_STAT2:
 		vc_type = VC_EMBEDDED;
@@ -3156,6 +3326,27 @@ int set_lte_multi_capture_mode(struct is_sensor_interface *itf, bool lte_multi_c
 	cis_data->lte_multi_capture_mode = lte_multi_capture_mode;
 
 	info("[%s] lte_multi_capture_mode(%d)\n", __func__, lte_multi_capture_mode);
+
+	return 0;
+}
+
+int set_aeb_mode(struct is_sensor_interface *itf, u32 mode)
+{
+	struct is_device_sensor_peri *sensor_peri = NULL;
+	cis_shared_data *cis_data = NULL;
+
+	WARN_ON(!itf);
+	WARN_ON(itf->magic != SENSOR_INTERFACE_MAGIC);
+
+	sensor_peri = container_of(itf, struct is_device_sensor_peri, sensor_interface);
+	WARN_ON(!sensor_peri);
+
+	cis_data = sensor_peri->cis.cis_data;
+	WARN_ON(!cis_data);
+
+	cis_data->cur_aeb_mode = mode;
+
+	dbg_sensor(1, "[%s] aeb_mode(%d)\n", __func__, mode);
 
 	return 0;
 }
@@ -3875,6 +4066,7 @@ int init_sensor_interface(struct is_sensor_interface *itf)
 	itf->cis_itf_ops.get_module_position = get_module_position;
 	itf->cis_itf_ops.set_sensor_3a_mode = set_sensor_3a_mode;
 	itf->cis_itf_ops.get_initial_exposure_gain_of_sensor = get_initial_exposure_gain_of_sensor;
+	itf->cis_itf_ops.get_sensor_frameid = get_sensor_frameid;
 	itf->cis_ext_itf_ops.change_cis_mode = change_cis_mode;
 
 	/* struct is_cis_event_ops */
@@ -3946,6 +4138,7 @@ int init_sensor_interface(struct is_sensor_interface *itf)
 	itf->cis_ext2_itf_ops.get_static_mem = get_static_mem;
 	itf->cis_ext2_itf_ops.get_open_close_hint = get_open_close_hint;
 	itf->cis_ext2_itf_ops.set_mainflash_duration = set_mainflash_duration;
+	itf->cis_ext2_itf_ops.set_aeb_mode = set_aeb_mode;
 	itf->cis_ext_itf_ops.set_adjust_sync = set_adjust_sync;
 	itf->cis_ext_itf_ops.request_frame_length_line = request_frame_length_line;
 	itf->cis_ext_itf_ops.request_sensitivity = request_sensitivity;
@@ -3953,6 +4146,11 @@ int init_sensor_interface(struct is_sensor_interface *itf)
 	itf->cis_ext_itf_ops.set_sensor_stat_control_mode_change = set_sensor_stat_control_mode_change;
 	itf->cis_ext_itf_ops.set_sensor_roi_control = set_sensor_roi_control;
 	itf->cis_ext_itf_ops.set_sensor_stat_control_per_frame = set_sensor_stat_control_per_frame;
+#ifdef SUPPORT_SENSOR_SEAMLESS_3HDR
+	itf->cis_ext_itf_ops.set_sensor_lsc_table_init = set_sensor_lsc_table_init;
+	itf->cis_ext_itf_ops.set_sensor_tone_control = set_sensor_tone_control;
+	itf->cis_ext_itf_ops.set_sensor_ev_control = set_sensor_ev_control;
+#endif
 
 	/* Sensor dual sceanrio interface */
 	itf->dual_itf_ops.get_sensor_state = get_sensor_state;

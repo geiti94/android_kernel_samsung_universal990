@@ -28,7 +28,7 @@
 #if defined(CONFIG_SEC_FACTORY)
 
 #if defined(CONFIG_SEC_NAD_BPS_CLASSIFIER)
-#include <linux/sec_nad_bps_classifier.h>
+#include <linux/kq/sec_nad_bps_classifier.h>
 
 #define NAD_BPS_PRINT(format, ...) printk("[NAD_BPS] " format, ##__VA_ARGS__)
 #endif
@@ -118,7 +118,7 @@ static void sec_nad_param_update(struct work_struct *work)
 	int ret = -1;
 	struct file *fp;
 #if defined(CONFIG_SEC_NAD_LOG)
-	struct file *fp2;
+	struct file *fp2 = NULL;
 #endif	
 	struct sec_nad_param *param_data =
 		container_of(work, struct sec_nad_param, sec_nad_work);
@@ -180,7 +180,7 @@ static void sec_nad_param_update(struct work_struct *work)
 				"NAD DRAM test need : %s\n"
 				"NAD DRAM test result : 0x%x\n"
 				"NAD DRAM test fail data : 0x%x\n"
-				"NAD DRAM test fail address : 0x%08lx\n"
+				"NAD DRAM test fail address : 0x%08llx\n"
 				"NAD status : %d\n"
 				"NAD ACAT skip fail : %d\n"
 				"NAD unlimited loop : %d\n", sec_nad_env.nad_factory,
@@ -200,7 +200,7 @@ static void sec_nad_param_update(struct work_struct *work)
 				sec_nad_env.unlimited_loop);
 #if defined(CONFIG_SEC_NAD_X)			
 				NAD_PRINT("NAD X : %s\n", sec_nad_env.nad_extend);	
-				NAD_PRINT("sec_nad_env total size : %d\n", sizeof(sec_nad_env));
+				NAD_PRINT("sec_nad_env total size : %lu\n", sizeof(sec_nad_env));
 
 				NAD_PRINT(			
 				"NADX : %s\n"
@@ -251,7 +251,7 @@ static void sec_nad_param_update(struct work_struct *work)
 				"NAD DRAM test need : %s\n"
 				"NAD DRAM test result : 0x%x\n"
 				"NAD DRAM test fail data : 0x%x\n"
-				"NAD DRAM test fail address : 0x%08lx\n"
+				"NAD DRAM test fail address : 0x%08llx\n"
 				"NAD status : %d\n"
 				"NAD ACAT skip fail : %d\n"
 				"NAD unlimited loop : %d\n", sec_nad_env.nad_factory,
@@ -270,11 +270,16 @@ static void sec_nad_param_update(struct work_struct *work)
 				sec_nad_env.nad_acat_skip_fail,
 				sec_nad_env.unlimited_loop);
 
+#if defined(CONFIG_NAD_55)
+				NAD_PRINT(
+				"nad_complete : %s\n",
+				sec_nad_env.nad_complete);
+#endif
 #endif
 
 #if defined(CONFIG_SEC_NAD_X)			
 				NAD_PRINT("NAD X : %s\n", sec_nad_env.nad_extend);	
-				NAD_PRINT("sec_nad_env total size : %d\n", sizeof(sec_nad_env));
+				NAD_PRINT("sec_nad_env total size : %lu\n", sizeof(sec_nad_env));
 
 				NAD_PRINT(			
 				"NADX : %s\n"
@@ -284,7 +289,7 @@ static void sec_nad_param_update(struct work_struct *work)
 				sec_nad_env.nad_extend_result,
 				sec_nad_env.nad_extend_data,
 				sec_nad_env.nadx_is_excuted);	
-#endif	
+#endif
 
 #if defined(CONFIG_SEC_NAD_LOG)
 		ret = vfs_read(fp2, (char *)nad_log_buffer, NAD_LOG_SIZE, &(fp2->f_pos));
@@ -295,6 +300,8 @@ static void sec_nad_param_update(struct work_struct *work)
 #endif			
 		break;
 	}
+	sec_nad_param_data.nad_param_complete = true;
+	NAD_PRINT("%s: NAD READ COMPLETE \n", __func__);
 close_fp_out:
 	if (fp) {
 		NAD_PRINT("%s: close\n", __func__);
@@ -429,6 +436,80 @@ static int get_vst_operation_time(int block)
 }
 #endif
 
+#if defined(CONFIG_NAD_55)
+int nad_check_rework()
+{
+	int val = -1;
+	int ret = -1;
+	
+	int rework_info;
+	
+	rework_info = sec_nad_env.nad_rework_info;
+
+	NAD_PRINT("%s fused nad_rework_info = %d\n", __func__, sec_nad_env.nad_rework_info);
+
+	/* case 1 vst fail */
+	if(( NAD_VST_RESULT_MASK & sec_nad_env.vst_info.vst_f_res) > 0) {
+		val = REWORK_VST_FAIL;
+	}
+	/* case 2 sudden power off */
+	else if (sec_nad_env.nad_data == 0 && sec_nad_env.nad_second_data == 0 ) {
+		val = REWORK_SUDDEN_POWER_OFF;
+	}
+	/* case 3 first nad fail */
+	else if (!strncasecmp(sec_nad_env.nad_result, "FAIL", 4) && sec_nad_env.nad_data != 0 ) {
+		val = REWORK_FIRST_FAIL;
+	}
+	/* case 4 vst cp ecc nad fail */
+	else if (sec_nad_env.cp_ecc_err[VST_ECC].ecc_error_sum > 0)
+		val = REWORK_VST_CP_ECC_ERROR;
+	/* case 5 nad cp ecc nad fail */
+	else if (sec_nad_env.cp_ecc_err[NAD_ECC].ecc_error_sum > 0)
+		val = REWORK_NAD_CP_ECC_ERROR;
+	/* case 6 nad rtc time out */
+	else if (((sec_nad_env.nad_data << 24) >> 29) == 0x7)
+		val = REWORK_RTC_TIME_OVER;
+
+	if (val > 0) {
+		NAD_PRINT("%s new rework_info = %d\n", __func__, val);
+		sec_nad_env.nad_rework_info = val;
+		
+		ret = sec_set_nad_param(NAD_PARAM_WRITE);
+		if (ret < 0)
+			pr_err("%s: write error! %d\n", __func__, ret);
+		}
+
+	if (rework_info > REWORK_START && rework_info < END_OF_REWORK_ITEM)
+		val = -1;
+
+	return val;
+}
+#endif
+
+#if defined(CONFIG_SEC_NAD_PMIC)
+static void make_pmic_data_to_string(void)
+{
+	if (!strlen(nad_ocp_read_result)) {
+		if (sec_nad_env.pmic_ocp_status == NAD_PMIC_FAIL) {
+			strcpy(nad_ocp_read_result, nad_ocp_data[sec_nad_env.pmic_ocp_fail_index]);
+			NAD_PRINT("%s NAD_OCP_RESULT : %s %s\n", __func__,
+				(sec_nad_env.pmic_ocp_status == 0) ? "pass" : "fail", nad_ocp_read_result);
+		}
+	}
+
+	if (!strlen(nad_pmic_read_result)) {
+		if (sec_nad_env.pmic_read_status == NAD_PMIC_FAIL) {
+			if (sec_nad_env.pmic_read_channel != -1)
+				strcpy(nad_pmic_read_result, nad_i2c_data[sec_nad_env.pmic_read_channel]);
+			else
+				strcpy(nad_pmic_read_result, nad_speedy_data);
+		NAD_PRINT("%s NAD_PMIC_READ_RESULT : %s %s\n", __func__,
+				(sec_nad_env.pmic_read_status == 0) ? "pass" : "fail", nad_pmic_read_result);
+		}
+	}
+}
+#endif
+
 static ssize_t show_nad_stat(struct device *dev,
 		struct device_attribute *attr,
 		char *buf)
@@ -437,590 +518,18 @@ static ssize_t show_nad_stat(struct device *dev,
 	char * buf_offset;
 	int ecc_err_total;
 	int block, vector;
+
+#if defined(CONFIG_NAD_55)
+	int nad_need_rework;
+	nad_need_rework = nad_check_rework();
+#endif
+#if defined(CONFIG_SEC_NAD_PMIC)
+	make_pmic_data_to_string();
+#endif
 	
 	NAD_PRINT("%s\n", __func__);
+	
 
-#if defined(CONFIG_SEC_SUPPORT_SECOND_NAD)
-#if defined(CONFIG_SEC_NAD_HPM)
-	if (!strncasecmp(sec_nad_env.nad_result, "FAIL", 4) && !strncasecmp(sec_nad_env.nad_second_result, "FAIL", 4)) {
-	/* Both of NAD were failed. */
-		return sprintf(buf, "NG_3.1_L_0x%x_0x%x_0x%x_0x%x,IT(%d),MT(%d),"
-				"HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),"
-				"HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),"
-				"HPM_LIT_L%d(%d),HPM_LIT_L%d(%d),HPM_LIT_L%d(%d),HPM_LIT_L%d(%d),HPM_LIT_L%d(%d),HPM_LIT_L%d(%d),"
-				"HPM_G3D_L%d(%d),HPM_G3D_L%d(%d),HPM_G3D_L%d(%d),HPM_G3D_L%d(%d),"
-				"HPM_MIF_L%d(%d),HPM_MIF_L%d(%d),HPM_MIF_L%d(%d),HPM_MIF_L%d(%d),HPM_MIF_L%d(%d),HPM_MIF_L%d(%d),"
-				"HPM_MIF_L%d(%d),HPM_MIF_L%d(%d),"
-				"HPM_INVALID(%d),HPM_PASS_FAIL(%d),"
-				"LOTID(%s),TBL_VER(%d),BIG_G(%d),LIT_G(%d),G3D_G(%d),MIF_G(%d),"
-				"HPM_BIG_DATA(%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;"
-				"%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d),"
-				"HPM_LIT_DATA(%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;"
-				"%d_%d_%d_%d_%d;%d_%d_%d_%d_%d),"
-				"HPM_G3D_DATA(%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d),"
-				"HPM_MIF_DATA(%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;"
-				"%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d),"
-				"DAS(%s),BLOCK(%s),"
-				"FN(%s_%s_%d_%s),FD(0x%08llx_0x%08llx_0x%08llx),"
-#if defined(CONFIG_SEC_SUPPORT_VST)
-				"FNS(%s_%s_%d_%s),FDS(0x%08llx_0x%08llx_0x%08llx),VRES(%d),VADJ(%d),FRES(%d),"
-				"AVT(%d),BIG_L11(%d),BIG_L18(%d),BIG_L23(%d),"
-				"MID_L6(%d),MID_L12(%d),MID_L17(%d),"
-				"LIT_L4(%d),LIT_L9(%d),LIT_L14(%d),"
-				"MIF_L1(%d),MIF_L5(%d),MIF_L9(%d)\n",
-#else
-				"FNS(%s_%s_%d_%s),FDS(0x%08llx_0x%08llx_0x%08llx)\n",
-#endif
-
-				sec_nad_env.nad_data,
-				sec_nad_env.nad_inform2_data,
-				sec_nad_env.nad_second_data,
-				sec_nad_env.nad_second_inform2_data,
-				sec_nad_env.nad_init_temperature,
-				sec_nad_env.max_temperature,
-				/* Start HPM */
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[0].level,
-				sec_nad_env.hpm_min_diff_level_big[0],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[1].level,
-				sec_nad_env.hpm_min_diff_level_big[1],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[2].level,
-				sec_nad_env.hpm_min_diff_level_big[2],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[3].level,
-				sec_nad_env.hpm_min_diff_level_big[3],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[4].level,
-				sec_nad_env.hpm_min_diff_level_big[4],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[5].level,
-				sec_nad_env.hpm_min_diff_level_big[5],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[6].level,
-				sec_nad_env.hpm_min_diff_level_big[6],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[7].level,
-				sec_nad_env.hpm_min_diff_level_big[7],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[8].level,
-				sec_nad_env.hpm_min_diff_level_big[8],
-
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[0].level,
-				sec_nad_env.hpm_min_diff_level_lit[0],
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[1].level,
-				sec_nad_env.hpm_min_diff_level_lit[1],
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[2].level,
-				sec_nad_env.hpm_min_diff_level_lit[2],
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[3].level,
-				sec_nad_env.hpm_min_diff_level_lit[3],
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[4].level,
-				sec_nad_env.hpm_min_diff_level_lit[4],
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[5].level,
-				sec_nad_env.hpm_min_diff_level_lit[5],
-
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[0].level,
-				sec_nad_env.hpm_min_diff_level_g3d[0],
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[1].level,
-				sec_nad_env.hpm_min_diff_level_g3d[1],
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[2].level,
-				sec_nad_env.hpm_min_diff_level_g3d[2],
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[3].level,
-				sec_nad_env.hpm_min_diff_level_g3d[3],
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[0].level,
-				sec_nad_env.hpm_min_diff_level_mif[0],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[1].level,
-				sec_nad_env.hpm_min_diff_level_mif[1],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[2].level,
-				sec_nad_env.hpm_min_diff_level_mif[2],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[3].level,
-				sec_nad_env.hpm_min_diff_level_mif[3],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[4].level,
-				sec_nad_env.hpm_min_diff_level_mif[4],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[5].level,
-				sec_nad_env.hpm_min_diff_level_mif[5],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[6].level,
-				sec_nad_env.hpm_min_diff_level_mif[6],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[7].level,
-				sec_nad_env.hpm_min_diff_level_mif[7],
-
-				sec_nad_env.nad_hpm_info.hpm_invalid,
-				sec_nad_env.nad_hpm_info.device_pass_fail,
-				sec_nad_env.nad_hpm_info.LotID,
-				sec_nad_env.nad_hpm_info.asv_table_ver,
-				sec_nad_env.nad_hpm_info.big_grp,
-				sec_nad_env.nad_hpm_info.lit_grp,
-				sec_nad_env.nad_hpm_info.g3d_grp,
-				sec_nad_env.nad_hpm_info.mif_grp,
-				// BIG
-				sec_nad_env.nad_hpm_info.hpm_info[0].block_pass_fail,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[0].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[0].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[0].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[0].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[0].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[1].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[1].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[1].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[1].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[1].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[2].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[2].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[2].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[2].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[2].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[3].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[3].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[3].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[3].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[3].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[4].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[4].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[4].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[4].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[4].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[5].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[5].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[5].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[5].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[5].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[6].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[6].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[6].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[6].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[6].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[7].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[7].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[7].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[7].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[7].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[8].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[8].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[8].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[8].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[8].pba_hpm_min,
-				// Little
-				sec_nad_env.nad_hpm_info.hpm_info[1].block_pass_fail,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[0].level,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[0].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[0].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[0].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[0].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[1].level,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[1].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[1].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[1].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[1].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[2].level,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[2].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[2].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[2].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[2].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[3].level,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[3].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[3].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[3].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[3].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[4].level,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[4].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[4].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[4].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[4].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[5].level,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[5].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[5].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[5].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[5].pba_hpm_min,
-				//G3D
-				sec_nad_env.nad_hpm_info.hpm_info[2].block_pass_fail,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[0].level,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[0].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[0].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[0].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[0].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[1].level,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[1].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[1].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[1].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[1].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[2].level,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[2].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[2].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[2].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[2].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[3].level,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[3].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[3].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[3].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[3].pba_hpm_min,
-				//MIF
-				sec_nad_env.nad_hpm_info.hpm_info[3].block_pass_fail,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[0].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[0].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[0].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[0].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[0].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[1].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[1].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[1].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[1].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[1].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[2].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[2].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[2].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[2].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[2].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[3].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[3].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[3].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[3].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[3].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[4].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[4].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[4].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[4].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[4].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[5].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[5].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[5].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[5].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[5].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[6].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[6].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[6].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[6].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[6].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[7].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[7].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[7].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[7].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[7].pba_hpm_min,
-				/* End of HPM */
-				sec_nad_env.nad_second_fail_info.das_string,
-				sec_nad_env.nad_second_fail_info.block_string,
-				sec_nad_env.nad_fail_info.das_string,
-				sec_nad_env.nad_fail_info.block_string,
-				sec_nad_env.nad_fail_info.level,
-				sec_nad_env.nad_fail_info.vector_string,
-				sec_nad_env.nad_dram_fail_information.nad_dram_fail_info[0].target_addr,
-				sec_nad_env.nad_dram_fail_information.nad_dram_fail_info[0].read_val,
-				sec_nad_env.nad_dram_fail_information.nad_dram_fail_info[0].expected_val,
-				sec_nad_env.nad_second_fail_info.das_string,
-				sec_nad_env.nad_second_fail_info.block_string,
-				sec_nad_env.nad_second_fail_info.level,
-				sec_nad_env.nad_second_fail_info.vector_string,
-				sec_nad_env.nad_second_dram_fail_information.nad_dram_fail_info[0].target_addr,
-				sec_nad_env.nad_second_dram_fail_information.nad_dram_fail_info[0].read_val,
-#if defined(CONFIG_SEC_SUPPORT_VST)
-				sec_nad_env.nad_second_dram_fail_information.nad_dram_fail_info[0].expected_val,
-				/* VST */
-				get_vst_result(), get_vst_adjust(), sec_nad_env.vst_info.vst_f_res,
-				sec_nad_env.nAsv_TABLE,
-				sec_nad_env.nad_ave_current_info.current_list[5].vst_current,sec_nad_env.nad_ave_current_info.current_list[6].vst_current,sec_nad_env.nad_ave_current_info.current_list[7].vst_current,
-				sec_nad_env.nad_ave_current_info.current_list[12].vst_current,sec_nad_env.nad_ave_current_info.current_list[13].vst_current,sec_nad_env.nad_ave_current_info.current_list[14].vst_current,
-				sec_nad_env.nad_ave_current_info.current_list[19].vst_current,sec_nad_env.nad_ave_current_info.current_list[20].vst_current,sec_nad_env.nad_ave_current_info.current_list[21].vst_current,
-				sec_nad_env.nad_ave_current_info.current_list[23].vst_current,sec_nad_env.nad_ave_current_info.current_list[24].vst_current,sec_nad_env.nad_ave_current_info.current_list[25].vst_current);
-#else
-				sec_nad_env.nad_second_dram_fail_information.nad_dram_fail_info[0].expected_val);
-#endif
-	} else {
-		return sprintf(buf, "OK_3.1_L_0x%x_0x%x_0x%x_0x%x,IT(%d),MT(%d),"
-				"HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),"
-				"HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),HPM_BIG_L%d(%d),"
-				"HPM_LIT_L%d(%d),HPM_LIT_L%d(%d),HPM_LIT_L%d(%d),HPM_LIT_L%d(%d),HPM_LIT_L%d(%d),HPM_LIT_L%d(%d),"
-				"HPM_G3D_L%d(%d),HPM_G3D_L%d(%d),HPM_G3D_L%d(%d),HPM_G3D_L%d(%d),"
-				"HPM_MIF_L%d(%d),HPM_MIF_L%d(%d),HPM_MIF_L%d(%d),HPM_MIF_L%d(%d),HPM_MIF_L%d(%d),HPM_MIF_L%d(%d),"
-				"HPM_MIF_L%d(%d),HPM_MIF_L%d(%d),"
-				"HPM_INVALID(%d),HPM_PASS_FAIL(%d),"
-				"LOTID(%s),TBL_VER(%d),BIG_G(%d),LIT_G(%d),G3D_G(%d),MIF_G(%d),"
-				"HPM_BIG_DATA(%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;"
-				"%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d),"
-				"HPM_LIT_DATA(%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;"
-				"%d_%d_%d_%d_%d;%d_%d_%d_%d_%d),"
-				"HPM_G3D_DATA(%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d),"
-				"HPM_MIF_DATA(%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;"
-				"%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d;%d_%d_%d_%d_%d),"
-#if defined(CONFIG_SEC_SUPPORT_VST)
-				"OT(0x%x),TN(%d),VRES(%d),VADJ(%d),FRES(%d),"
-				"AVT(%d),BIG_L11(%d),BIG_L18(%d),BIG_L23(%d),"
-				"MID_L6(%d),MID_L12(%d),MID_L17(%d),"
-				"LIT_L4(%d),LIT_L9(%d),LIT_L14(%d),"
-				"MIF_L1(%d),MIF_L5(%d),MIF_L9(%d)\n",
-#else
-				"OT(0x%x),TN(%d)\n",
-#endif
-				sec_nad_env.nad_data,
-				sec_nad_env.nad_inform2_data,
-				sec_nad_env.nad_second_data,
-				sec_nad_env.nad_second_inform2_data,
-				sec_nad_env.nad_init_temperature,
-				sec_nad_env.max_temperature,
-				/* Start HPM */
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[0].level,
-				sec_nad_env.hpm_min_diff_level_big[0],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[1].level,
-				sec_nad_env.hpm_min_diff_level_big[1],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[2].level,
-				sec_nad_env.hpm_min_diff_level_big[2],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[3].level,
-				sec_nad_env.hpm_min_diff_level_big[3],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[4].level,
-				sec_nad_env.hpm_min_diff_level_big[4],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[5].level,
-				sec_nad_env.hpm_min_diff_level_big[5],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[6].level,
-				sec_nad_env.hpm_min_diff_level_big[6],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[7].level,
-				sec_nad_env.hpm_min_diff_level_big[7],
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[8].level,
-				sec_nad_env.hpm_min_diff_level_big[8],
-
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[0].level,
-				sec_nad_env.hpm_min_diff_level_lit[0],
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[1].level,
-				sec_nad_env.hpm_min_diff_level_lit[1],
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[2].level,
-				sec_nad_env.hpm_min_diff_level_lit[2],
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[3].level,
-				sec_nad_env.hpm_min_diff_level_lit[3],
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[4].level,
-				sec_nad_env.hpm_min_diff_level_lit[4],
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[5].level,
-				sec_nad_env.hpm_min_diff_level_lit[5],
-
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[0].level,
-				sec_nad_env.hpm_min_diff_level_g3d[0],
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[1].level,
-				sec_nad_env.hpm_min_diff_level_g3d[1],
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[2].level,
-				sec_nad_env.hpm_min_diff_level_g3d[2],
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[3].level,
-				sec_nad_env.hpm_min_diff_level_g3d[3],
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[0].level,
-				sec_nad_env.hpm_min_diff_level_mif[0],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[1].level,
-				sec_nad_env.hpm_min_diff_level_mif[1],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[2].level,
-				sec_nad_env.hpm_min_diff_level_mif[2],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[3].level,
-				sec_nad_env.hpm_min_diff_level_mif[3],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[4].level,
-				sec_nad_env.hpm_min_diff_level_mif[4],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[5].level,
-				sec_nad_env.hpm_min_diff_level_mif[5],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[6].level,
-				sec_nad_env.hpm_min_diff_level_mif[6],
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[7].level,
-				sec_nad_env.hpm_min_diff_level_mif[7],
-
-				sec_nad_env.nad_hpm_info.hpm_invalid,
-				sec_nad_env.nad_hpm_info.device_pass_fail,
-				sec_nad_env.nad_hpm_info.LotID,
-				sec_nad_env.nad_hpm_info.asv_table_ver,
-				sec_nad_env.nad_hpm_info.big_grp,
-				sec_nad_env.nad_hpm_info.lit_grp,
-				sec_nad_env.nad_hpm_info.g3d_grp,
-				sec_nad_env.nad_hpm_info.mif_grp,
-				// BIG
-				sec_nad_env.nad_hpm_info.hpm_info[0].block_pass_fail,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[0].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[0].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[0].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[0].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[0].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[1].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[1].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[1].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[1].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[1].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[2].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[2].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[2].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[2].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[2].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[3].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[3].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[3].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[3].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[3].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[4].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[4].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[4].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[4].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[4].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[5].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[5].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[5].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[5].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[5].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[6].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[6].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[6].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[6].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[6].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[7].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[7].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[7].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[7].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[7].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[8].level,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[8].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[8].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[8].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[0].hpm_level_info[8].pba_hpm_min,
-				// Little
-				sec_nad_env.nad_hpm_info.hpm_info[1].block_pass_fail,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[0].level,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[0].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[0].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[0].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[0].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[1].level,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[1].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[1].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[1].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[1].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[2].level,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[2].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[2].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[2].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[2].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[3].level,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[3].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[3].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[3].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[3].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[4].level,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[4].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[4].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[4].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[4].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[5].level,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[5].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[5].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[5].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[1].hpm_level_info[5].pba_hpm_min,
-				//G3D
-				sec_nad_env.nad_hpm_info.hpm_info[2].block_pass_fail,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[0].level,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[0].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[0].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[0].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[0].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[1].level,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[1].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[1].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[1].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[1].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[2].level,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[2].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[2].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[2].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[2].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[3].level,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[3].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[3].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[3].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[2].hpm_level_info[3].pba_hpm_min,
-				//MIF
-				sec_nad_env.nad_hpm_info.hpm_info[3].block_pass_fail,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[0].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[0].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[0].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[0].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[0].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[1].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[1].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[1].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[1].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[1].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[2].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[2].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[2].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[2].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[2].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[3].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[3].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[3].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[3].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[3].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[4].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[4].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[4].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[4].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[4].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[5].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[5].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[5].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[5].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[5].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[6].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[6].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[6].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[6].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[6].pba_hpm_min,
-
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[7].level,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[7].fused_hpm,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[7].pba_hpm_ave,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[7].pba_hpm_var,
-				sec_nad_env.nad_hpm_info.hpm_info[3].hpm_level_info[7].pba_hpm_min,
-				/* End of HPM */
-				sec_nad_env.nad_inform3_data,
-#if defined(CONFIG_SEC_SUPPORT_VST)
-				sec_nad_env.nad_inform3_data & 0xFF,
-				/* VST */
-				get_vst_result(), get_vst_adjust(), sec_nad_env.vst_info.vst_f_res,
-				sec_nad_env.nAsv_TABLE,
-				sec_nad_env.nad_ave_current_info.current_list[5].vst_current,sec_nad_env.nad_ave_current_info.current_list[6].vst_current,sec_nad_env.nad_ave_current_info.current_list[7].vst_current,
-				sec_nad_env.nad_ave_current_info.current_list[12].vst_current,sec_nad_env.nad_ave_current_info.current_list[13].vst_current,sec_nad_env.nad_ave_current_info.current_list[14].vst_current,
-				sec_nad_env.nad_ave_current_info.current_list[19].vst_current,sec_nad_env.nad_ave_current_info.current_list[20].vst_current,sec_nad_env.nad_ave_current_info.current_list[21].vst_current,
-				sec_nad_env.nad_ave_current_info.current_list[23].vst_current,sec_nad_env.nad_ave_current_info.current_list[24].vst_current,sec_nad_env.nad_ave_current_info.current_list[25].vst_current);
-#else
-				sec_nad_env.nad_inform3_data & 0xFF);
-#endif
-
-	}
-#else
 	if (!strncasecmp(sec_nad_env.nad_result, "FAIL", 4) && !strncasecmp(sec_nad_env.nad_second_result, "FAIL", 4)) {
 		/* Both of NAD were failed. */
 				buf_offset = buf;
@@ -1028,7 +537,7 @@ static ssize_t show_nad_stat(struct device *dev,
 			       "NG_3.1_L_0x%x_0x%x_0x%x_0x%x,IT(%d),MT(%d),DAS(%s),BLOCK(%s),"
 				"FN(%s_%s_%d_%s),FD(0x%08llx_0x%08llx_0x%08llx),"
 #if defined(CONFIG_SEC_SUPPORT_VST)
-				"FNS(%s_%s_%d_%s),FDS(0x%08llx_0x%08llx_0x%08llx),VRES(%d),VADJ(%d),FRES(%d),"
+				"FNS(%s_%s_%d_%s),FDS(0x%08llx_0x%08llx_0x%08llx),CHIP(%x),VER(%d),VIT(%d),VMT(%d),VRES(%d),VADJ(%d),FRES(%d),"
 				"AVT(%d),"
 #ifdef SEC_NAD_CURRENT_INFO
 				"BIG_L11(%d),BIG_L16(%d),"
@@ -1041,20 +550,12 @@ static ssize_t show_nad_stat(struct device *dev,
 				"MIF_V_TEMP(%d),MIF_V_TIME(%d),"
 				"INT_V_TEMP(%d),INT_V_TIME(%d),"
 #endif
-				"ASB_B0(%d),ASB_B1(%d),ASB_B2(%d),"
-				"ASB_M0(%d),ASB_M1(%d),ASB_M2(%d),"
-				"ASB_G0(%d),ASB_G1(%d),"
-				"PBA_B0(%d),PBA_B1(%d),PBA_B2(%d),"
-				"PBA_M0(%d),PBA_M1(%d),PBA_M2(%d),"
-				"PBA_G0(%d),PBA_G1(%d),"
-				"NAD_B0(%d),NAD_B1(%d),NAD_B2(%d),"
-				"NAD_M0(%d),NAD_M1(%d),NAD_M2(%d),"
-				"NAD_G0(%d),NAD_G1(%d),"
+
 				"ONC_B0(%d),ONC_B1(%d),ONC_B2(%d),"
 				"ONC_M0(%d),ONC_M1(%d),ONC_M2(%d),"
 				"ONC_G0(%d),ONC_G1(%d)",
 #else
-				"FNS(%s_%s_%d_%s),FDS(0x%08llx_0x%08llx_0x%08llx)",
+				"FNS(%s_%s_%d_%s),FDS(0x%08llx_0x%08llx_0x%08llx),CHIP(%x),VER(%d)",
 #endif
 				sec_nad_env.nad_data,
 				sec_nad_env.nad_inform2_data,
@@ -1071,15 +572,18 @@ static ssize_t show_nad_stat(struct device *dev,
 				sec_nad_env.nad_dram_fail_information.nad_dram_fail_info[0].target_addr,
 				sec_nad_env.nad_dram_fail_information.nad_dram_fail_info[0].read_val,
 				sec_nad_env.nad_dram_fail_information.nad_dram_fail_info[0].expected_val,
+#if defined(CONFIG_SEC_SUPPORT_VST)				
 				sec_nad_env.nad_second_fail_info.das_string,
 				sec_nad_env.nad_second_fail_info.block_string,
 				sec_nad_env.nad_second_fail_info.level,
 				sec_nad_env.nad_second_fail_info.vector_string,
 				sec_nad_env.nad_second_dram_fail_information.nad_dram_fail_info[0].target_addr,
 				sec_nad_env.nad_second_dram_fail_information.nad_dram_fail_info[0].read_val,
-#if defined(CONFIG_SEC_SUPPORT_VST)
 				sec_nad_env.nad_second_dram_fail_information.nad_dram_fail_info[0].expected_val,
+				(sec_nad_env.nad_data >> 28) & 0xF,
+				(sec_nad_env.nad_data >> 24) & 0xF,
 				/* VST */
+				sec_nad_env.vst_init_temperature,sec_nad_env.vst_max_temperature,
 				get_vst_result(), get_vst_adjust(), sec_nad_env.vst_info.vst_f_res,
 				sec_nad_env.nAsv_TABLE,
 #ifdef SEC_NAD_CURRENT_INFO
@@ -1093,20 +597,27 @@ static ssize_t show_nad_stat(struct device *dev,
 				get_vst_temperature(NAD_MIF),get_vst_operation_time(NAD_MIF),
 				get_vst_temperature(NAD_INT),get_vst_operation_time(NAD_INT),
 #endif
-				sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[0],sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[1],sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[2],
-				sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[0],sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[1],sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[2],
-				sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[0],sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[1],
-				sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.big[0],sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.big[1],sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.big[2],
-				sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.mid[0],sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.mid[1],sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.mid[2],
-				sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.g3d[0],sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.g3d[1],
-				sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[0],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[1],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[2],
-				sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[0],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[1],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[2],
-				sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[0],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[1],
-				sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[0] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[0],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[1] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[1],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[2] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[2],
-				sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[0] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[0],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[1] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[1],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[2] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[2],
-				sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[0] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[0],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[1] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[1]);
+
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[0] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[0] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[0] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[0]),
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[1] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[1] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[1] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[1]),
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[2] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[2]== 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[2] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[2]),
+
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[0] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[0] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[0] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[0]),
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[1] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[1] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[1] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[1]),
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[2] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[2] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[2] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[2]),
+
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[0] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[0] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[0] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[0]),
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[1] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[1] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[1] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[1]));
 #else
-				sec_nad_env.nad_second_dram_fail_information.nad_dram_fail_info[0].expected_val);
+				sec_nad_env.nad_second_fail_info.das_string,
+				sec_nad_env.nad_second_fail_info.block_string,
+				sec_nad_env.nad_second_fail_info.level,
+				sec_nad_env.nad_second_fail_info.vector_string,
+				sec_nad_env.nad_second_dram_fail_information.nad_dram_fail_info[0].target_addr,
+				sec_nad_env.nad_second_dram_fail_information.nad_dram_fail_info[0].read_val,
+				sec_nad_env.nad_second_dram_fail_information.nad_dram_fail_info[0].expected_val,
+				(sec_nad_env.nad_data >> 28) & 0xF,
+				(sec_nad_env.nad_data >> 24) & 0xF);
 #endif
 
 
@@ -1133,14 +644,72 @@ static ssize_t show_nad_stat(struct device *dev,
 					sec_nad_env.last_fail_data_backup.nad_fail_info.level,
 					sec_nad_env.last_fail_data_backup.nad_fail_info.vector_string);
 				}
+#if defined(CONFIG_NAD_55)				
+				buf += sprintf(buf, ",LRW(%d)", sec_nad_env.nad_rework_info);
+				buf += sprintf(buf, ",RTO(%d)", (((sec_nad_env.nad_data << 24) >> 29) == 0x7)? 1 : 0);
+				buf += sprintf(buf, ",VST_TIME(%d)", (sec_nad_env.vst_inform4_3_data >> 24));
+				buf += sprintf(buf, ",NAD_TIME(%d)", ((sec_nad_env.nad_inform3_data << 16) >> 24));
+				buf += sprintf(buf, ",COOLING_TIME(%d)", (sec_nad_env.nad_inform3_data >> 24));
+				buf += sprintf(buf, ",NAD_ALLTIME(%ld)", sec_nad_env.nad_total_time);
+#endif
+#if defined(CONFIG_SEC_NAD_PMIC)
+				if (sec_nad_env.pmic_ocp_status == NAD_PMIC_FAIL)
+					buf += sprintf(buf, ",NAD_OCP(%d)", sec_nad_env.pmic_ocp_fail_index);
+				if (sec_nad_env.pmic_read_status == NAD_PMIC_FAIL)
+					buf += sprintf(buf, ",NAD_PMIC_READ(%d)", sec_nad_env.pmic_read_channel);
+#endif
 				buf += sprintf(buf, "\n");
-				
+
 				return (buf - buf_offset);
-	} else {
+	} 
+#if defined(CONFIG_NAD_55)		
+	else if (nad_need_rework > 0) {
+		buf_offset = buf;
+	
+		switch (nad_need_rework) {
+	        case REWORK_VST_FAIL: {
+				buf += sprintf(buf, "RE_WORK,RW(%d)",REWORK_VST_FAIL);
+				buf += sprintf(buf, ",FRES(%d)", sec_nad_env.vst_info.vst_f_res);
+	        } break;
+	        case REWORK_SUDDEN_POWER_OFF: {
+	            buf += sprintf(buf, "RE_WORK,RW(%d)",REWORK_SUDDEN_POWER_OFF);
+	        } break;	
+	        case REWORK_FIRST_FAIL: {
+				buf += sprintf(buf, "RE_WORK,RW(%d)",REWORK_FIRST_FAIL);
+				buf += sprintf(buf, ",FN(%s_%s_%d_%s)",
+										sec_nad_env.nad_fail_info.das_string,
+										sec_nad_env.nad_fail_info.block_string,
+										sec_nad_env.nad_fail_info.level,
+										sec_nad_env.nad_fail_info.vector_string);
+			} break;
+			case REWORK_VST_CP_ECC_ERROR: {
+				buf += sprintf(buf, "RE_WORK,RW(%d)",REWORK_VST_CP_ECC_ERROR);
+			} break;
+			case REWORK_NAD_CP_ECC_ERROR: {
+				buf += sprintf(buf, "RE_WORK,RW(%d)",REWORK_NAD_CP_ECC_ERROR);
+			} break;
+			case REWORK_RTC_TIME_OVER: {
+				buf += sprintf(buf, "RE_WORK,RW(%d)",REWORK_RTC_TIME_OVER);
+			} break;
+		}
+		buf += sprintf(buf, ",IT(%d),TN(%d),VIT(%d),RTO(%d),VST_TIME(%d),NAD_TIME(%d),COOLING_TIME(%d),NAD_ALLTIME(%ld)",
+							sec_nad_env.nad_init_temperature,
+							sec_nad_env.nad_inform3_data & 0xFF,
+							sec_nad_env.vst_init_temperature,
+							(((sec_nad_env.nad_data << 24) >> 29) == 0x7)? 1 : 0,
+							sec_nad_env.vst_inform4_3_data >> 24,
+							((sec_nad_env.nad_inform3_data << 16) >> 24),
+							sec_nad_env.nad_inform3_data >> 24,
+							sec_nad_env.nad_total_time);
+		buf += sprintf(buf, "\n");
+		return (buf - buf_offset);
+	} 
+#endif	
+	else {
 				buf_offset = buf;
 				buf += sprintf(buf, "OK_3.1_L_0x%x_0x%x_0x%x_0x%x,IT(%d),MT(%d),OT(0x%x),"
 #if defined(CONFIG_SEC_SUPPORT_VST)
-				"TN(%d),VRES(%d),VADJ(%d),FRES(%d),"
+				"TN(%d),CHIP(%x),VER(%d),VIT(%d),VMT(%d),VRES(%d),VADJ(%d),FRES(%d),"
 				"AVT(%d),"
 #ifdef SEC_NAD_CURRENT_INFO
 				"BIG_L11(%d),BIG_L16(%d),"
@@ -1153,20 +722,12 @@ static ssize_t show_nad_stat(struct device *dev,
 				"MIF_V_TEMP(%d),MIF_V_TIME(%d),"
 				"INT_V_TEMP(%d),INT_V_TIME(%d),"
 #endif
-				"ASB_B0(%d),ASB_B1(%d),ASB_B2(%d),"
-				"ASB_M0(%d),ASB_M1(%d),ASB_M2(%d),"
-				"ASB_G0(%d),ASB_G1(%d),"
-				"PBA_B0(%d),PBA_B1(%d),PBA_B2(%d),"
-				"PBA_M0(%d),PBA_M1(%d),PBA_M2(%d),"
-				"PBA_G0(%d),PBA_G1(%d),"
-				"NAD_B0(%d),NAD_B1(%d),NAD_B2(%d),"
-				"NAD_M0(%d),NAD_M1(%d),NAD_M2(%d),"
-				"NAD_G0(%d),NAD_G1(%d),"
+
 				"ONC_B0(%d),ONC_B1(%d),ONC_B2(%d),"
 				"ONC_M0(%d),ONC_M1(%d),ONC_M2(%d),"
 				"ONC_G0(%d),ONC_G1(%d)",
 #else
-				"TN(%d)",
+				"TN(%d),CHIP(%x),VER(%d)",
 #endif
 				sec_nad_env.nad_data,
 				sec_nad_env.nad_inform2_data,
@@ -1177,7 +738,10 @@ static ssize_t show_nad_stat(struct device *dev,
 				sec_nad_env.nad_inform3_data,
 #if defined(CONFIG_SEC_SUPPORT_VST)
 				sec_nad_env.nad_inform3_data & 0xFF,
+				(sec_nad_env.nad_data >> 28) & 0xF,
+				(sec_nad_env.nad_data >> 24) & 0xF,
 				/* VST */
+				sec_nad_env.vst_init_temperature,sec_nad_env.vst_max_temperature,
 				get_vst_result(), get_vst_adjust(), sec_nad_env.vst_info.vst_f_res,
 				sec_nad_env.nAsv_TABLE,
 #ifdef SEC_NAD_CURRENT_INFO
@@ -1191,20 +755,22 @@ static ssize_t show_nad_stat(struct device *dev,
 				get_vst_temperature(NAD_MIF),get_vst_operation_time(NAD_MIF),
 				get_vst_temperature(NAD_INT),get_vst_operation_time(NAD_INT),
 #endif
-				sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[0],sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[1],sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[2],
-				sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[0],sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[1],sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[2],
-				sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[0],sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[1],
-				sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.big[0],sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.big[1],sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.big[2],
-				sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.mid[0],sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.mid[1],sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.mid[2],
-				sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.g3d[0],sec_nad_env.nad_on_chip_cal_info.pba_otp_dat.g3d[1],
-				sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[0],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[1],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[2],
-				sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[0],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[1],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[2],
-				sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[0],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[1],
-				sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[0] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[0],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[1] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[1],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[2] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[2],
-				sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[0] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[0],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[1] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[1],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[2] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[2],
-				sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[0] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[0],sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[1] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[1]);
+
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[0] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[0] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[0] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[0]),
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[1] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[1] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[1] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[1]),
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[2] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[2]== 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.big[2] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.big[2]),
+
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[0] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[0] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[0] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[0]),
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[1] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[1] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[1] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[1]),
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[2] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[2] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.mid[2] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.mid[2]),
+
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[0] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[0] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[0] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[0]),
+				((sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[1] == 0 || sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[1] == 0)? 0: sec_nad_env.nad_on_chip_cal_info.nad_cal_dat.g3d[1] - sec_nad_env.nad_on_chip_cal_info.asb_otp_dat.g3d[1]));
+
 #else
-				sec_nad_env.nad_inform3_data & 0xFF);
+				sec_nad_env.nad_inform3_data & 0xFF,
+				(sec_nad_env.nad_data >> 28) & 0xF,
+				(sec_nad_env.nad_data >> 24) & 0xF);
 #endif
 
 
@@ -1258,17 +824,26 @@ static ssize_t show_nad_stat(struct device *dev,
 						sec_nad_bps_env.dn_cnt);
 				}
 #endif
+
+
+#if defined(CONFIG_NAD_55)				
+				buf += sprintf(buf, ",LRW(%d)", sec_nad_env.nad_rework_info);
+				buf += sprintf(buf, ",RTO(%d)", (((sec_nad_env.nad_data << 24) >> 29) == 0x7)? 1 : 0);
+				buf += sprintf(buf, ",VST_TIME(%d)", (sec_nad_env.vst_inform4_3_data >> 24));
+				buf += sprintf(buf, ",NAD_TIME(%d)", ((sec_nad_env.nad_inform3_data << 16) >> 24));
+				buf += sprintf(buf, ",COOLING_TIME(%d)", (sec_nad_env.nad_inform3_data >> 24));
+				buf += sprintf(buf, ",NAD_ALLTIME(%ld)", sec_nad_env.nad_total_time);
+#endif
+#if defined(CONFIG_SEC_NAD_PMIC)
+				if (sec_nad_env.pmic_ocp_status == NAD_PMIC_FAIL)
+					buf += sprintf(buf, ",NAD_OCP(%d)", sec_nad_env.pmic_ocp_fail_index);
+				if (sec_nad_env.pmic_read_status == NAD_PMIC_FAIL)
+					buf += sprintf(buf, ",NAD_PMIC_READ(%d)", sec_nad_env.pmic_read_channel);
+#endif
 				buf += sprintf(buf, "\n");
 				
 				return (buf - buf_offset);
 	}
-#endif
-#else
-	if (!strncasecmp(sec_nad_env.nad_result, "FAIL", 4))
-		return sprintf(buf, "NG_2.0_0x%x,T(%d)\n", sec_nad_env.nad_data, sec_nad_env.max_temperature);
-	else
-		return sprintf(buf, "OK_2.0_0x%x,T(%d)\n", sec_nad_env.nad_data, sec_nad_env.max_temperature);
-#endif
 }
 static DEVICE_ATTR(nad_stat, S_IRUGO, show_nad_stat, NULL);
 
@@ -1280,17 +855,10 @@ static ssize_t store_nad_erase(struct device *dev,
 
 	if (!strncmp(buf, "erase", 5)) {
 		strncpy(sec_nad_env.nad_factory, "GAP", 3);
-#if defined(CONFIG_SEC_SUPPORT_SECOND_NAD)
+#if defined(CONFIG_NAD_55)		
+		strncpy(sec_nad_env.nad_complete, "GAP", 3);
+#endif		
 		strncpy(sec_nad_env.nad_second, "DUMM", 4);
-#endif
-#if defined(CONFIG_SEC_NAD_HPM)
-		/* Initialize NAD HPM data */
-		memset(&sec_nad_env.nad_hpm_info, 0, sizeof(nad_hpm));
-		memset(&sec_nad_env.hpm_min_diff_level_big, 0, sizeof(sec_nad_env.hpm_min_diff_level_big));
-		memset(&sec_nad_env.hpm_min_diff_level_lit, 0, sizeof(sec_nad_env.hpm_min_diff_level_lit));
-		memset(&sec_nad_env.hpm_min_diff_level_g3d, 0, sizeof(sec_nad_env.hpm_min_diff_level_g3d));
-		memset(&sec_nad_env.hpm_min_diff_level_mif, 0, sizeof(sec_nad_env.hpm_min_diff_level_mif));
-#endif
 #if defined(CONFIG_SEC_NAD_API)
 		sec_nad_env.nad_api_status = 0;
 #endif
@@ -1323,12 +891,10 @@ static ssize_t show_nad_acat(struct device *dev,
 {
 	NAD_PRINT("%s\n", __func__);
 
-#if defined(CONFIG_SEC_SUPPORT_SECOND_NAD)
-#if defined(CONFIG_SEC_NAD_HPM)
 	/* Check status if ACAT NAD was excuted */
 	if (sec_nad_env.current_nad_status >= NAD_ACAT_FLAG) {
 		if (!strncasecmp(sec_nad_env.nad_acat_result, "FAIL", 4) && !strncasecmp(sec_nad_env.nad_acat_second_result, "FAIL", 4)) {
-			return sprintf(buf, "NG_3.0_L_0x%x_0x%x_0x%x_0x%x,%d,%d,HPM(NULL),%s,%s,"
+			return sprintf(buf, "NG_3.0_L_0x%x_0x%x_0x%x_0x%x,%d,%d,%s,%s,"
 					"FN(%s_%s_%d_%s),FD(0x%08llx_0x%08llx_0x%08llx),"
 					"FNS(%s_%s_%d_%s),FDS(0x%08llx_0x%08llx_0x%08llx)\n",
 					sec_nad_env.nad_acat_data,
@@ -1354,48 +920,7 @@ static ssize_t show_nad_acat(struct device *dev,
 					sec_nad_env.nad_acat_second_dram_fail_information.nad_dram_fail_info[0].read_val,
 					sec_nad_env.nad_acat_second_dram_fail_information.nad_dram_fail_info[0].expected_val);
 		} else {
-			return sprintf(buf, "OK_3.0_L_0x%x_0x%x_0x%x_0x%x,%d,%d,HPM(NULL),OT(0x%x)\n",
-					sec_nad_env.nad_acat_data,
-					sec_nad_env.nad_acat_inform2_data,
-					sec_nad_env.nad_acat_second_data,
-					sec_nad_env.nad_acat_second_inform2_data,
-					sec_nad_env.nad_acat_init_temperature,
-					sec_nad_env.nad_acat_max_temperature,
-					sec_nad_env.nad_acat_inform3_data);
-		}
-	} else
-		return sprintf(buf, "NO_3.0_L_NADTEST\n");
-#else
-	/* Check status if ACAT NAD was excuted */
-	if (sec_nad_env.current_nad_status >= NAD_ACAT_FLAG) {
-		if (!strncasecmp(sec_nad_env.nad_acat_result, "FAIL", 4) && !strncasecmp(sec_nad_env.nad_acat_second_result, "FAIL", 4)) {
-			return sprintf(buf, "NG_3.0_L_0x%x_0x%x_0x%x_0x%x,%d,%d,HPM(NULL),%s,%s,"
-					"FN(%s_%s_%d_%s),FD(0x%08llx_0x%08llx_0x%08llx),"
-					"FNS(%s_%s_%d_%s),FDS(0x%08llx_0x%08llx_0x%08llx)\n",
-					sec_nad_env.nad_acat_data,
-					sec_nad_env.nad_acat_inform2_data,
-					sec_nad_env.nad_acat_second_data,
-					sec_nad_env.nad_acat_second_inform2_data,
-					sec_nad_env.nad_acat_init_temperature,
-					sec_nad_env.nad_acat_max_temperature,
-					sec_nad_env.nad_acat_second_fail_info.das_string,
-					sec_nad_env.nad_acat_second_fail_info.block_string,
-					sec_nad_env.nad_acat_fail_info.das_string,
-					sec_nad_env.nad_acat_fail_info.block_string,
-					sec_nad_env.nad_acat_fail_info.level,
-					sec_nad_env.nad_acat_fail_info.vector_string,
-					sec_nad_env.nad_acat_dram_fail_information.nad_dram_fail_info[0].target_addr,
-					sec_nad_env.nad_acat_dram_fail_information.nad_dram_fail_info[0].read_val,
-					sec_nad_env.nad_acat_dram_fail_information.nad_dram_fail_info[0].expected_val,
-					sec_nad_env.nad_acat_second_fail_info.das_string,
-					sec_nad_env.nad_acat_second_fail_info.block_string,
-					sec_nad_env.nad_acat_second_fail_info.level,
-					sec_nad_env.nad_acat_second_fail_info.vector_string,
-					sec_nad_env.nad_acat_second_dram_fail_information.nad_dram_fail_info[0].target_addr,
-					sec_nad_env.nad_acat_second_dram_fail_information.nad_dram_fail_info[0].read_val,
-					sec_nad_env.nad_acat_second_dram_fail_information.nad_dram_fail_info[0].expected_val);
-		} else {
-			return sprintf(buf, "OK_3.0_L_0x%x_0x%x_0x%x_0x%x,%d,%d,HPM(NULL),OT(0x%x)\n",
+			return sprintf(buf, "OK_3.0_L_0x%x_0x%x_0x%x_0x%x,%d,%d,OT(0x%x)\n",
 					sec_nad_env.nad_acat_data,
 					sec_nad_env.nad_acat_inform2_data,
 					sec_nad_env.nad_acat_second_data,
@@ -1406,17 +931,6 @@ static ssize_t show_nad_acat(struct device *dev,
 		}
 	} else
 	return sprintf(buf, "NO_3.0_L_NADTEST\n");
-#endif
-#else
-	/* Check status if ACAT NAD was excuted */
-	if (sec_nad_env.current_nad_status == NAD_ACAT_FLAG) {
-		if (!strncasecmp(sec_nad_env.nad_acat_result, "FAIL", 4))
-			return sprintf(buf, "NG_ACAT_0x%x,T(%d)\n", sec_nad_env.nad_acat_data, sec_nad_env.nad_acat_max_temperature);
-		else
-			return sprintf(buf, "OK_ACAT_0x%x,T(%d)\n", sec_nad_env.nad_acat_data, sec_nad_env.nad_acat_max_temperature);
-	} else
-		return sprintf(buf, "NO_ACAT_NADTEST\n");
-#endif
 }
 
 static ssize_t store_nad_acat(struct device *dev,
@@ -1463,18 +977,26 @@ static ssize_t store_nad_acat(struct device *dev,
 		ret = sscanf(nad_cmd[1], "%d\n", &sec_nad_env.nad_acat_loop_count);
 		if (ret != 1)
 			return -EINVAL;
-
+#if defined(CONFIG_NAD_55)
+		if (sec_nad_env.nad_acat_loop_count == 0) {
+			strncpy(sec_nad_env.nad_factory, "GAP", 3);	
+			strncpy(sec_nad_env.nad_complete, "GAP", 3);		
+			strncpy(sec_nad_env.nad_second, "DUMM", 4);
+#if defined(CONFIG_SEC_NAD_API)
+			sec_nad_env.nad_api_status = 0;
+#endif
+			sec_nad_env.nad_skip_usb_cmd_flag = NAD_SKIP_USB_CMD_FLAG;
+		}
+#endif
 		/* case 1 : ACAT NAD */
 		if (sec_nad_env.nad_acat_loop_count > 0) {
 			NAD_PRINT("ACAT NAD test command.\n");
 
 			strncpy(sec_nad_env.nad_acat, "ACAT", 4);
-#if defined(CONFIG_SEC_SUPPORT_SECOND_NAD)
 			strncpy(sec_nad_env.nad_acat_second, "DUMM", 4);
 			sec_nad_env.nad_acat_second_running_count = 0;
 			sec_nad_env.acat_fail_retry_count = 0;
 			sec_nad_env.nad_acat_real_count = 0;
-#endif
 			sec_nad_env.nad_acat_data = 0;
 			sec_nad_env.nad_acat_real_count = 0;
 			sec_nad_env.current_nad_status = 0;
@@ -1501,16 +1023,12 @@ static ssize_t store_nad_acat(struct device *dev,
 			sec_nad_env.nad_extend_real_count=0;
 			sec_nad_env.nad_extend_loop_count=1;
 			sec_nad_env.nad_extend_skip_fail = 0;
-			
 			sec_nad_env.nad_acat_loop_count = 0;
 			strncpy(sec_nad_env.nad_acat, "NONE", 4);
-			
-#if defined(CONFIG_SEC_SUPPORT_SECOND_NAD)
 			strncpy(sec_nad_env.nad_acat_second, "DUMM", 4);
 			sec_nad_env.nad_acat_second_running_count = 0;
 			sec_nad_env.acat_fail_retry_count = 0;
 			sec_nad_env.nad_acat_real_count = 0;
-#endif
 			sec_nad_env.nad_acat_data = 0;
 			sec_nad_env.nad_acat_real_count = 0;
 			sec_nad_env.current_nad_status = 0;
@@ -1554,7 +1072,7 @@ static ssize_t show_nad_dram(struct device *dev,
 	NAD_PRINT("%s\n", __func__);
 
 	if (sec_nad_env.nad_dram_test_result == NAD_DRAM_TEST_FAIL)
-		return sprintf(buf, "NG_DRAM_0x%08lx,0x%x\n",
+		return sprintf(buf, "NG_DRAM_0x%08llx,0x%x\n",
 				sec_nad_env.nad_dram_fail_address,
 				sec_nad_env.nad_dram_fail_data);
 	else if (sec_nad_env.nad_dram_test_result == NAD_DRAM_TEST_PASS)
@@ -1580,7 +1098,7 @@ static ssize_t show_nad_all(struct device *dev,
 			"NAD DRAM test need : %s\n"
 			"NAD DRAM test result : 0x%x\n"
 			"NAD DRAM test fail data : 0x%x\n"
-			"NAD DRAM test fail address : 0x%08lx\n"
+			"NAD DRAM test fail address : 0x%08llx\n"
 			"NAD status : %d\n"
 			"NAD ACAT skip fail : %d\n"
 			"NAD unlimited loop : %d\n", sec_nad_env.nad_factory,
@@ -1902,6 +1420,30 @@ static ssize_t show_nad_support(struct device *dev,
 }
 static DEVICE_ATTR(nad_support, S_IRUGO, show_nad_support, NULL);
 
+#if defined(CONFIG_NAD_55)
+static ssize_t store_nad_reboot(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+
+	int ret;
+
+	/* check commnad */
+	NAD_PRINT("%s: START\n", __func__);
+	if (sec_nad_param_data.nad_param_complete == true) {
+		if (!strncmp(buf, "COM", 3)) {
+			strncpy(sec_nad_env.nad_complete, "COM", 3);
+
+			ret = sec_set_nad_param(NAD_PARAM_WRITE);
+			if (ret < 0)
+				pr_err("%s: write error! %d\n", __func__, ret);
+		}
+	}
+	return count;
+}
+static DEVICE_ATTR(nad_reboot, S_IRUGO | S_IWUSR, NULL, store_nad_reboot);
+#endif
+
 static ssize_t show_nad_version(struct device *dev,
 		struct device_attribute *attr,
 		char *buf)
@@ -1913,7 +1455,7 @@ static ssize_t show_nad_version(struct device *dev,
 	
 	nad_project_index = (sec_nad_env.nad_data >> 28) & 0xF;
 	nad_project_index2 = (sec_nad_env.nad_inform2_data >> 29) & 0xF;
-	nad_fw_version = ((sec_nad_env.nad_data<<4) >> 28) & 0xF;
+	nad_fw_version = (sec_nad_env.nad_data >> 24) & 0xF;
 
 	memset(chipset_name, 0x0, sizeof(chipset_name));
 	NAD_PRINT("%s\n", __func__);
@@ -2080,6 +1622,13 @@ static int __init sec_nad_init(void)
 		pr_err("%s: Failed to create device file\n", __func__);
 		goto err_create_nad_sysfs;
 	}
+#if defined(CONFIG_NAD_55)
+	ret = device_create_file(sec_nad, &dev_attr_nad_reboot);
+	if (ret) {
+		pr_err("%s: Failed to create device file\n", __func__);
+		goto err_create_nad_sysfs;
+	}
+#endif
 
 #if defined(CONFIG_SEC_NAD_API)
 	ret = device_create_file(sec_nad, &dev_attr_nad_api);
@@ -2136,6 +1685,7 @@ static int __init sec_nad_init(void)
 	sec_nad_param_data.state = NAD_PARAM_EMPTY;
 	sec_nad_param_data.retry_cnt = NAD_RETRY_COUNT;
 	sec_nad_param_data.curr_cnt = 0;
+	sec_nad_param_data.nad_param_complete = 0;
 
 	INIT_WORK(&sec_nad_param_data.sec_nad_work, sec_nad_param_update);
 	INIT_DELAYED_WORK(&sec_nad_param_data.sec_nad_delay_work, sec_nad_init_update);

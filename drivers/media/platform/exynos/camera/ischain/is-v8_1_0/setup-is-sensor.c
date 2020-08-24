@@ -178,7 +178,7 @@ int exynos9830_is_sensor_mclk_on(struct device *dev,
 	u32 val;
 	void __iomem *cmu_clk;
 
-	pr_debug("%s(scenario : %d / ch : %d)\n", __func__, scenario, channel);
+	pr_info("%s(scenario : %d / ch : %d)\n", __func__, scenario, channel);
 
 	if (channel == 4 || channel == 5) {
 		cmu_clk = ioremap(0x1a330860, 0x4);
@@ -213,7 +213,7 @@ int exynos9830_is_sensor_mclk_off(struct device *dev,
 {
 	char clk_name[30];
 
-	pr_debug("%s(scenario : %d / ch : %d)\n", __func__, scenario, channel);
+	pr_info("%s(scenario : %d / ch : %d)\n", __func__, scenario, channel);
 
 	snprintf(clk_name, sizeof(clk_name), "GATE_DFTMUX_TOP_QCH_CIS_CLK%d", channel);
 	is_disable(dev, clk_name);
@@ -264,7 +264,6 @@ int exynos_is_sensor_mclk_off(struct device *dev,
 	return 0;
 }
 
-#ifdef CONFIG_SOC_EXYNOS9820
 int is_sensor_mclk_force_off(struct device *dev, u32 channel)
 {
 	char clk_name[30];
@@ -277,4 +276,3 @@ int is_sensor_mclk_force_off(struct device *dev, u32 channel)
 
 	return 0;
 }
-#endif

@@ -692,7 +692,7 @@ int sensor_3h1_cis_stream_on(struct v4l2_subdev *subdev)
 	if (ret < 0)
 		err("group_param_hold_func failed at stream on");
 
-	msleep(8);
+	usleep_range(8000, 8100);
 	/* Sensor stream on */
 	is_sensor_write16(client, 0x6028, 0x4000);
 	is_sensor_write8(client, 0x0100, 0x01);

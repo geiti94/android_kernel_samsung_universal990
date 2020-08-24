@@ -31,7 +31,6 @@ static void tx_complete_ncm_timer(struct usb_ep *ep, struct usb_request *req)
 {
 	struct sk_buff	*skb = req->context;
 	struct eth_dev	*dev = ep->driver_data;
-	int pkts_compl;
 
 	switch (req->status) {
 	default:
@@ -54,9 +53,6 @@ static void tx_complete_ncm_timer(struct usb_ep *ep, struct usb_request *req)
 			dev_consume_skb_any(skb);
 	}
 	dev->net->stats.tx_packets++;
-
-	pkts_compl = dev->port_usb->multi_pkt_xfer ? dev->dl_max_pkts_per_xfer : 1;
-	netdev_completed_queue(dev->net, pkts_compl, req->length);
 
 	spin_lock(&dev->tx_req_lock);
 
@@ -95,8 +91,6 @@ static int tx_task_ncm(struct eth_dev *dev, struct usb_request *req)
 		length++;
 	}
 	req->length = length;
-
-	netdev_sent_queue(dev->net, length);
 
 #ifdef HS_THROTTLE_IRQ
 	/* throttle highspeed IRQ rate back slightly */

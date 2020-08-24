@@ -277,6 +277,9 @@ enum zone_watermarks {
 #define low_wmark_pages(z) (z->watermark[WMARK_LOW])
 #define high_wmark_pages(z) (z->watermark[WMARK_HIGH])
 
+#define RANK_BIT		(30 - PAGE_SHIFT)
+#define rankid(page)		((page_to_pfn(page) >> RANK_BIT) & 1)
+
 struct per_cpu_pages {
 	int count;		/* number of pages in the list */
 	int high;		/* high watermark, emptying needed */

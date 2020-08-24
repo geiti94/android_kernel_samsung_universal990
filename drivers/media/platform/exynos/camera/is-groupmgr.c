@@ -2653,7 +2653,7 @@ int is_group_buffer_queue(struct is_groupmgr *groupmgr,
 #endif
 
 	if (!test_bit(IS_GROUP_OTF_INPUT, &group->state)) {
-		if (group->id != GROUP_ID_ISP0)
+		if (group->slot == GROUP_SLOT_PAF || group->slot == GROUP_SLOT_3AA)
 			sram_sum = atomic_read(&resourcemgr->lic_sram.taa_sram_sum);
 	}
 
@@ -3075,7 +3075,6 @@ int is_group_shot(struct is_groupmgr *groupmgr,
 	FIMC_BUG(group->id >= GROUP_ID_MAX);
 
 	set_bit(IS_GROUP_SHOT, &group->state);
-	atomic_dec(&group->rcount);
 	device = group->device;
 	gtask = &groupmgr->gtask[group->id];
 
@@ -3157,6 +3156,14 @@ int is_group_shot(struct is_groupmgr *groupmgr,
 	}
 
 	if (group->sync_shots) {
+#if defined(SYNC_SHOT_ALWAYS)
+		PROGRAM_COUNT(4);
+		ret = down_interruptible(&group->smp_trigger);
+		if (ret) {
+			mgerr(" down fail(%d) #4", group, group, ret);
+			goto p_err_ignore;
+		}
+#else
 		bool try_sync_shot = false;
 
 		if (group->asyn_shots == 0) {
@@ -3179,6 +3186,8 @@ int is_group_shot(struct is_groupmgr *groupmgr,
 			}
 		}
 
+#endif
+
 		/* check for group stop */
 		if (unlikely(test_bit(IS_GROUP_FORCE_STOP, &group->state))) {
 			mgwarn(" cancel by fstop3", group, group);
@@ -3195,10 +3204,14 @@ int is_group_shot(struct is_groupmgr *groupmgr,
 		frame->fcount = atomic_read(&group->sensor_fcount);
 		atomic_set(&group->backup_fcount, frame->fcount);
 
+#if defined(SYNC_SHOT_ALWAYS)
+		/* Nothing */
+#else
 		/* real automatic increase */
 		if (!try_sync_shot && (smp_shot_get(group) > MIN_OF_SYNC_SHOTS)) {
 			atomic_inc(&group->sensor_fcount);
 		}
+#endif
 	} else {
 		if (test_bit(IS_GROUP_OTF_INPUT, &group->state)) {
 			frame->fcount = atomic_read(&group->sensor_fcount);
@@ -3475,6 +3488,14 @@ int is_group_done(struct is_groupmgr *groupmgr,
 			return ret;
 		}
 	}
+
+#ifdef ENABLE_STRIPE_SYNC_PROCESSING
+	/* Re-trigger the group shot for next stripe processing. */
+	if (CHK_MODECHANGE_SCN(frame->shot->ctl.aa.captureIntent)
+			&& (frame->state == FS_STRIPE_PROCESS)) {
+		is_group_start_trigger(groupmgr, group, frame);
+	}
+#endif
 
 	return ret;
 }

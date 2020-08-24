@@ -46,6 +46,34 @@ struct um_exynos {
 	u64 val_pmcnt;
 };
 
+struct exynos_devfreq_freq_infos {
+	/* Basic freq infos */
+	// min/max frequency
+	u32 max_freq;
+	u32 min_freq;
+	// cur_freq pointer
+	const u32 *cur_freq;
+	// min/max pm_qos node
+	u32 pm_qos_class;
+	u32 pm_qos_class_max;
+	// num of freqs
+	u32 max_state;
+};
+
+struct exynos_devfreq_profile {
+	int num_stats;
+	/* Total time in state */
+	ktime_t *time_in_state;
+	ktime_t last_time_in_state;
+
+	/* Active time in state */
+	ktime_t *active_time_in_state;
+	ktime_t last_active_time_in_state;
+
+	u64 **freq_stats;
+	u64 *last_freq_stats;
+};
+
 struct exynos_devfreq_data {
 	struct device				*dev;
 	struct devfreq				*devfreq;
@@ -120,6 +148,7 @@ struct exynos_devfreq_data {
 	u32					last_um_usage_rate;
 
 	struct exynos_pm_domain *pm_domain;
+	struct exynos_devfreq_profile		*profile;
 };
 
 s32 exynos_devfreq_get_opp_idx(struct exynos_devfreq_opp_table *table,
@@ -137,6 +166,8 @@ extern exynos_devfreq_alt_mode_change(unsigned int devfreq_type, int new_mode);
 
 #if defined(CONFIG_ARM_EXYNOS_DEVFREQ)
 extern unsigned long exynos_devfreq_get_domain_freq(unsigned int devfreq_type);
+void exynos_devfreq_get_profile(unsigned int devfreq_type, ktime_t **time_in_state, u64 **tables);
+extern void exynos_devfreq_get_freq_infos(unsigned int devfreq_type, struct exynos_devfreq_freq_infos *infos);
 #else
 static inline unsigned long exynos_devfreq_get_domain_freq(unsigned int devfreq_type)
 {

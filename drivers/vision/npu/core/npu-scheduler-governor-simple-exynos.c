@@ -199,7 +199,7 @@ static ssize_t npu_store_attrs_governor_simple_exynos(struct device *dev,
 	struct npu_governor_simple_exynos_prop *p;
 	const ptrdiff_t offset = attr - npu_simple_exynos_attrs;
 
-	if (sscanf(buf, "%255s%* %d", name, &x) > 0) {
+	if (sscanf(buf, "%255s* %d", name, &x) > 0) {
 		d = npu_governor_simple_exynos_get_dev(name);
 		if (!d) {
 			npu_err("No device : %s %d\n", name, x);
@@ -245,7 +245,7 @@ static ssize_t npu_store_attrs_governor_simple_exynos_args(struct device *dev,
 	struct npu_governor_simple_exynos_prop *p;
 	const ptrdiff_t offset = attr - npu_simple_exynos_attrs;
 
-	if (sscanf(buf, "%255s%* %d %d", name, &x, &y) > 0) {
+	if (sscanf(buf, "%255s* %d %d", name, &x, &y) > 0) {
 		d = npu_governor_simple_exynos_get_dev(name);
 		if (!d) {
 			npu_err("No device : %s %d %d\n", name, x, y);
@@ -339,7 +339,7 @@ static int npu_governor_simple_exynos_target(
 	/* get property for governor of the ip */
 	p = (struct npu_governor_simple_exynos_prop *)d->gov_prop;
 
-	npu_trace("target : l%d, d%d, lit%d\n",
+	npu_trace("target : l%d, d%d, lit%llu\n",
 			info->load, d->delay, info->load_idle_time);
 
 	if (info->load_policy == NPU_SCHEDULER_LOAD_FPS_RQ)

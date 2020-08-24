@@ -581,6 +581,9 @@ static int __dsp_context_get_control(struct dsp_context *dctx,
 	int ret;
 
 	dsp_enter();
+	dsp_dbg("control(%u/%u/%#lx)\n",
+			control->control_id, control->size, control->addr);
+
 	switch (control->control_id) {
 	case DSP_CONTROL_ENABLE_DVFS:
 	case DSP_CONTROL_DISABLE_DVFS:
@@ -606,15 +609,14 @@ static int __dsp_context_get_control(struct dsp_context *dctx,
 		break;
 	case DSP_CONTROL_REQUEST_MO:
 	case DSP_CONTROL_RELEASE_MO:
-		if (control->size != sizeof(cmd->mo.scenario_id)) {
+		if (control->size > SCENARIO_NAME_MAX) {
 			ret = -EINVAL;
-			dsp_err("user cmd size is invalid(%u/%zu)\n",
-					control->size,
-					sizeof(cmd->mo.scenario_id));
+			dsp_err("user cmd size is invalid(%u/%u)\n",
+					control->size, SCENARIO_NAME_MAX);
 			goto p_err;
 		}
 
-		ret = copy_from_user(&cmd->mo.scenario_id,
+		ret = copy_from_user(cmd->mo.scenario_name,
 				(void *)control->addr, control->size);
 		if (ret) {
 			dsp_err("Failed to copy from user cmd(%u/%d)\n",

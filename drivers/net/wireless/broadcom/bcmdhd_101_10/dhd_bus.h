@@ -4,7 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -216,8 +216,8 @@ extern int dhd_bus_schedule_queue(struct dhd_bus *bus, uint16 flow_id, bool txs)
 extern void dhd_bus_flow_ring_resume_response(struct dhd_bus *bus, uint16 flowid, int32 status);
 #endif /* IDLE_TX_FLOW_MGMT */
 
-extern int dhdpcie_bus_clock_start(struct dhd_bus *bus);
-extern int dhdpcie_bus_clock_stop(struct dhd_bus *bus);
+extern int dhdpcie_bus_start_host_dev(struct dhd_bus *bus);
+extern int dhdpcie_bus_stop_host_dev(struct dhd_bus *bus);
 extern int dhdpcie_bus_enable_device(struct dhd_bus *bus);
 extern int dhdpcie_bus_disable_device(struct dhd_bus *bus);
 extern int dhdpcie_bus_alloc_resource(struct dhd_bus *bus);
@@ -322,9 +322,6 @@ bool dhd_bus_is_multibp_capable(struct dhd_bus *bus);
 #ifdef BCMPCIE
 extern void dhdpcie_advertise_bus_cleanup(dhd_pub_t  *dhdp);
 extern void dhd_msgbuf_iovar_timeout_dump(dhd_pub_t *dhd);
-#ifdef DHD_USE_BP_RESET
-extern int dhd_bus_perform_bp_reset(struct dhd_bus *bus);
-#endif /* DHD_USE_BP_RESET */
 #endif /* BCMPCIE */
 
 extern bool dhd_bus_force_bt_quiesce_enabled(struct dhd_bus *bus);

@@ -1134,6 +1134,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 	unsigned nr_immediate = 0;
 	unsigned nr_ref_keep = 0;
 	unsigned nr_unmap_fail = 0;
+	unsigned nr_lazyfree_fail = 0;
 
 	cond_resched();
 
@@ -1352,11 +1353,15 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		 */
 		if (page_mapped(page)) {
 			enum ttu_flags flags = ttu_flags | TTU_BATCH_FLUSH;
+			bool was_swapbacked = PageSwapBacked(page);
 
 			if (unlikely(PageTransHuge(page)))
 				flags |= TTU_SPLIT_HUGE_PMD;
+
 			if (!try_to_unmap(page, flags, sc->target_vma)) {
 				nr_unmap_fail++;
+				if (!was_swapbacked && PageSwapBacked(page))
+					nr_lazyfree_fail++;
 				goto activate_locked;
 			}
 		}
@@ -1546,6 +1551,7 @@ keep:
 		stat->nr_activate = pgactivate;
 		stat->nr_ref_keep = nr_ref_keep;
 		stat->nr_unmap_fail = nr_unmap_fail;
+		stat->nr_lazyfree_fail = nr_lazyfree_fail;
 	}
 	return nr_reclaimed;
 }
@@ -1561,7 +1567,8 @@ unsigned long reclaim_clean_pages_from_list(struct zone *zone,
 		/* Doesn't allow to write out dirty page */
 		.may_writepage = 0,
 	};
-	unsigned long ret;
+	struct reclaim_stat stat;
+	unsigned long nr_reclaimed;
 	struct page *page, *next;
 	LIST_HEAD(clean_pages);
 
@@ -1573,11 +1580,21 @@ unsigned long reclaim_clean_pages_from_list(struct zone *zone,
 		}
 	}
 
-	ret = shrink_page_list(&clean_pages, zone->zone_pgdat, &sc,
-			ttu_flags | TTU_IGNORE_ACCESS, NULL, true);
+	nr_reclaimed = shrink_page_list(&clean_pages, zone->zone_pgdat, &sc,
+			ttu_flags | TTU_IGNORE_ACCESS, &stat, true);
 	list_splice(&clean_pages, page_list);
-	mod_node_page_state(zone->zone_pgdat, NR_ISOLATED_FILE, -ret);
-	return ret;
+	mod_node_page_state(zone->zone_pgdat, NR_ISOLATED_FILE, -nr_reclaimed);
+	/*
+	 * Since lazyfree pages are isolated from file LRU from the beginning,
+	 * they will rotate back to anonymous LRU in the end if it failed to
+	 * discard so isolated count will be mismatched.
+	 * Compensate the isolated count for both LRU lists.
+	 */
+	mod_node_page_state(zone->zone_pgdat, NR_ISOLATED_ANON,
+			    stat.nr_lazyfree_fail);
+	mod_node_page_state(zone->zone_pgdat, NR_ISOLATED_FILE,
+			    -stat.nr_lazyfree_fail);
+	return nr_reclaimed;
 }
 
 #ifdef CONFIG_PROCESS_RECLAIM
@@ -2356,6 +2373,7 @@ enum mem_boost {
 	NO_BOOST,
 	BOOST_MID = 1,
 	BOOST_HIGH = 2,
+	BOOST_KILL = 3,
 };
 static int mem_boost_mode = NO_BOOST;
 static unsigned long last_mode_change;
@@ -2380,13 +2398,13 @@ static ssize_t mem_boost_mode_store(struct kobject *kobj,
 	int err;
 
 	err = kstrtoint(buf, 10, &mode);
-	if (err || mode > BOOST_HIGH || mode < NO_BOOST)
+	if (err || mode > BOOST_KILL || mode < NO_BOOST)
 		return -EINVAL;
 
 	mem_boost_mode = mode;
 	last_mode_change = jiffies;
 #ifdef CONFIG_ION_RBIN_HEAP
-	if (mem_boost_mode == BOOST_HIGH)
+	if (mem_boost_mode >= BOOST_HIGH)
 		wake_ion_rbin_heap_prereclaim();
 #endif
 
@@ -2418,6 +2436,7 @@ inline bool need_memory_boosting(struct pglist_data *pgdat)
 		mem_boost_mode = NO_BOOST;
 
 	switch (mem_boost_mode) {
+	case BOOST_KILL:
 	case BOOST_HIGH:
 		ret = true;
 		break;
@@ -2459,14 +2478,14 @@ static ssize_t am_app_launch_show(struct kobject *kobj,
 
 static int notify_app_launch_started(void)
 {
-	trace_printk("am_app_launch started\n");
+	trace_printk("%s\n", "am_app_launch started");
 	atomic_notifier_call_chain(&am_app_launch_notifier, 1, NULL);
 	return 0;
 }
 
 static int notify_app_launch_finished(void)
 {
-	trace_printk("am_app_launch finished\n");
+	trace_printk("%s\n", "am_app_launch finished");
 	atomic_notifier_call_chain(&am_app_launch_notifier, 0, NULL);
 	return 0;
 }
@@ -2533,7 +2552,7 @@ readlock_retry:
 	}
 
 	list_for_each_entry(shrinker, &shrinker_list, list)
-		seq_printf(s, "%pF nr_total:%lu nr_delay:%lu jiffies:%lu ms cpu:%lu ms\n",
+		seq_printf(s, "%pF nr_total:%lu nr_delay:%lu jiffies:%u ms cpu:%lu ms\n",
 			shrinker->scan_objects,
 			shrinker->nr_total_scan.counter, 
 			shrinker->nr_delay_scan.counter,

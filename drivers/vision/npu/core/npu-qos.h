@@ -24,8 +24,6 @@ struct npu_qos_freq_lock {
 
 struct npu_qos_setting {
 	struct mutex		npu_qos_lock;
-	struct platform_device	*dvfs_npu_dev;
-	struct platform_device	*dvfs_dnc_dev;
 
 	struct pm_qos_request	npu_qos_req_dnc;
 	struct pm_qos_request	npu_qos_req_npu;
@@ -47,7 +45,14 @@ struct npu_qos_setting {
 	s32		req_mif_freq;
 	s32		req_int_freq;
 
+	u32		dsp_type;
+	u32		dsp_max_freq;
+	u32		npu_max_freq;
+
 	struct notifier_block npu_qos_max_nb;
+	struct notifier_block npu_qos_dsp_min_nb;
+
+	struct npu_scheduler_info *info;
 };
 
 struct npu_session_qos_req {

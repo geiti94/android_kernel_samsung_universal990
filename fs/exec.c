@@ -337,6 +337,7 @@ static int __bprm_mm_init(struct linux_binprm *bprm)
 	vma->vm_start = vma->vm_end - PAGE_SIZE;
 	vma->vm_flags = VM_SOFTDIRTY | VM_STACK_FLAGS | VM_STACK_INCOMPLETE_SETUP;
 	vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
+	INIT_VMA(vma);
 
 	err = insert_vm_struct(mm, vma);
 	if (err)
@@ -1062,7 +1063,7 @@ static int exec_mmap(struct mm_struct *mm)
 	vmacache_flush(tsk);
 #ifdef CONFIG_KDP_CRED
 	if(rkp_cred_enable)
-		uh_call(UH_APP_RKP, RKP_KDP_X43, (u64)current_cred(), (u64)mm->pgd, 0, 0);
+		uh_call(UH_APP_KDP, RKP_KDP_X43, (u64)current_cred(), (u64)mm->pgd, 0, 0);
 #endif 
 	task_unlock(tsk);
 	if (old_mm) {
@@ -1298,8 +1299,11 @@ static int invalid_drive(struct linux_binprm * bprm)
 	struct vfsmount *vfsmnt = NULL;
 	
 	vfsmnt = bprm->file->f_path.mnt;
-	if(!vfsmnt || 
-		!rkp_ro_page((unsigned long)vfsmnt)) {
+#ifdef CONFIG_FASTUH_RKP
+	if(!vfsmnt) {
+#else
+	if(!vfsmnt || !rkp_ro_page((unsigned long)vfsmnt)) {
+#endif
 		printk("\nInvalid Drive #%s# #%p#\n",bprm->filename, vfsmnt);
 		return 1;
 	} 
@@ -2106,7 +2110,7 @@ SYSCALL_DEFINE3(execve,
 		return error;
 
 	if(rkp_cred_enable){
-		uh_call(UH_APP_RKP, RKP_KDP_X4B, (u64)path->name, (u64)current, 0, 0);
+		uh_call(UH_APP_KDP, RKP_KDP_X4B, (u64)path->name, (u64)current, 0, 0);
 	}
 
 	if(CHECK_ROOT_UID(current) && rkp_cred_enable) {

@@ -297,7 +297,7 @@ void exynos9830_cal_data_init(void)
 	if (!ccmu_cpucl2)
 		pr_err("%s: ccmu_cpucl2 ioremap failed\n", __func__);
 
-	dll_apm_base = ioremap(0x15860000, SZ_4K);
+	dll_apm_base = ioremap(0x158b0000, SZ_4K);
 	if (!dll_apm_base)
 		pr_err("%s: dll_apm_base ioremap failed\n", __func__);
 

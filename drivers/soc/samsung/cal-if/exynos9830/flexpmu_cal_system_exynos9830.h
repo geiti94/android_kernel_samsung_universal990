@@ -156,6 +156,8 @@ struct pmucal_seq pmucal_lpm_init[] = {
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "QCH_CON_LHM_AXI_P_HSI0_QCH", 0x10A00000, 0x3024, (0x7 << 0), (0x6 << 0), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "QCH_CON_DP_LINK_QCH_PCLK", 0x10A00000, 0x3018, (0x7 << 0), (0x6 << 0), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "QCH_CON_DP_LINK_QCH_GTC_CLK", 0x10A00000, 0x3014, (0x7 << 0), (0x6 << 0), 0, 0, 0xffffffff, 0),
+	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "EARLY_WAKEUP_DPU_CTRL", 0x1a330000, 0x0a20, (0x3 << 0), (0x3 << 0), 0, 0, 0xffffffff, 0),
+	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "EARLY_WAKEUP_DPU_DEST", 0x1a330000, 0x0b20, (0xffffffff << 0), (0x3c002048 << 0), 0, 0, 0xffffffff, 0),
 };
 unsigned int pmucal_lpm_init_size = ARRAY_SIZE(pmucal_lpm_init);
 /* individual sequence descriptor for each power mode - enter, exit, early_wakeup */
@@ -2306,6 +2308,8 @@ struct pmucal_seq exit_sleep[] = {
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "GRP2_INTR_BID_ENABLE", 0x15870000, 0x0200, (0x1 << 0), (0x0 << 0), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_CLEAR_PEND, "GRP2_INTR_BID_CLEAR", 0x15870000, 0x020c, (0x1 << 0), (0x1 << 0), 0x15870000, 0x0208, (0x1 << 0), 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "CLUSTER0_CPU0_INT_EN", 0x15860000, 0x1044, (0x1 << 3), (0x0 << 3), 0, 0, 0xffffffff, 0),
+	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "EARLY_WAKEUP_DPU_CTRL", 0x1a330000, 0x0a20, (0x3 << 0), (0x3 << 0), 0, 0, 0xffffffff, 0),
+	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "EARLY_WAKEUP_DPU_DEST", 0x1a330000, 0x0b20, (0xffffffff << 0), (0x3c002048 << 0), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "ABIed_ABIed_BLK_MIF_wrapper_SMC0_PWRMGMT_BUNDLE_PwrMgmtMode_AFIFO_DRCG_DIS", 0x1BC30000, 0x623C, (0x1 << 31), (0x0 << 31), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "ABIed_ABIed_BLK_MIF_wrapper_SMC1_PWRMGMT_BUNDLE_PwrMgmtMode_AFIFO_DRCG_DIS", 0x1BD30000, 0x623C, (0x1 << 31), (0x0 << 31), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "ABIed_ABIed_BLK_MIF_wrapper_SMC2_PWRMGMT_BUNDLE_PwrMgmtMode_AFIFO_DRCG_DIS", 0x1BE30000, 0x623C, (0x1 << 31), (0x0 << 31), 0, 0, 0xffffffff, 0),
@@ -2358,6 +2362,8 @@ struct pmucal_seq earlywkup_sleep[] = {
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "GRP2_INTR_BID_ENABLE", 0x15870000, 0x0200, (0x1 << 0), (0x0 << 0), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_CLEAR_PEND, "GRP1_INTR_BID_CLEAR", 0x15870000, 0x010c, (0x1 << 0), (0x1 << 0), 0x15870000, 0x0108, (0x1 << 0), 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "CLUSTER0_CPU0_INT_EN", 0x15860000, 0x1044, (0x1 << 3), (0x0 << 3), 0, 0, 0xffffffff, 0),
+	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "EARLY_WAKEUP_DPU_CTRL", 0x1a330000, 0x0a20, (0x3 << 0), (0x3 << 0), 0, 0, 0xffffffff, 0),
+	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "EARLY_WAKEUP_DPU_DEST", 0x1a330000, 0x0b20, (0xffffffff << 0), (0x3c002048 << 0), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "SYSTEM_CTRL", 0x15860000, 0x3a10, (0x1 << 14), (0x0 << 14), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_CLEAR_PEND, "GRP4_INTR_BID_CLEAR", 0x15870000, 0x040c, (0x1 << 0), (0x1 << 0), 0x15870000, 0x0408, (0x1 << 0), 0),
 };
@@ -4486,6 +4492,8 @@ struct pmucal_seq exit_sleep_hsi2on[] = {
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "GRP2_INTR_BID_ENABLE", 0x15870000, 0x0200, (0x1 << 0), (0x0 << 0), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_CLEAR_PEND, "GRP2_INTR_BID_CLEAR", 0x15870000, 0x020c, (0x1 << 0), (0x1 << 0), 0x15870000, 0x0208, (0x1 << 0), 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "CLUSTER0_CPU0_INT_EN", 0x15860000, 0x1044, (0x1 << 3), (0x0 << 3), 0, 0, 0xffffffff, 0),
+	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "EARLY_WAKEUP_DPU_CTRL", 0x1a330000, 0x0a20, (0x3 << 0), (0x3 << 0), 0, 0, 0xffffffff, 0),
+	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "EARLY_WAKEUP_DPU_DEST", 0x1a330000, 0x0b20, (0xffffffff << 0), (0x3c002048 << 0), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "ABIed_ABIed_BLK_MIF_wrapper_SMC0_PWRMGMT_BUNDLE_PwrMgmtMode_AFIFO_DRCG_DIS", 0x1BC30000, 0x623C, (0x1 << 31), (0x0 << 31), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "ABIed_ABIed_BLK_MIF_wrapper_SMC1_PWRMGMT_BUNDLE_PwrMgmtMode_AFIFO_DRCG_DIS", 0x1BD30000, 0x623C, (0x1 << 31), (0x0 << 31), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "ABIed_ABIed_BLK_MIF_wrapper_SMC2_PWRMGMT_BUNDLE_PwrMgmtMode_AFIFO_DRCG_DIS", 0x1BE30000, 0x623C, (0x1 << 31), (0x0 << 31), 0, 0, 0xffffffff, 0),
@@ -4538,6 +4546,8 @@ struct pmucal_seq earlywkup_sleep_hsi2on[] = {
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "GRP2_INTR_BID_ENABLE", 0x15870000, 0x0200, (0x1 << 0), (0x0 << 0), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_CLEAR_PEND, "GRP1_INTR_BID_CLEAR", 0x15870000, 0x010c, (0x1 << 0), (0x1 << 0), 0x15870000, 0x0108, (0x1 << 0), 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "CLUSTER0_CPU0_INT_EN", 0x15860000, 0x1044, (0x1 << 3), (0x0 << 3), 0, 0, 0xffffffff, 0),
+	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "EARLY_WAKEUP_DPU_CTRL", 0x1a330000, 0x0a20, (0x3 << 0), (0x3 << 0), 0, 0, 0xffffffff, 0),
+	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "EARLY_WAKEUP_DPU_DEST", 0x1a330000, 0x0b20, (0xffffffff << 0), (0x3c002048 << 0), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "SYSTEM_CTRL", 0x15860000, 0x3a10, (0x1 << 14), (0x0 << 14), 0, 0, 0xffffffff, 0),
 	PMUCAL_SEQ_DESC(PMUCAL_CLEAR_PEND, "GRP4_INTR_BID_CLEAR", 0x15870000, 0x040c, (0x1 << 0), (0x1 << 0), 0x15870000, 0x0408, (0x1 << 0), 0),
 };

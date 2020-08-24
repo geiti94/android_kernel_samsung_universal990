@@ -15,8 +15,6 @@
 #include <linux/shm_ipc.h>
 #include <linux/io.h>
 
-#include <soc/samsung/exynos-sci.h>
-
 #include "abox.h"
 #include "abox_util.h"
 #include "abox_qos.h"
@@ -64,7 +62,8 @@ int abox_vss_notify_call(struct device *dev, struct abox_data *data, int en)
 				dev_info(dev, "%s en(%d)\n", __func__, en);
 				abox_call_notify_event(ABOX_CALL_EVENT_ON,
 						NULL);
-				llc_region_alloc(LLC_REGION_CALL, 1);
+				abox_set_system_state(data, SYSTEM_CALL, true);
+				data->call_event = ABOX_CALL_EVENT_ON;
 			}
 		}
 	} else {
@@ -76,7 +75,8 @@ int abox_vss_notify_call(struct device *dev, struct abox_data *data, int en)
 				dev_info(dev, "%s en(%d)\n", __func__, en);
 				abox_call_notify_event(ABOX_CALL_EVENT_OFF,
 						NULL);
-				llc_region_alloc(LLC_REGION_CALL, 0);
+				abox_set_system_state(data, SYSTEM_CALL, false);
+				data->call_event = ABOX_CALL_EVENT_OFF;
 			}
 		}
 	}

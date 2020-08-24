@@ -127,15 +127,14 @@ int dsp_pm_alloc(size_t size, struct dsp_lib *lib,
 			dsp_lib_manager_delete_no_ref();
 			*pm_inv = 1;
 			return dsp_pm_alloc(size, lib, pm_inv);
-		} else {
-			DL_ERROR("Can not be loaded\n");
-			return -1;
 		}
-	} else {
-		DL_DEBUG("Lib(%s) allocation success\n", lib->name);
-		lib->pm->lib = lib;
+
+		DL_ERROR("Can not be loaded\n");
+		return -1;
 	}
 
+	DL_DEBUG("Lib(%s) allocation success\n", lib->name);
+	lib->pm->lib = lib;
 	return 0;
 }
 

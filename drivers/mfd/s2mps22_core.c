@@ -376,7 +376,7 @@ static int s2mps22_i2c_probe(struct i2c_client *i2c,
 	i2c_set_clientdata(s2mps22->pmic, s2mps22);
 	i2c_set_clientdata(s2mps22->debug_i2c, s2mps22);
 
-	pr_info("%s device found: rev.0x%2x\n", __func__, s2mps22->pmic_rev);
+	pr_info("%s device found: rev.0x%02hhx\n", __func__, s2mps22->pmic_rev);
 
 	ret = s2mps22_irq_init(s2mps22);
 	if (ret < 0)

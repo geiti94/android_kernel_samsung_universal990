@@ -55,7 +55,12 @@ static ssize_t accel_vendor_show(struct device *dev,
 static ssize_t accel_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", CHIP_ID);
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	pr_info("[SSP] %s :: sensor(%d) : %s", __func__, ACCELEROMETER_SENSOR, data->sensor_name[ACCELEROMETER_SENSOR]);
+	
+	return sprintf(buf, "%s\n", data->sensor_name[ACCELEROMETER_SENSOR][0] == 0 ? 
+			CHIP_ID : data->sensor_name[ACCELEROMETER_SENSOR]);
 }
 
 int accel_open_calibration(struct ssp_data *data)

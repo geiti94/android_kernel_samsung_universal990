@@ -694,9 +694,10 @@ static int sec_multi_charger_probe(struct platform_device *pdev)
 	multi_charger_cfg.drv_data = charger;
 
 	charger->psy_chg = power_supply_register(&pdev->dev, &sec_multi_charger_power_supply_desc, &multi_charger_cfg);
-	if (!charger->psy_chg) {
+	if (IS_ERR(charger->psy_chg)) {
+		ret = PTR_ERR(charger->psy_chg);
 		dev_err(charger->dev,
-			"%s: Failed to Register psy_chg\n", __func__);
+			"%s: Failed to Register psy_chg(%d)\n", __func__, ret);
 		goto err_pdata_free;
 	}
 

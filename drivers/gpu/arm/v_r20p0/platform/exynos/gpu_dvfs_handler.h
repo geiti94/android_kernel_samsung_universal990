@@ -66,6 +66,16 @@ bool gpu_dvfs_get_need_cpu_qos(void);
 
 int gpu_dvfs_decide_max_clock(struct exynos_context *platform);
 
+int exynos_stats_get_gpu_cur_idx(void);
+int exynos_stats_get_gpu_coeff(void);
+unsigned int exynos_stats_get_gpu_table_size(void);
+unsigned int *exynos_stats_get_gpu_freq_table(void);
+unsigned int *exynos_stats_get_gpu_volt_table(void);
+ktime_t *exynos_stats_get_gpu_time_in_state(void);
+ktime_t *exynos_stats_get_gpu_queued_job_time(void);
+void exynos_stats_set_gpu_polling_speed(int polling_speed);
+int exynos_stats_get_gpu_polling_speed(void);
+
 /* gpu_utilization */
 int gpu_dvfs_start_env_data_gathering(struct kbase_device *kbdev);
 int gpu_dvfs_stop_env_data_gathering(struct kbase_device *kbdev);

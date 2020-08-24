@@ -65,8 +65,7 @@ static struct workqueue_struct	*uether_wq;
 /* for dual-speed hardware, use deeper queues at high/super speed */
 static inline int qlen(struct usb_gadget *gadget, unsigned qmult)
 {
-	if (gadget_is_dualspeed(gadget) && (gadget->speed == USB_SPEED_HIGH ||
-					    gadget->speed >= USB_SPEED_SUPER))
+	if (gadget_is_dualspeed(gadget))
 		return qmult * DEFAULT_QLEN;
 	else
 		return DEFAULT_QLEN;
@@ -506,7 +505,6 @@ static void tx_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct sk_buff	*skb = req->context;
 	struct eth_dev	*dev = ep->driver_data;
-	int pkts_compl;
 	/* struct usb_ep *in; */
 
 	switch (req->status) {
@@ -528,9 +526,6 @@ static void tx_complete(struct usb_ep *ep, struct usb_request *req)
 			dev_consume_skb_any(skb);
 	}
 	dev->net->stats.tx_packets++;
-
-	pkts_compl = dev->port_usb->multi_pkt_xfer ? dev->dl_max_pkts_per_xfer : 1;
-	netdev_completed_queue(dev->net, pkts_compl, req->length);
 
 	spin_lock(&dev->tx_req_lock);
 	list_add_tail(&req->list, &dev->tx_reqs);
@@ -600,8 +595,6 @@ static int tx_task(struct eth_dev *dev, struct usb_request *req)
 		length++;
 	}
 	req->length = length;
-
-	netdev_sent_queue(dev->net, length);
 
 #ifdef HS_THROTTLE_IRQ
 	/* throttle highspeed IRQ rate back slightly */
@@ -693,6 +686,7 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 	unsigned long	tx_timeout;
 	bool eth_multi_pkt_xfer = 0;
 	bool eth_supports_multi_frame = 0;
+	bool eth_is_fixed = 0;
 
 	if (dev->en_timer) {
 		hrtimer_cancel(&dev->tx_timer);
@@ -705,6 +699,7 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 		cdc_filter = dev->port_usb->cdc_filter;
 		eth_multi_pkt_xfer = dev->port_usb->multi_pkt_xfer;
 		eth_supports_multi_frame = dev->port_usb->supports_multi_frame;
+		eth_is_fixed = dev->port_usb->is_fixed;
 	} else {
 		in = NULL;
 		cdc_filter = 0;
@@ -791,10 +786,14 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 	spin_lock_irqsave(&dev->tx_req_lock, flags);
 	dev->tx_skb_hold_count++;
 	spin_unlock_irqrestore(&dev->tx_req_lock, flags);
-	if (dev->port_usb->multi_pkt_xfer) {
+	if (eth_multi_pkt_xfer) {
 		/* Add RNDIS Header */
-		memcpy(req->buf + req->length, dev->port_usb->header,
+		if (dev->port_usb)
+			memcpy(req->buf + req->length, dev->port_usb->header,
 						dev->header_len);
+		else
+			goto success;
+		
 		/* Increment req length by header size */
 		req->length += dev->header_len;
 		/* Copy received IP data from SKB */
@@ -822,7 +821,7 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 		spin_unlock_irqrestore(&dev->tx_req_lock, flags);
 
 	} else {
-		if (dev->port_usb->is_fixed) { /* ncm case */
+		if (eth_is_fixed) { /* ncm case */
 			req->length = skb->len;
 			req->buf = skb->data;
 			req->context = skb;
@@ -903,8 +902,6 @@ static int eth_open(struct net_device *net)
 	netdev_store_rps_dev_flow_table_cnt(&(net->_rx[0]), USBNET_FLOW_CNT,
 			sizeof(USBNET_FLOW_CNT));
 	*/
-
-	netdev_reset_queue(net);
 
 	return 0;
 }

@@ -22,7 +22,8 @@
 #include "s6e3hab_self_digital_clock_img.h"
 
 /* HUBBLE2 */
-static DEFINE_STATIC_PACKET(s6e3hab_hubble2_aod_self_mask_img_pkt, DSI_PKT_TYPE_WR_SR, HUBBLE2_SELF_MASK_IMG, 0);
+static DEFINE_STATIC_PACKET_WITH_OPTION(s6e3hab_hubble2_aod_self_mask_img_pkt,
+	DSI_PKT_TYPE_WR_SR, HUBBLE2_SELF_MASK_IMG, 0, PKT_OPTION_SR_ALIGN_16);
 
 static void *s6e3hab_hubble2_aod_self_mask_img_cmdtbl[] = {
 	&KEYINFO(s6e3hab_aod_l2_key_enable),

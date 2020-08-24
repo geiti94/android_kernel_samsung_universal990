@@ -30,6 +30,7 @@
 #ifdef CONFIG_SEC_PM_BIGDATA
 #include <linux/sec_hqm_device.h>
 #endif /* CONFIG_SEC_PM_BIGDATA */
+#include <linux/sec_pm_cpufreq.h>
 
 #ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
 #include <linux/sec_debug.h>
@@ -192,7 +193,7 @@ static int s2m_rtc_read_time(struct device *dev, struct rtc_time *tm)
 		goto out;
 	}
 
-	dev_info(info->dev, "%s: %d-%02d-%02d %02d:%02d:%02d(0x%02x)%s\n",
+	dev_info(info->dev, "%s: %d-%02d-%02d %02d:%02d:%02d(0x%02hhx)%s\n",
 			__func__, data[RTC_YEAR] + 2000, data[RTC_MONTH],
 			data[RTC_DATE], data[RTC_HOUR] & 0x1f, data[RTC_MIN],
 			data[RTC_SEC], data[RTC_WEEKDAY],
@@ -252,7 +253,7 @@ static int s2m_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	if (ret < 0)
 		return ret;
 
-	dev_info(info->dev, "%s: %d-%02d-%02d %02d:%02d:%02d(0x%02x)%s\n",
+	dev_info(info->dev, "%s: %d-%02d-%02d %02d:%02d:%02d(0x%02hhx)%s\n",
 			__func__, data[RTC_YEAR] + 2000, data[RTC_MONTH],
 			data[RTC_DATE], data[RTC_HOUR] & 0x1f, data[RTC_MIN],
 			data[RTC_SEC], data[RTC_WEEKDAY],
@@ -330,7 +331,7 @@ static int s2m_rtc_check_rtc_time(struct s2m_rtc_info *info)
 				"rtc_time: %lu\n", __func__, sys_time.tv_sec,
 				rtc_time);
 
-		dev_info(info->dev, "%s: %d-%02d-%02d %02d:%02d:%02d(0x%02x)%s\n",
+		dev_info(info->dev, "%s: %d-%02d-%02d %02d:%02d:%02d(0x%02hhx)%s\n",
 				__func__, data[RTC_YEAR] + 2000, data[RTC_MONTH],
 				data[RTC_DATE], data[RTC_HOUR] & 0x1f, data[RTC_MIN],
 				data[RTC_SEC], data[RTC_WEEKDAY],
@@ -420,7 +421,7 @@ static int s2m_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alrm)
 	if (ret < 0)
 		goto out;
 
-	dev_info(info->dev, "%s: %d-%02d-%02d %02d:%02d:%02d(0x%02x)%s\n",
+	dev_info(info->dev, "%s: %d-%02d-%02d %02d:%02d:%02d(0x%02hhx)%s\n",
 			__func__, data[RTC_YEAR] + 2000, data[RTC_MONTH],
 			data[RTC_DATE], data[RTC_HOUR] & 0x1f, data[RTC_MIN],
 			data[RTC_SEC], data[RTC_WEEKDAY],
@@ -492,7 +493,7 @@ static irqreturn_t s2m_rtc_alarm_irq(int irq, void *data)
 	dev_info(info->dev, "%s:irq(%d)\n", __func__, irq);
 
 	rtc_update_irq(info->rtc_dev, 1, RTC_IRQF | RTC_AF);
-	__pm_wakeup_event(rtc_ws, 500);
+	__pm_wakeup_event(rtc_ws, 200);
 	return IRQ_HANDLED;
 }
 
@@ -623,10 +624,14 @@ static void exynos_smpl_warn_work(struct work_struct *work)
 	state = (gpio_get_value(info->smpl_warn_info) & 0x1);
 
 	if (!state) {
+		sec_pm_cpufreq_throttle_by_one_step();
+
 		queue_delayed_work(system_freezable_wq, &info->irq_work,
-				msecs_to_jiffies(100));
+				msecs_to_jiffies(10));
 	} else {
 		dev_info(info->dev, "%s: SMPL_WARN polling End!\n", __func__);
+
+		sec_pm_cpufreq_unthrottle();
 #ifdef CONFIG_SOC_EXYNOS9830_EVT0
 		exynos9830_smpl_warn_sw_release();
 #endif

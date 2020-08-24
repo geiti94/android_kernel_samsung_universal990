@@ -154,9 +154,28 @@ static const struct file_operations sec_reset_auto_comment_proc_fops = {
 	.read = secdbg_comm_auto_comment_proc_read,
 };
 
-static int __init secdbg_comm_auto_comment_init(void)
+static int __init secdbg_comm_auto_comment_proc_init(void)
 {
 	struct proc_dir_entry *entry;
+
+	pr_info("%s: start\n", __func__);
+
+	entry = proc_create("auto_comment", 0400, NULL,
+			    &sec_reset_auto_comment_proc_fops);
+
+	if (!entry)
+		return -ENOMEM;
+
+	proc_set_size(entry, AC_SIZE);
+
+	pr_info("%s: done\n", __func__);
+
+	return 0;
+}
+late_initcall(secdbg_comm_auto_comment_proc_init);
+
+static int __init secdbg_comm_auto_comment_init(void)
+{
 	int i;
 
 	pr_info("%s: start\n", __func__);
@@ -174,16 +193,8 @@ static int __init secdbg_comm_auto_comment_init(void)
 		atomic_set(&(ac_idx[i].logging_count), 0);
 	}
 
-	entry = proc_create("auto_comment", 0400, NULL,
-			    &sec_reset_auto_comment_proc_fops);
-
-	if (!entry)
-		return -ENOMEM;
-
-	proc_set_size(entry, AC_SIZE);
-
 	pr_info("%s: done\n", __func__);
 
 	return 0;
 }
-late_initcall(secdbg_comm_auto_comment_init);
+early_initcall(secdbg_comm_auto_comment_init);

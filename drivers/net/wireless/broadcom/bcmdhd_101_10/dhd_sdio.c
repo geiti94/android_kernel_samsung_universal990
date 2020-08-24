@@ -1,7 +1,7 @@
 /*
  * DHD Bus Module for SDIO
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -8027,7 +8027,7 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 #ifdef DHD_DEBUG
 	if (DHD_INFO_ON()) {
 		uint fn, numfn;
-		uint8 *cis[SDIOD_MAX_IOFUNCS];
+		uint8 *cis = NULL;
 		int local_err = 0;
 
 #ifndef BCMSPI
@@ -8048,26 +8048,22 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 		numfn = 0; /* internally func is hardcoded to 1 as gSPI has cis on F1 only */
 #endif /* !BCMSPI */
 #ifndef BCMSDIOLITE
+		if (!(cis = MALLOC(osh, SBSDIO_CIS_SIZE_LIMIT))) {
+			DHD_INFO(("dhdsdio_probe: cis malloc failed\n"));
+			goto fail;
+		}
+
 		for (fn = 0; fn <= numfn; fn++) {
-			if (!(cis[fn] = MALLOC(osh, SBSDIO_CIS_SIZE_LIMIT))) {
-				DHD_INFO(("dhdsdio_probe: fn %d cis malloc failed\n", fn));
+			bzero(cis, SBSDIO_CIS_SIZE_LIMIT);
+			if ((err = bcmsdh_cis_read(sdh, fn, cis,
+				SBSDIO_CIS_SIZE_LIMIT))) {
+				DHD_INFO(("dhdsdio_probe: fn %d cis read err %d\n",
+					fn, err));
 				break;
 			}
-			bzero(cis[fn], SBSDIO_CIS_SIZE_LIMIT);
-
-			if ((local_err = bcmsdh_cis_read(sdh, fn, cis[fn],
-			                                 SBSDIO_CIS_SIZE_LIMIT))) {
-				DHD_INFO(("dhdsdio_probe: fn %d cis read err %d\n", fn, local_err));
-				MFREE(osh, cis[fn], SBSDIO_CIS_SIZE_LIMIT);
-				break;
-			}
-			dhd_dump_cis(fn, cis[fn]);
+			dhd_dump_cis(fn, cis);
 		}
-
-		while (fn-- > 0) {
-			ASSERT(cis[fn]);
-			MFREE(osh, cis[fn], SBSDIO_CIS_SIZE_LIMIT);
-		}
+		MFREE(osh, cis, SBSDIO_CIS_SIZE_LIMIT);
 #else
 	BCM_REFERENCE(cis);
 	BCM_REFERENCE(fn);

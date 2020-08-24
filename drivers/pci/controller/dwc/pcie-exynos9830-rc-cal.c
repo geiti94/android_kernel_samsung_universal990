@@ -4,6 +4,8 @@
  * Copyright (C) 2019 Samsung Electronics Co., Ltd.
  *		http://www.samsung.com
  *
+ * Author: Kwangho Kim <kwangho2.kim.kim@samsung.com>
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -28,7 +30,7 @@
 /* avoid checking rx elecidle when access DBI */
 void exynos_pcie_rc_phy_check_rx_elecidle(void *phy_pcs_base_regs, int val, int ch_num)
 {
-	//Todo need guide
+	/* Todo need guide */
 }
 
 /* PHY all power down */
@@ -88,16 +90,18 @@ void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 
 	if (chip_ver == 0) {
 		/* for EVT0 */
-		writel(0x50, phy_base_regs + 0x18);		// Common
-		writel(0x33, phy_base_regs + 0x48);		//
+		/* Common */
+		writel(0x50, phy_base_regs + 0x18);
+		writel(0x33, phy_base_regs + 0x48);
 		writel(0xB9, phy_base_regs + 0x54);
 		writel(0x14, phy_base_regs + 0xB0);
-		writel(0x50, phy_base_regs + 0xB8);		//
-		writel(0x50, phy_base_regs + 0xE0);		//
+		writel(0x50, phy_base_regs + 0xB8);
+		writel(0x50, phy_base_regs + 0xE0);
 		writel(0x00, phy_base_regs + 0x100);
 		writel(0x8F, phy_base_regs + 0x788);
 
-		writel(0x4E, phy_base_regs + 0x920);		//Lane0
+		/* Lane0 */
+		writel(0x4E, phy_base_regs + 0x920);
 		writel(0x7A, phy_base_regs + 0x92C);
 		writel(0x4E, phy_base_regs + 0x93C);
 		writel(0x98, phy_base_regs + 0x94C);
@@ -118,7 +122,7 @@ void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 		writel(0x3F, phy_base_regs + 0xB74);
 		writel(0x3F, phy_base_regs + 0xB78);
 		writel(0x3F, phy_base_regs + 0xB7C);
-		//writel( , phy_base_regs + ); 0xB80) = 0x00;
+		/* writel( , phy_base_regs + ); 0xB80) = 0x00; */
 		writel(0x03, phy_base_regs + 0xB84);
 		writel(0x01, phy_base_regs + 0xB88);
 		writel(0x03, phy_base_regs + 0xB9C);
@@ -126,7 +130,8 @@ void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 		writel(0x3F, phy_base_regs + 0xCAC);
 		writel(0x02, phy_base_regs + 0xDC4);
 
-		writel(0x4E, phy_base_regs + 0x1120);		//Lane1
+		/* Lane1 */
+		writel(0x4E, phy_base_regs + 0x1120);
 		writel(0x7A, phy_base_regs + 0x112C);
 		writel(0x4E, phy_base_regs + 0x113C);
 		writel(0x98, phy_base_regs + 0x114C);
@@ -147,7 +152,7 @@ void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 		writel(0x3F, phy_base_regs + 0x1374);
 		writel(0x3F, phy_base_regs + 0x1378);
 		writel(0x3F, phy_base_regs + 0x137C);
-		//writel( , phy_base_regs + ); 0x1380) = 0x00;
+		/* writel( , phy_base_regs + ); 0x1380) = 0x00; */
 		writel(0x03, phy_base_regs + 0x1384);
 		writel(0x01, phy_base_regs + 0x1388);
 		writel(0x03, phy_base_regs + 0x139C);
@@ -155,7 +160,7 @@ void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 		writel(0x3F, phy_base_regs + 0x14AC);
 		writel(0x02, phy_base_regs + 0x15C4);
 
-		//CTS add //Test
+		/* CTS add //Test */
 		writel(0x1F, phy_base_regs + 0x0818);
 		writel(0x77, phy_base_regs + 0x0820);
 		writel(0x1F, phy_base_regs + 0x1018);
@@ -182,9 +187,13 @@ void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 		writel(0x00, phy_base_regs + 0x8C);
 		writel(0x21, phy_base_regs + 0x90);
 		writel(0xB6, phy_base_regs + 0x104);
-		writel(0x06, phy_base_regs + 0x458);	//only RC
+		/* only RC */
+		writel(0x06, phy_base_regs + 0x458);
+
 		writel(0x38, phy_base_regs + 0x550);
-		writel(0x34, phy_base_regs + 0x5B0);    //diff RC EP
+		/* diff RC EP */
+		writel(0x34, phy_base_regs + 0x5B0);
+
 		writel(0x01, phy_base_regs + 0x8D0);
 		writel(0x30, phy_base_regs + 0x8F4);
 		writel(0x60, phy_base_regs + 0x90C);
@@ -223,7 +232,7 @@ void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 		writel(0x2F, phy_base_regs + 0xDB4);
 		writel(0x2F, phy_base_regs + 0x15B4);
 
-		//lane1
+		/* lane1 */
 		writel(0x01, phy_base_regs + 0x10d0);
 		writel(0x30, phy_base_regs + 0x10F4);
 		writel(0x60, phy_base_regs + 0x110C);
@@ -258,8 +267,8 @@ void exynos_pcie_rc_pcie_phy_config(struct exynos_pcie *exynos_pcie, int ch_num)
 		writel(0x05, phy_base_regs + 0x14D4);
 		writel(0x77, phy_base_regs + 0x14D8);
 		writel(0x7A, phy_base_regs + 0x14DC);
-		//
-		//   //for Gen4 0709
+
+		/* for Gen4 0709 */
 		writel(0x00, phy_base_regs + 0xC70);
 		writel(0xE7, phy_base_regs + 0xCA8);
 		writel(0x00, phy_base_regs + 0xCAC);
@@ -427,10 +436,10 @@ int exynos_pcie_rc_eom(struct device *dev, void *phy_base_regs)
 				err_cnt_7_0 = readl(phy_base_regs + MON_RX_EFOM_ERR_CNT_7_0);
 				err_cnt = err_cnt_13_8 + err_cnt_7_0;
 
-				//if (vref_sweep == 128)
+				/* if (vref_sweep == 128) */
 				printk("%d,%d : %d %d %d\n", i, test_cnt, phase_sweep, vref_sweep, err_cnt);
 
-				//save result
+				/* save result */
 				eom_result[i][test_cnt].phase = phase_sweep;
 				eom_result[i][test_cnt].vref = vref_sweep;
 				eom_result[i][test_cnt].err_cnt = err_cnt;

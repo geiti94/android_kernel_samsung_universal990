@@ -679,6 +679,7 @@ int is_debug_dma_dump(struct is_queue *queue, u32 index, u32 vid, u32 type)
 				if (!bin.data) {
 					err("[V%d][F%d][I%d][R%d] kva is NULL\n",
 							vid, frame->fcount, index, region_id);
+					__putname(filename);
 					return -EINVAL;
 				}
 

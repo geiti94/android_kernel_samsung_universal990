@@ -73,6 +73,7 @@
 #if defined(CONFIG_MFC_CHARGER)
 #define MST_MODE_ON                     1                   // ON Message to MFC ic
 #define MST_MODE_OFF                    0                   // OFF Message to MFC ic
+static int mfc_get_chip_id(void);
 #if defined(CONFIG_MST_V2)
 extern int mfc_reg_read(struct i2c_client *client, u16 reg, u8 *val);
 extern int mfc_reg_write(struct i2c_client *client, u16 reg, u8 val);
@@ -416,7 +417,7 @@ static void of_mst_hw_onoff(bool on)
 #if defined(CONFIG_ARCH_QCOM)
 		mutex_unlock(&mst_mutex);
 #endif
-		mdelay(mode_set_wait);
+		msleep(mode_set_wait);
 
 #if defined(CONFIG_MFC_CHARGER)
 		while (--retry_cnt) {
@@ -769,7 +770,7 @@ static ssize_t store_mst_drv(struct device *dev,
 #if !defined(CONFIG_MFC_CHARGER)
 			of_mst_hw_onoff(1);
 #endif
-			mdelay(10);
+			msleep(10);
 			mst_info("%s: Continuous track2 data\n", __func__);
 #if defined(CONFIG_MST_NONSECURE) || defined(CONFIG_ARCH_QCOM)
 			ret = transmit_mst_data(TRACK2);
@@ -783,7 +784,7 @@ static ssize_t store_mst_drv(struct device *dev,
 #if !defined(CONFIG_MFC_CHARGER)
 			of_mst_hw_onoff(0);
 #endif
-			mdelay(1000);
+			msleep(1000);
 		}
 		break;
 
@@ -838,6 +839,51 @@ static DEVICE_ATTR(support, 0444, show_support, store_support);
 
 /* mfc_charger node */
 #if defined(CONFIG_MFC_CHARGER)
+static int mfc_get_chip_id()
+{
+	u8 chip_id = 0;
+	int retry_cnt = 3;
+	int ret = 0;
+	struct power_supply *psy = NULL;
+	struct mfc_charger_data *charger = NULL;
+
+	while (retry_cnt-- > 0) {
+		msleep(30);
+		
+		psy = get_power_supply_by_name("mfc-charger");
+		if (psy == NULL) {
+			pr_err("%s cannot get power supply!\n", __func__);
+			continue;
+		}
+
+		charger = power_supply_get_drvdata(psy);
+		if (charger == NULL) {
+			pr_err("%s cannot get charger drvdata!\n", __func__);
+			continue;
+		} else {
+			pr_info("%s success get charger drvdata!\n", __func__);
+			break;
+		}
+	}
+	if (charger == NULL) {
+		pr_info("%s : failed to get MFC IC chip ID !!!\n", __func__);
+		return -1;
+	}
+
+	ret = mfc_reg_read(charger->client, MFC_CHIP_ID_L_REG, &chip_id);
+	if (ret >= 0) {
+		if (chip_id == MFC_CHIP_ID_S2MIW04) {
+			ret = MFC_CHIP_ID_LSI;
+			pr_info("%s: MFC IC chip vendor is LSI(0x%x)\n", __func__, chip_id);
+		} else { /* 0x20 */
+			ret = MFC_CHIP_ID_IDT;
+			pr_info("%s: MFC IC chip vendor is IDT(0x%x)\n", __func__, chip_id);
+		}
+	} else
+		return -1;
+	return ret;
+}
+
 static ssize_t show_mfc(struct device *dev,
 			struct device_attribute *attr, char *buf)
 {
@@ -884,7 +930,7 @@ static ssize_t show_mst_switch_test(struct device *dev,
                 gpio_direction_output(charger->pdata->mst_pwr_en, 1);
                 usleep_range(3600, 4000);
                 gpio_direction_output(charger->pdata->mst_pwr_en, 0);
-                mdelay(50);
+                msleep(50);
                 charger->mst_off_lock = 0;
     
                 gpio_direction_output(charger->pdata->mst_pwr_en, 1);
@@ -932,7 +978,7 @@ int mfc_send_mst_cmd(int cmd, struct mfc_charger_data *charger, u8 irq_src_l, u8
                     mfc_reg_multi_write(charger->client, MFC_MST_LDO_CONFIG_6, sBuf, sizeof(sBuf));
                     mfc_reg_write(charger->client, MFC_MST_LDO_TURN_ON, 0x08); /* MST LDO config 7 */
                     mfc_reg_write(charger->client, MFC_MST_LDO_TURN_ON, 0x09); /* MST LDO turn on */
-                    mdelay(10);
+                    msleep(10);
                     mfc_reg_write(charger->client, MFC_MST_MODE_SEL_REG, 0x02); /* set MST mode2 */
                     mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_8, 0x08); /* MST LDO config 8 */
                     mfc_reg_write(charger->client, MFC_MST_OVER_TEMP_INT, 0x04); /* Enable Over temperature INT */
@@ -946,7 +992,7 @@ int mfc_send_mst_cmd(int cmd, struct mfc_charger_data *charger, u8 irq_src_l, u8
                 mfc_reg_write(charger->client, MFC_INT_A_CLEAR_H_REG, irq_src_h); // clear int
                 mfc_set_cmd_l_reg(charger, 0x20, MFC_CMD_CLEAR_INT_MASK); // command
     
-                mdelay(10);
+                msleep(10);
                 break;
         case MST_MODE_OFF:
                 if (idt_i2c_command) {
@@ -964,39 +1010,6 @@ int mfc_send_mst_cmd(int cmd, struct mfc_charger_data *charger, u8 irq_src_l, u8
 EXPORT_SYMBOL(mfc_send_mst_cmd);
 #endif
 #endif
-
-static int mfc_get_chip_id()
-{
-	u8 chip_id = 0;
-	int ret = 0;
-	struct power_supply *psy;
-        struct mfc_charger_data *charger;
-        
-	psy = get_power_supply_by_name("mfc-charger");
-	if (psy == NULL) {
-		pr_err("%s cannot get power supply!\n", __func__);
-		return -1;
-	}
-
-	charger = power_supply_get_drvdata(psy);
-	if (charger == NULL) {
-		pr_err("%s cannot get charger drvdata!\n", __func__);
-		return -1;
-	}
-
-	ret = mfc_reg_read(charger->client, MFC_CHIP_ID_L_REG, &chip_id);
-	if (ret >= 0) {
-		if (chip_id == MFC_CHIP_ID_S2MIW04) {
-			ret = MFC_CHIP_ID_LSI;
-			pr_info("%s: MFC IC chip vendor is LSI(0x%x)\n", __func__, chip_id);
-		} else { // 0x20
-			ret = MFC_CHIP_ID_IDT;
-			pr_info("%s: MFC IC chip vendor is IDT(0x%x)\n", __func__, chip_id);
-		}
-	} else
-		return -1;
-	return ret;
-}
 
 /**
  * sec_mst_gpio_init - Initialize GPIO pins used by driver
@@ -1112,7 +1125,7 @@ static int sec_mst_gpio_init(struct device *dev)
 		mst_info("%s: Set mst-pwr-en to HIGH\n", __func__);
 		gpio_set_value(mst_pwr_en, 1);
 	}
-	msleep(200);
+	msleep(30);
 
 	ret = mfc_get_chip_id();
 	if (ret == -1) {

@@ -533,6 +533,9 @@ struct decon_win_config {
 		DECON_WIN_STATE_MRESOL = 0x10000,
 		DECON_WIN_STATE_VRR_NORMALMODE= 0x20000,
 		DECON_WIN_STATE_VRR_HSMODE = 0x20001,
+#ifdef CONFIG_SUPPORT_MASK_LAYER
+		DECON_WIN_STATE_FINGERPRINT = 0x30000,
+#endif
 	} state;
 
 	/* Reusability:This struct is used for IDMA and ODMA */
@@ -598,11 +601,14 @@ struct decon_reg_data {
 	u32 lcd_height;
 
 	u32 fps_update;
-	struct vrr_config_data vrr_info;
+	struct vrr_config_data vrr_config;
 
 	int mode_idx;
 #ifdef CONFIG_DYNAMIC_FREQ
 	int df_update;
+#endif
+#ifdef CONFIG_SUPPORT_MASK_LAYER
+	bool mask_layer;
 #endif
 
 #ifdef CONFIG_PROFILE_WINCONFIG
@@ -613,6 +619,10 @@ struct decon_reg_data {
 #ifdef DEBUG_DMA_BUF_LEAK
 	int import_cnt;
 	ktime_t import_time;
+#endif
+
+#ifdef CONFIG_EXYNOS_SET_ACTIVE_WITH_EMPTY_WINDOW
+	u32 fps;
 #endif
 };
 
@@ -634,6 +644,11 @@ struct decon_win_config_data {
 	u32	fps;
 	struct decon_win_config config[MAX_DECON_WIN + 2];
 	struct decon_win_config_extra extra;
+};
+
+enum lcd_status {
+	LCD_OFF = 0,
+	LCD_ON  = 1,
 };
 
 enum hwc_ver {
@@ -811,6 +826,7 @@ struct disp_log_memmap {
 	dma_addr_t dma_addr;
 	u32 shd_addr[MAX_PLANE_ADDR_CNT];
 	int dpp_ch;
+	struct sg_table *sg_table;
 };
 
 struct disp_log_rsc {
@@ -870,7 +886,7 @@ void DPU_EVENT_LOG_WINUP_FLAGS(struct v4l2_subdev *sd, bool need_update,
 void DPU_EVENT_LOG_APPLY_REGION(struct v4l2_subdev *sd,
 		struct decon_rect *apl_rect);
 void DPU_EVENT_LOG_MEMMAP(dpu_event_t type, struct v4l2_subdev *sd,
-		dma_addr_t dma_addr, int dpp_ch);
+		dma_addr_t dma_addr, int dpp_ch, struct sg_table *sg_table);
 void DPU_EVENT_SHOW(struct seq_file *s, struct decon_device *decon);
 int decon_create_debugfs(struct decon_device *decon);
 void decon_destroy_debugfs(struct decon_device *decon);
@@ -998,6 +1014,19 @@ struct dpu_afbc_info {
 	struct sg_table	*sg_table[MAX_DECON_WIN];
 };
 
+struct dpu_dma_info {
+	u32 count;
+	ktime_t timestamp;
+	/* map */
+	u32 buf_attach_cnt;
+	u32 map_attach_cnt;
+	u32 iovmm_map_cnt;
+	/* unmap */
+	u32 buf_detach_cnt;
+	u32 unmap_attach_cnt;
+	u32 iovmm_unmap_cnt;
+};
+
 struct decon_debug {
 	void __iomem *eint_pend;
 	struct dentry *debug_root;
@@ -1029,6 +1058,8 @@ struct decon_debug {
 	struct dpu_fence_log *f_evt_log;
 	u32 f_evt_log_cnt;
 	atomic_t f_evt_log_idx;
+	struct dpu_dma_info buf_cnt;
+	struct dpu_dma_info buf_cnt_bak;
 };
 
 struct decon_update_regs {
@@ -1051,6 +1082,10 @@ struct decon_vsync {
 	u64 count;
 #if defined(CONFIG_EXYNOS_COMMON_PANEL)
 	u64 period;
+#endif
+#if defined(CONFIG_DECON_VRR_MODULATION)
+	u64 active_count;
+	u64 div_count;
 #endif
 };
 
@@ -1145,6 +1180,7 @@ struct decon_win_update {
 	u32 verti_cnt;
 	/* previous update region */
 	struct decon_rect prev_up_region;
+	struct decon_rect back_up_region;
 };
 
 struct decon_bts_ops {
@@ -1157,6 +1193,7 @@ struct decon_bts_ops {
 	void (*bts_release_bw)(struct decon_device *decon);
 	void (*bts_hiber_release_bw)(struct decon_device *decon);
 	void (*bts_deinit)(struct decon_device *decon);
+	void (*bts_pan_display)(struct decon_device *decon, struct decon_win_config *config);
 };
 
 struct bts_layer_position {
@@ -1373,6 +1410,12 @@ struct decon_device {
 	struct df_status_info *df_status;
 #endif
 
+#ifdef CONFIG_SUPPORT_MASK_LAYER
+	bool cur_mask_layer;
+	u32 wait_mask_layer_trigger;
+	wait_queue_head_t wait_mask_layer_trigger_queue;
+#endif
+
 #ifdef CONFIG_PROFILE_WINCONFIG
 	ktime_t exit_hiber_time;
 #endif
@@ -1388,6 +1431,10 @@ struct decon_device {
 	int leak_cnt;
 #endif
 
+#if IS_ENABLED(CONFIG_EXYNOS_FPS_CHANGE_NOTIFY)
+	/* display LCD fps change notifier */
+	struct atomic_notifier_head fps_change_notifier_list;
+#endif
 };
 #ifdef CONFIG_EXYNOS_MCD_HDR
 
@@ -1488,6 +1535,9 @@ static inline void sysreg_write_mask(u32 id, u32 reg_id, u32 val, u32 mask)
 bool decon_validate_x_alignment(struct decon_device *decon, int x, u32 w,
 		u32 bits_per_pixel);
 int decon_wait_for_vsync(struct decon_device *decon, u32 timeout);
+#if defined(CONFIG_DECON_VRR_MODULATION)
+int decon_wait_for_active_region(struct decon_device *decon, u32 timeout);
+#endif
 int decon_check_limitation(struct decon_device *decon, int idx,
 		struct decon_win_config *config);
 void decon_readback_wq(struct work_struct *work);
@@ -1565,7 +1615,11 @@ void decon_init_low_persistence_mode(struct decon_device *decon);
 void dpu_update_mres_lcd_info(struct decon_device *decon,
 		struct decon_reg_data *regs);
 void dpu_set_mres_config(struct decon_device *decon, struct decon_reg_data *regs);
-void dpu_set_vrr_config(struct decon_device *decon, struct vrr_config_data *vrr_info);
+/* variable refresh rate related functions */
+void dpu_update_vrr_lcd_info(struct decon_device *decon,
+		struct vrr_config_data *vrr_config);
+void dpu_set_vrr_config(struct decon_device *decon,
+		struct vrr_config_data *vrr_config);
 
 /* DPHY PLL frequency hopping feature related functions */
 void dpu_init_freq_hop(struct decon_device *decon);
@@ -1729,7 +1783,7 @@ static inline int decon_doze_wake_lock(struct decon_device *decon,
 			usleep_range(1000, 1100);
 
 		if (time_is_before_jiffies(timeout_jiffies)) {
-			decon_err("%s timeout(elapsed %d msec)\n",
+			decon_err("%s timeout(elapsed %lu msec)\n",
 					__func__, timeout);
 		}
 	}
@@ -1951,6 +2005,7 @@ void dpu_unify_rect(struct decon_rect *r1, struct decon_rect *r2,
 		struct decon_rect *dst);
 void dpu_save_fence_info(int fd, struct dma_fence *fence,
 		struct dpu_fence_info *fence_info);
+void dpu_show_dma_attach_info(char *fn, struct decon_device *decon, u32 sel);
 
 void decon_dump(struct decon_device *decon, bool panel_dump);
 void decon_to_psr_info(struct decon_device *decon, struct decon_mode_info *psr);
@@ -1999,9 +2054,25 @@ int decon_set_out_sd_state(struct decon_device *decon, enum decon_state state);
 int decon_update_last_regs(struct decon_device *decon,
 		struct decon_reg_data *regs);
 
+/* display LCD on/off notifier */
+static ATOMIC_NOTIFIER_HEAD(lcd_status_notifier_list);
+
+int register_lcd_status_notifier(struct notifier_block *nb);
+int unregister_lcd_status_notifier(struct notifier_block *nb);
+void lcd_status_notifier(u32 lcd_status);
+
+#if IS_ENABLED(CONFIG_EXYNOS_FPS_CHANGE_NOTIFY)
+int register_fps_change_notifier(struct notifier_block *nb);
+int unregister_fps_change_notifier(struct notifier_block *nb);
+void notify_fps_change(u32 fps);
+#endif
+
 void decon_hiber_start(struct decon_device *decon);
 void decon_hiber_finish(struct decon_device *decon);
 int dpu_hw_recovery_process(struct decon_device *decon);
+
+void dpu_pll_sleep_mask(struct decon_device *decon);
+void dpu_pll_sleep_unmask(struct decon_device *decon);
 
 u32 decon_processed_linecnt(struct decon_device *decon);
 int _decon_disable(struct decon_device *decon, enum decon_state state);

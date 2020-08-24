@@ -446,7 +446,7 @@ static void simulate_DP(char *arg)
 	pull_down_other_cpus();
 	dev_crit(exynos_debug_desc.dev, "%s() start to hanging\n", __func__);
 	local_irq_disable();
-	mdelay(DELAY_TIME);
+	dev_mdelay(DELAY_TIME);
 	local_irq_enable();
 	/* should not reach here */
 }
@@ -456,7 +456,7 @@ static void simulate_QDP(char *arg)
 	dev_crit(exynos_debug_desc.dev, "%s()\n", __func__);
 
 	s3c2410wdt_set_emergency_reset(10, 0);
-	mdelay(DELAY_TIME);
+	dev_mdelay(DELAY_TIME);
 	/* should not reach here */
 }
 
@@ -846,7 +846,7 @@ static void simulate_BAD_SCHED(char *arg)
 			if (ret)
 				return;	/* success */
 		}
-		mdelay(100);
+		dev_mdelay(100);
 	}
 }
 

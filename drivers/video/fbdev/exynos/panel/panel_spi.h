@@ -1,9 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * linux/drivers/video/fbdev/exynos/panel/panel_spi.h
- *
- * Samsung Panel SPI Driver.
- *
- * Copyright (c) 2019 Samsung Electronics
+ * Copyright (c) Samsung Electronics Co., Ltd.
  * Kimyung Lee <kernel.lee@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -18,19 +15,6 @@
 #include <linux/miscdevice.h>
 #include <linux/bitops.h>
 #include "panel.h"
-
-//#define DEBUG_PANEL_SPI
-
-#ifdef DEBUG_PANEL_SPI
-#define panel_spi_dbg(fmt, ...)					\
-	do {										\
-		pr_info(pr_fmt(fmt), ##__VA_ARGS__);	\
-	} while (0)
-#else
-	#define panel_spi_dbg(fmt, ...)				\
-	do {} while (0)
-#endif
-
 
 #define DRIVER_NAME "panel_spi"
 #define PANEL_SPI_DRIVER_NAME "panel_spi_driver"
@@ -90,7 +74,7 @@ enum {
 	PANEL_SPI_CMD_FLASH_ERASE_256K_DONE,
 	PANEL_SPI_CMD_FLASH_ERASE_CHIP,
 	PANEL_SPI_CMD_FLASH_ERASE_CHIP_DONE,
- 	MAX_PANEL_SPI_CMD,
+	MAX_PANEL_SPI_CMD,
 };
 
 enum {
@@ -105,7 +89,18 @@ enum {
 	PANEL_SPI_CTRL_EXIT,
 	PANEL_SPI_CTRL_ID_READ,
 	PANEL_SPI_CTRL_BUSY_CHECK,
+	PANEL_SPI_CTRL_GET_READ_SIZE,
+	PANEL_SPI_CTRL_GET_WRITE_SIZE,
 	MAX_PANEL_SPI_CTRL,
+};
+
+enum {
+	PANEL_SPI_GET_READ_SIZE,
+	PANEL_SPI_GET_WRITE_SIZE,
+};
+
+enum {
+	PANEL_SPI_PACKET_TYPE_ERASE_NONBLOCK = 0x1,
 };
 
 struct panel_spi_dev;
@@ -125,8 +120,8 @@ struct spi_cmd {
 	int wait_response_bytes;
 };
 
-// spi_data : for read/write/erase func
-struct spi_data_buffer {
+// spi_data_packet : for read/write/erase func
+struct spi_data_packet {
 	int type;
 	u32 addr;
 	u32 size;
@@ -134,13 +129,14 @@ struct spi_data_buffer {
 };
 
 struct spi_drv_ops {
-	int (*ctl)(struct panel_spi_dev *spi_dev, int msg);
+	int (*ctl)(struct panel_spi_dev *spi_dev, int msg, void *data);
 	int (*cmd)(struct panel_spi_dev *spi_dev, const u8 *wbuf, int wsize, u8 *rbuf, int rsize);
-	int (*erase)(struct panel_spi_dev *spi_dev, struct spi_data_buffer *data_buf);
-	int (*read)(struct panel_spi_dev *spi_dev, struct spi_data_buffer *data_buf);
-	int (*write)(struct panel_spi_dev *spi_dev, struct spi_data_buffer *data_buf);
+	int (*erase)(struct panel_spi_dev *spi_dev, struct spi_data_packet *data_buf);
+	int (*read)(struct panel_spi_dev *spi_dev, struct spi_data_packet *data_buf);
+	int (*write)(struct panel_spi_dev *spi_dev, struct spi_data_packet *data_buf);
 	int (*init)(struct panel_spi_dev *spi_dev);
 	int (*exit)(struct panel_spi_dev *spi_dev);
+	int (*get_buf_size)(struct panel_spi_dev *spi_dev, int type);
 };
 
 //deprecated: accessing via common_panel_driver
@@ -153,8 +149,11 @@ struct spi_drv_pdrv_ops {
 struct spi_dev_info {
 	bool ready;
 	u32 id;
+	u32 size;
 	u32 speed_hz;
 	int erase_type;
+	int byte_per_write;
+	int byte_per_read;
 	char *vendor;
 	char *model;
 	struct spi_cmd **cmd_list;
@@ -162,10 +161,13 @@ struct spi_dev_info {
 
 struct spi_data {
 	int spi_addr;
+	u32 size;
 	u32 speed_hz;
 	u32 compat_mask;
 	u32 compat_id;
 	int erase_type;
+	int byte_per_write;
+	int byte_per_read;
 	char *vendor;
 	char *model;
 	struct spi_cmd **cmd_list;
@@ -197,10 +199,15 @@ struct ioc_erase_info {
 #define PANEL_SPI_IOCTL_MAGIC	'S'
 
 #define IOCTL_AUTO_ERASE_ENABLE		_IO(PANEL_SPI_IOCTL_MAGIC, 1)
-#define IOCTL_AUTO_ERASE_DISABLE	_IO(PANEL_SPI_IOCTL_MAGIC, 2) 
+#define IOCTL_AUTO_ERASE_DISABLE	_IO(PANEL_SPI_IOCTL_MAGIC, 2)
+#define IOCTL_CHECK_STATE			_IOR(PANEL_SPI_IOCTL_MAGIC, 3, int)
 #define IOCTL_ERASE			_IOW(PANEL_SPI_IOCTL_MAGIC, 4, struct ioc_erase_info)
 
 int panel_spi_drv_probe(struct panel_device *panel, struct spi_data **spi_data_tbl, int nr_spi_data_tbl);
+static inline bool SPI_IS_READY(struct panel_spi_dev *dev)
+{
+	return dev->spi_info.ready;
+}
 
 #endif
 

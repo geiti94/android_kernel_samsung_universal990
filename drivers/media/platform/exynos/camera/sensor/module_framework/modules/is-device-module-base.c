@@ -313,7 +313,8 @@ int sensor_module_deinit(struct v4l2_subdev *subdev)
 		flush_work(&sensor_peri->mcu->aperture->aperture_set_work);
 
 #ifdef CONFIG_CAMERA_USE_APERTURE
-		if (core->vender.closing_hint != IS_CLOSING_HINT_SWITCHING) {
+		if (core->vender.closing_hint != IS_CLOSING_HINT_REOPEN 
+			&& core->vender.closing_hint != IS_CLOSING_HINT_SWITCHING) {
 			if (sensor_peri->mcu->aperture->cur_value != APERTURE_CLOSE_VALUE
 				&& sensor_peri->mcu->aperture->step == APERTURE_STEP_STATIONARY) {
 				ret = CALL_APERTUREOPS(sensor_peri->mcu->aperture, aperture_deinit,
@@ -959,6 +960,23 @@ int sensor_module_s_ext_ctrls(struct v4l2_subdev *subdev, struct v4l2_ext_contro
 		ext_ctrl = (ctrls->controls + i);
 
 		switch (ext_ctrl->id) {
+		case V4L2_CID_SENSOR_SET_MODE_CHANGE:
+		{
+			struct seamless_mode_change_info mode_change;
+			ret = copy_from_user(&mode_change, ext_ctrl->ptr, sizeof(struct seamless_mode_change_info));
+			if (ret) {
+				err("copy_from_user of seamless_mode_change_info is fail(%d)", ret);
+				goto p_err;
+			}
+
+			ret = is_sensor_peri_s_mode_change(device, &mode_change);
+			if (ret < 0) {
+				err("failed to set mode change : %d\n - %d",
+						device->ex_mode, ret);
+				goto p_err;
+			}
+			break;
+		}
 		case V4L2_CID_SENSOR_SET_SSM_ROI:
 			ret = copy_from_user(&ssm_roi, ext_ctrl->ptr, sizeof(struct v4l2_rect));
 			if (ret) {

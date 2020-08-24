@@ -185,10 +185,10 @@ static long offload_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 		err = copy_from_user(&param, (const void __user *)arg,
 				sizeof(struct iface_info));
 		if (err) {
-			pr_err("copy_from_user() error:%d\n", err);
+			lf_err("copy_from_user() error:%d\n", err);
 			return err;
 		}
-		pr_info("OFFLOAD_IOCTL_ADD_DOWNSTREAM = %s\n", param.iface);
+		lf_info("OFFLOAD_IOCTL_ADD_DOWNSTREAM = %s\n", param.iface);
 
 		/* Allow only RNDIS,NCM device for ADD_DOWNSTREAM */
 		if (strncmp(param.iface, NET_NAME_RNDIS, strlen(NET_NAME_RNDIS)) == 0 ||

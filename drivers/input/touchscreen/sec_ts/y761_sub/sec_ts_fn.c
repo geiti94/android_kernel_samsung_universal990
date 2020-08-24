@@ -1044,7 +1044,7 @@ ssize_t get_selftest_fail_hist_dump_all(struct sec_ts_data *ts, char *buf, u8 po
 	int ret;
 	char tempn[40] = {0};
 	char tempv[25] = {0};
-	char buff[1024] = {0};
+	u8 *buff;
 	u8 read_event_buff[6][48] = { { 0, } };
 	u8 *rBuff;
 	u8 temp_result = 0;
@@ -1079,7 +1079,11 @@ ssize_t get_selftest_fail_hist_dump_all(struct sec_ts_data *ts, char *buf, u8 po
 
 	rBuff = kzalloc(SEC_CM_HIST_DATA_SIZE, GFP_KERNEL);
 	if (!rBuff)
-		goto err_mem;
+		goto err_mem_1;
+
+	buff = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!buff)
+		goto err_mem_2;
 
 	/* read full data */
 	ret = ts->sec_ts_i2c_read(ts, SEC_TS_GET_FACTORY_DATA, (u8 *)read_event_buff[0], SEC_CM_HIST_DATA_SIZE);
@@ -1098,11 +1102,11 @@ ssize_t get_selftest_fail_hist_dump_all(struct sec_ts_data *ts, char *buf, u8 po
 			p_fail_hist = (struct sec_ts_selftest_fail_hist *)read_event_buff[(i - 1) * 2 + (j - 1)];
 
 			if (position == OFFSET_FW_SDC) {
-				snprintf(buff, sizeof(buff), "%s", "SDC  ");
+				snprintf(buff, PAGE_SIZE, "%s", "SDC  ");
 			} else if (position == OFFSET_FW_SUB) {
-				snprintf(buff, sizeof(buff), "%s", "SUB  ");
+				snprintf(buff, PAGE_SIZE, "%s", "SUB  ");
 			} else if (position == OFFSET_FW_MAIN) {
-				snprintf(buff, sizeof(buff), "%s", "MAIN ");
+				snprintf(buff, PAGE_SIZE, "%s", "MAIN ");
 			}
 			strlcat(buf, buff, ts->proc_fail_hist_size);
 
@@ -1110,14 +1114,14 @@ ssize_t get_selftest_fail_hist_dump_all(struct sec_ts_data *ts, char *buf, u8 po
 
 			if (p_fail_hist->tsp_signature == 0 || p_fail_hist->tsp_signature == 0xFFFFFFFF) {
 				input_err(true, &ts->client->dev, "%s: CM%d #%d : Data empty\n", __func__, i, j);
-				snprintf(buff, sizeof(buff), "CM%d #%d : Data empty(0x%X)\n", i, j, p_fail_hist->tsp_signature);
+				snprintf(buff, PAGE_SIZE, "CM%d #%d : Data empty(0x%X)\n", i, j, p_fail_hist->tsp_signature);
 				strlcat(buf, buff, ts->proc_fail_hist_size);
 				continue;
 
 			} else if (p_fail_hist->tsp_signature != SEC_FAIL_HIST_SIGNATURE) {
 				input_err(true, &ts->client->dev, "%s: signature is mismatched :%8X != (%8X)\n",
 							__func__, p_fail_hist->tsp_signature, SEC_FAIL_HIST_SIGNATURE);
-				snprintf(buff, sizeof(buff), "CM%d #%d : SIGNATURE mismatched(0x%X)\n", i, j, p_fail_hist->tsp_signature);
+				snprintf(buff, PAGE_SIZE, "CM%d #%d : SIGNATURE mismatched(0x%X)\n", i, j, p_fail_hist->tsp_signature);
 				strlcat(buf, buff, ts->proc_fail_hist_size);
 				continue;
 			}
@@ -1127,16 +1131,16 @@ ssize_t get_selftest_fail_hist_dump_all(struct sec_ts_data *ts, char *buf, u8 po
 								__func__, p_fail_hist->tsp_fw_version, p_fail_hist->selftest_exec_parm,
 								p_fail_hist->fail_cnt1, p_fail_hist->fail_cnt2, p_fail_hist->test_result);
 
-			snprintf(buff, sizeof(buff), "CM%d #%d :  FW VER : 0x%X, Selftest Parm : 0x%X, fail_cnt1/2 : %d/%d, Test Result : 0x%X\n",
+			snprintf(buff, PAGE_SIZE, "CM%d #%d :  FW VER : 0x%X, Selftest Parm : 0x%X, fail_cnt1/2 : %d/%d, Test Result : 0x%X\n",
 							i, j, p_fail_hist->tsp_fw_version, p_fail_hist->selftest_exec_parm,
 							p_fail_hist->fail_cnt1, p_fail_hist->fail_cnt2, p_fail_hist->test_result);
 			strlcat(buf, buff, ts->proc_fail_hist_size);
 			
 			input_info(true, &ts->client->dev, "%s: Primary Failure Type : 0x%X\n", __func__, p_fail_hist->fail_type);
-			snprintf(buff, sizeof(buff), "Fail Type : 0x%X\n", p_fail_hist->fail_type);
+			snprintf(buff, PAGE_SIZE, "Fail Type : 0x%X\n", p_fail_hist->fail_type);
 			strlcat(buf, buff, ts->proc_fail_hist_size);
 
-			memset(buff, 0x00, sizeof(buff));
+			memset(buff, 0x00, PAGE_SIZE);
 			memset(tempn, 0x00, 40);
 
 			if (p_fail_hist->fail_type == 0x01)
@@ -1156,7 +1160,7 @@ ssize_t get_selftest_fail_hist_dump_all(struct sec_ts_data *ts, char *buf, u8 po
 			else if (p_fail_hist->fail_type == 0x16)
 				snprintf(tempn, 40, "S2S Short in Boundary Range:");
 
-			strlcat(buff, tempn, sizeof(buff));
+			strlcat(buff, tempn, PAGE_SIZE);
 
 			for (ii = 0; ii < 8; ii++) {
 				temp_result = p_fail_hist->fail_data[ii];
@@ -1166,11 +1170,11 @@ ssize_t get_selftest_fail_hist_dump_all(struct sec_ts_data *ts, char *buf, u8 po
 						snprintf(tempv, 20, "%s%d,",
 								jj < ts->tx_count ? "TX":"RX",
 								jj < ts->tx_count ? jj : jj - ts->tx_count);
-					strlcat(buff, tempv, sizeof(buff));
+					strlcat(buff, tempv, PAGE_SIZE);
 					temp_result = temp_result >> 1;
 				}
 			}
-			strlcat(buff, "\n", sizeof(buff));
+			strlcat(buff, "\n", PAGE_SIZE);
 			input_info(true, &ts->client->dev, "%s: %s", __func__, buff);
 
 			strlcat(buf, buff, ts->proc_fail_hist_size);
@@ -1184,7 +1188,7 @@ ssize_t get_selftest_fail_hist_dump_all(struct sec_ts_data *ts, char *buf, u8 po
 				input_info(true, &ts->client->dev, "%s: RX : %d, TX : %d, Data : %d\n", __func__, 
 									defect_rx, defect_tx, defective_node_data);
 
-				snprintf(buff, sizeof(buff), "RX,TX[%d,%d] %d\n", defect_rx, defect_tx, defective_node_data);
+				snprintf(buff, PAGE_SIZE, "RX,TX[%d,%d] %d\n", defect_rx, defect_tx, defective_node_data);
 				strlcat(buf, buff, ts->proc_fail_hist_size);
 			}
 		}
@@ -1195,11 +1199,14 @@ ssize_t get_selftest_fail_hist_dump_all(struct sec_ts_data *ts, char *buf, u8 po
 	sec_ts_write_factory_level(ts, OFFSET_FW_NOSAVE);
 	sec_ts_set_factory_data_type(ts, OFFSET_FAC_DATA_NO);
 	kfree(rBuff);
+	kfree(buff);
 	return 0;
 
 err_i2c:
+	kfree(buff);
+err_mem_2:
 	kfree(rBuff);
-err_mem:
+err_mem_1:
 	sec_ts_write_factory_level(ts, OFFSET_FW_NOSAVE);
 	sec_ts_set_factory_data_type(ts, OFFSET_FAC_DATA_NO);
 err_exit:
@@ -4595,8 +4602,7 @@ static void run_trx_short_test(void *device_data)
 {
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
 	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
-	/* fix length: if all channel failed, can occur overflow */
-	char buff[1024 + 256] = {0};
+	char buff[SEC_CMD_STR_LEN] = {0};
 	char tempn[40] = {0};
 	char tempv[25] = {0};
 	int rc;
@@ -4614,6 +4620,7 @@ static void run_trx_short_test(void *device_data)
 	char test[32];
 	char result[32];
 	u64 temp_result;
+	u8 *test_result_buff;
 
 	sec_cmd_set_default_result(sec);
 
@@ -4640,11 +4647,20 @@ static void run_trx_short_test(void *device_data)
 		return;
 	}
 
+	test_result_buff = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!test_result_buff) {
+		snprintf(buff, sizeof(buff), "NG");
+		sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+		sec->cmd_state = SEC_CMD_STATUS_FAIL;
+		return;
+	}
+
 	rBuff = kzalloc(size, GFP_KERNEL);
 	if (!rBuff) {
 		snprintf(buff, sizeof(buff), "NG");
 		sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
 		sec->cmd_state = SEC_CMD_STATUS_FAIL;
+		kfree(test_result_buff);
 		return;
 	}
 
@@ -4676,6 +4692,7 @@ static void run_trx_short_test(void *device_data)
 		}
 
 		input_info(true, &ts->client->dev, "%s: %s\n", __func__, buff);
+		kfree(test_result_buff);
 		kfree(rBuff);
 		return;
 	}
@@ -4818,7 +4835,7 @@ static void run_trx_short_test(void *device_data)
 		} else if (sec->cmd_param[0] == BRIDGE_SHORT_TEST) {
 			snprintf(tempn, 40, "BRIDGE_SHORT:");
 		}
-		strlcat(buff, tempn, sizeof(buff));
+		strlcat(test_result_buff, tempn, PAGE_SIZE);
 		memcpy(&temp_result, &data[ii], 8);
 
 		for (jj = 0; jj < ts->tx_count + ts->rx_count; jj++) {
@@ -4827,19 +4844,20 @@ static void run_trx_short_test(void *device_data)
 				snprintf(tempv, 20, "%cX%d,",
 						jj < ts->tx_count ? 'T':'R',
 						jj < ts->tx_count ? jj : jj - ts->tx_count);
-			strlcat(buff, tempv, sizeof(buff));
+			strlcat(test_result_buff, tempv, PAGE_SIZE);
 			temp_result = temp_result >> 1;
 		}
 	}
 
-	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	sec_cmd_set_cmd_result(sec, test_result_buff, strnlen(test_result_buff, PAGE_SIZE));
 	sec->cmd_state = SEC_CMD_STATUS_FAIL;
 
-	input_info(true, &ts->client->dev, "%s: %s\n", __func__, buff);
+	input_info(true, &ts->client->dev, "%s: %s\n", __func__, test_result_buff);
 
 	sec_ts_write_factory_level(ts, OFFSET_FW_NOSAVE);
 
 	kfree(rBuff);
+	kfree(test_result_buff);
 	snprintf(result, sizeof(result), "RESULT=FAIL");
 	sec_cmd_send_event_to_user(&ts->sec, test, result);
 	return;
@@ -4854,6 +4872,7 @@ test_ok:
 	sec_ts_write_factory_level(ts, OFFSET_FW_NOSAVE);
 
 	kfree(rBuff);
+	kfree(test_result_buff);
 	snprintf(result, sizeof(result), "RESULT=PASS");
 	sec_cmd_send_event_to_user(&ts->sec, test, result);
 	return;
@@ -4872,6 +4891,7 @@ err_trx_short:
 	sec_ts_write_factory_level(ts, OFFSET_FW_NOSAVE);
 
 	kfree(rBuff);
+	kfree(test_result_buff);
 	input_info(true, &ts->client->dev, "%s: %s\n", __func__, buff);
 	snprintf(result, sizeof(result), "RESULT=FAIL");
 	sec_cmd_send_event_to_user(&ts->sec, test, result);

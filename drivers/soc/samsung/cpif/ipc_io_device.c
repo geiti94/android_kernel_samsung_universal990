@@ -120,7 +120,6 @@ static unsigned int ipc_poll(struct file *filp, struct poll_table_struct *wait)
 	case STATE_NV_REBUILDING:
 	case STATE_CRASH_WATCHDOG:
 		mif_err("%s: %s.state == %s\n", iod->name, mc->name, mc_state(mc));
-
 		if (iod->format == IPC_FMT) {
 			return POLLHUP;
 		}
@@ -209,6 +208,47 @@ static long ipc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 
 		return mc->ops.trigger_cp_crash(mc);
+	}
+
+	case IOCTL_SET_INTERNET_PDN_CID:
+	{
+		if (arg)
+			ld->internet_pdn_cid = arg;
+		mif_info("Internet CID: %lu\n", arg);
+		break;
+	}
+
+	case IOCTL_SET_MULTIPLE_PDN_INFO:
+	{
+		struct pdn_info pdn_arg;
+		u8 rmnet_type;
+
+		mif_info("IOCTL_SET_MULTIPLE_PDN_INFO\n");
+
+		if (copy_from_user(&pdn_arg, (struct pdn_info __user *)arg, sizeof(struct pdn_info))) {
+			mif_err("copy_from_user fail - IOCTL_SET_MULTIPLE_PDN_INFO\n");
+			return -EFAULT;
+		}
+
+		if (pdn_arg.is_internet)
+			ld->internet_pdn_cid = pdn_arg.cid;
+
+		rmnet_type = pdn_arg.cid - 1;
+
+		if (rmnet_type < RMNET_COUNT) {
+			if (pdn_arg.is_activated == true) {
+				mif_info("cid: %d, ipv4: %pI4, ipv6: %pI6c\n",
+						pdn_arg.cid, &pdn_arg.ipv4_src_addr, &pdn_arg.ipv6_src_addr);
+				memcpy(&ld->pdn_table.pdn[rmnet_type], &pdn_arg, sizeof(struct pdn_info));
+			} else {
+				mif_info("Deactivate pdn table (cid: %d)\n", pdn_arg.cid);
+				memset(&ld->pdn_table.pdn[rmnet_type], 0, sizeof(struct pdn_info));
+			}
+		} else {
+			mif_err("Unknow CID: %d\n", pdn_arg.cid);
+			return -EFAULT;
+		}
+		break;
 	}
 
 	default:

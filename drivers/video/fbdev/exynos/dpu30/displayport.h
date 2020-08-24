@@ -50,9 +50,12 @@
 #define FEATURE_SUPPORT_DISPLAYID
 #define DISPLAYID_EXT 0x70
 #define FEATURE_USE_PREFERRED_TIMING_1ST
+#define FEATURE_MANAGE_HMD_LIST
 
 #define MST_MAX_VIDEO_FOR_DEX V2560X1600P60
 #define MST_MAX_VIDEO_FOR_MIRROR V4096X2160P30
+
+#define MAX_POOR_CONNECT_EVENT 10
 
 extern int displayport_log_level;
 extern int forced_resolution;
@@ -687,12 +690,36 @@ enum dex_state {
 	DEX_ON,
 	DEX_RECONNECTING,
 };
+enum wait_state {
+	DP_READY_NO,
+	DP_READY_YES,
+};
 enum dex_support_type {
 	DEX_NOT_SUPPORT = 0,
 	DEX_FHD_SUPPORT,
 	DEX_WQHD_SUPPORT,
 	DEX_UHD_SUPPORT
 };
+
+#define MON_NAME_LEN	14	/* monitor name */
+
+#ifdef FEATURE_MANAGE_HMD_LIST
+#define MAX_NUM_HMD	32
+#define DEX_TAG_HMD	"HMD"
+
+enum dex_hmd_type {
+	DEX_HMD_MON = 0,	/* monitor name field */
+	DEX_HMD_VID,		/* vid field */
+	DEX_HMD_PID,		/* pid field */
+	DEX_HMD_FIELD_MAX,
+};
+
+struct secdp_sink_dev {
+	u32 ven_id;		/* vendor id from CCIC */
+	u32 prod_id;		/* product id from CCIC */
+	char monitor_name[MON_NAME_LEN];	/* max 14 bytes, from EDID */
+};
+#endif
 
 struct displayport_device {
 	struct device *dev;
@@ -732,9 +759,11 @@ struct displayport_device {
 	int notifier_registered;
 	bool ccic_link_conf;
 	bool ccic_hpd;
+	uint64_t ccic_cable_state;
 #if defined(CONFIG_USE_DISPLAYPORT_CCIC_EVENT_QUEUE)
 	struct list_head list_cc;
 	struct delayed_work ccic_event_proceed_work;
+	struct mutex ccic_lock;
 #endif
 #endif
 	int hpd_current_state;
@@ -744,6 +773,8 @@ struct displayport_device {
 	int gpio_usb_dir;
 	int dfp_type;
 	const char *aux_vdd;
+
+	int poor_connect_count;
 
 	int auto_test_mode;
 
@@ -756,18 +787,27 @@ struct displayport_device {
 
 	int mst_cap;
 
-	int dex_setting;
+	u32 dex_setting;
 	int mst_mode;
 	enum dex_state dex_state;
 	u8 dex_ver[2];
 	enum dex_support_type dex_adapter_type;
 	videoformat dex_video_pick;
 
+#ifdef FEATURE_MANAGE_HMD_LIST
+	struct secdp_sink_dev hmd_list[MAX_NUM_HMD];  /*list of supported HMD device*/
+	struct mutex hmd_lock;
+#endif
+	bool is_hmd_dev;
+
 	uint64_t ven_id;
 	uint64_t prod_id;
+	char mon_name[MON_NAME_LEN];
 
 	u8 *edid_test_buf;
 	int do_unit_test;
+	enum wait_state dp_ready_wait_state;
+	wait_queue_head_t dp_ready_wait;
 };
 
 struct displayport_debug_param {

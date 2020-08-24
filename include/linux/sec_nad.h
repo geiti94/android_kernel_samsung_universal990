@@ -47,14 +47,10 @@
 #endif
 
 #define NAD_DEBUG_FLAG 2020
+#define NAD_CP_DISABLE_FLAG 2021
 
 #define NAD_RETRY_COUNT			30
 #define NAD_FAIL_COUNT			10
-
-#define NAD_HPM_BIG_LEVELCOUNT 9
-#define NAD_HPM_LIT_LEVELCOUNT 6
-#define NAD_HPM_G3D_LEVELCOUNT 4
-#define NAD_HPM_MIF_LEVELCOUNT 8
 
 #define CHIPSET_MAX_COUNT 12
 
@@ -66,7 +62,31 @@
 #define NAD_VST_MAGIC_MASK	0xFFFFFF
 #define NAD_VST_RESULT_MASK	0x3F
 #define NAD_VST_ADJUST_MASK	0x3F
+#define NAD_RTC_TIME_OUT_MASK 0xE0
 
+
+#if defined(CONFIG_NAD_55)
+#define NAD_SKIP_USB_CMD_FLAG 2024
+#endif
+
+#if defined(CONFIG_SEC_NAD_PMIC)
+enum {
+	NAD_PMIC_PASS = 0,
+	NAD_PMIC_FAIL,
+};
+#endif
+
+
+enum {
+	REWORK_START = 0,
+	REWORK_VST_FAIL = 1,
+	REWORK_FIRST_FAIL = 2,
+	REWORK_SUDDEN_POWER_OFF = 3,
+	REWORK_VST_CP_ECC_ERROR = 4,
+	REWORK_NAD_CP_ECC_ERROR = 5,
+	REWORK_RTC_TIME_OVER = 6,
+	END_OF_REWORK_ITEM = 7,
+};
 
 enum {
     EXYNOS8890 = 0,
@@ -130,10 +150,34 @@ enum {
 	NAD_CP,
 };
 
+#if defined(CONFIG_NAD_55)
+enum {
+	VST_ECC = 0,
+	NAD_ECC,
+	NADX_ECC,
+};
+
+enum {
+	VST_START = 0,
+	NAD_START,
+	NAD_END,
+	RESET_END,
+	END_OF_RTC,
+};
 
 
-
-
+struct rtc_time {
+	int tm_sec;
+	int tm_min;
+	int tm_hour;
+	int tm_mday;
+	int tm_mon;
+	int tm_year;
+	int tm_wday;
+	int tm_yday;
+	int tm_isdst;
+};
+#endif
 	//EXYNOS8890_JUNGFRAU[0], EXYNOS8895_KANGCHEN[1], EXYNOS7880_JOON[2], EXYNOS7870_JOSHUA[3], EXYNOS7570_JAVA[4], EXYNOS7885_LASSEN[5],EXYNOS7883_LASSENQ[5], EXYNOS7884_LASSENO[5],EXYNOS9810_LHOTSE[6],EXYNOS9610_RAMEN[7],EXYNOS9820_MAKALU[8]
 static  char nad_chipset_name[CHIPSET_MAX_COUNT][12] = {"EXYNOS8890", "EXYNOS8895", "EXYNOS7880", "EXYNOS7870", "EXYNOS7570", "EXYNOS7885", "EXYNOS9810","EXYNOS9110","EXYNOS9820","EXYNOS9610","EXYNOS9820","EXYNOSXXXX"};
 static char nad_block_name[10][8] = {"DRAM", "BIG", "MIDD", "LITT", "MIF", "G3D", "INT", "CAM", "FUNC", "CP"};	
@@ -290,7 +334,6 @@ static struct nad_block nad_block_data[] = {
 	"DRAM_VWM", "PCIE",       "NONE",       "NONE"},
 };
 
-#if defined(CONFIG_SEC_SUPPORT_SECOND_NAD)
 typedef struct{
 	volatile u64 target_addr;	/* target address for test */
 	volatile u64 expected_val;	/* written val */
@@ -402,39 +445,6 @@ typedef struct    {
 
 #endif
 
-
-
-
-#if defined(CONFIG_SEC_NAD_HPM)
-typedef struct  {
-	u8 level;
-	u8 fused_hpm;
-	u8 pba_hpm[10];
-	u8 pba_hpm_min;
-	unsigned int pba_hpm_ave;
-	unsigned int pba_hpm_var;
-} hpm_level_information;
-
-typedef struct  {
-	hpm_level_information hpm_level_info[15];		//L0 ~ L15
-	u8 level_count;
-	u8 block_pass_fail;
-} hpm_information;
-
-typedef struct  {
-	char magic[10];
-	hpm_information  hpm_info[4];	//BIG, LITT, G3D, MIF
-	u8 device_pass_fail;
-	u8 hpm_invalid;
-	char LotID[7];
-	u8 asv_table_ver;
-	u8 big_grp;
-	u8 lit_grp;
-	u8 g3d_grp;
-	u8 mif_grp;
-} nad_hpm;
-#endif
-
 typedef struct  {
 	unsigned int nad_inform1;
 	unsigned int nad_inform2;
@@ -442,7 +452,7 @@ typedef struct  {
 	nad_fail_information nad_fail_info;
 
 } nad_fail_backup_data;
-#endif
+
 
 #if defined(CONFIG_SEC_NAD_API)
 static char nad_api_result_string[20*30] = {0,};
@@ -451,6 +461,17 @@ typedef struct {
 	char name[20];
 	unsigned int result;
 } nad_api_results;
+#endif
+
+#if defined(CONFIG_SEC_NAD_PMIC)
+static char nad_ocp_read_result[10] = {0,};
+static char nad_pmic_read_result[15] = {0,};
+static char nad_ocp_data[15][10] = {"OCP_B1M","OCP_B2M","OCP_B3M","OCP_B5M","OCP_B6M","OCP_B7M","OCP_B8M","OCP_B9M",
+									"OCP_B10M","OCP_B11M","OCP_B12M","OCP_B1","OCP_B2","OCP_B3","OCP_B4"};
+static char nad_i2c_data[11][30] = {"I2C_CH_IF_PMIC", "I2C_CH_AP_PMIC", "I2C_CH_FUELGAUGE",
+									"I2C_CH_CHG_IC", "I2C_CH_ADC", "I2C_CH_SUB_PMIC", "I2C_CH_DP_PMIC",
+									"I2C_CH_MOTOR", "I2C_CH_SUB2_PMIC", "I2C_CH_LCD_BACKLIGHT_IC", "I2C_CH_PDIC"};
+static char nad_speedy_data[10] = "SPEEDY";
 #endif
 
 typedef struct {
@@ -480,6 +501,16 @@ typedef struct {
 	nad_fail_backup_data nad_fail_data_backup;
 } F_NAD_DATA;
 
+#if defined(CONFIG_NAD_55)
+typedef struct {
+	u8 u0_ecc;
+	u8 u1_ecc;
+	u8 u3_ecc;
+	u8 u4_ecc;
+	int ecc_error_sum;
+} CP_ECC_ERROR_DATA;
+#endif
+
 struct nad_env {
 	char nad_factory[8];
 	char nad_result[8];
@@ -494,7 +525,7 @@ struct nad_env {
 	char nad_dram_test_need[8];
 	unsigned int nad_dram_test_result;
 	unsigned int nad_dram_fail_data;
-	unsigned long nad_dram_fail_address;
+	unsigned long long nad_dram_fail_address;
 
 	int current_nad_status;
 	unsigned int nad_acat_skip_fail;
@@ -525,7 +556,6 @@ struct nad_env {
 	VST_Performance_data vst_perform_data[7];
 #endif
 
-#if defined(CONFIG_SEC_SUPPORT_SECOND_NAD)
 	unsigned int  nad_inform2_data;
 	unsigned int  nad_inform3_data;
 	unsigned int  nad_init_temperature;
@@ -563,19 +593,17 @@ struct nad_env {
 	unsigned int  nad_acat_second_running_count;
 	unsigned int acat_fail_retry_count;
 	nad_fail_backup_data acat_fail_backup[NAD_FAIL_COUNT];
-#endif
-#if defined(CONFIG_SEC_NAD_HPM)
-	nad_hpm nad_hpm_info;
-	int hpm_min_diff_level_big[NAD_HPM_BIG_LEVELCOUNT];
-	int hpm_min_diff_level_lit[NAD_HPM_LIT_LEVELCOUNT];
-	int hpm_min_diff_level_g3d[NAD_HPM_G3D_LEVELCOUNT];
-	int hpm_min_diff_level_mif[NAD_HPM_MIF_LEVELCOUNT];
-#endif
 #if defined(CONFIG_SEC_NAD_API)
 	int nad_api_status;
 	int nad_api_magic;
 	int nad_api_total_count;
 	nad_api_results nad_api_info[30];
+#endif
+#if defined(CONFIG_SEC_NAD_PMIC)
+	int pmic_ocp_status;
+	int pmic_ocp_fail_index;
+	int pmic_read_status;
+	int pmic_read_channel;
 #endif
 
 	int nad_enter_status;
@@ -622,16 +650,37 @@ struct nad_env {
 #endif
 
 	unsigned int nad_debug_enable;
+	unsigned int nad_cp_disable;
 
 	nad_fail_backup_data last_fail_data_backup;
 	nad_dram_information nad_last_dram_fail_information;
 	int last_nad_fail_status;
+#if defined(CONFIG_NAD_55)
+	char nad_complete[8]; // for nad ver 5.5
+
+	int nad_skip_usb_cmd_flag;
+	int nad_rework_info;
+	struct rtc_time rtc[END_OF_RTC];
+	unsigned long nad_total_time;
+	CP_ECC_ERROR_DATA cp_ecc_err[2];
+#endif
+
+#if defined(CONFIG_SEC_SUPPORT_VST)
+unsigned int vst_inform4_1_data;
+unsigned int vst_inform4_2_data;
+unsigned int vst_inform4_3_data;
+
+unsigned int vst_init_temperature;
+unsigned int vst_max_temperature;
+#endif
+
 };
 
 
 struct sec_nad_param {
 	struct work_struct sec_nad_work;
 	struct delayed_work sec_nad_delay_work;
+	int nad_param_complete;
 	unsigned long offset;
 	int state;
 	int retry_cnt;

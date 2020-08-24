@@ -74,6 +74,8 @@ static u32  secure_sensor_id;
 static u32  ois_sensor_index;
 static u32  mcu_sensor_index;
 static u32  aperture_sensor_index;
+static struct mutex g_efs_mutex;
+static struct mutex g_shaking_mutex;
 
 #ifdef CAMERA_PARALLEL_RETENTION_SEQUENCE
 struct workqueue_struct *sensor_pwr_ctrl_wq = 0;
@@ -591,6 +593,8 @@ int is_vender_probe(struct is_vender *vender)
 	/* TOF AF data mutex */
 	mutex_init(&specific->tof_af_lock);
 #endif
+	mutex_init(&g_efs_mutex);
+	mutex_init(&g_shaking_mutex);
 
 	if (is_create_sysfs(core)) {
 		probe_err("is_create_sysfs is failed");
@@ -1050,8 +1054,6 @@ int is_vendor_rom_parse_dt(struct device_node *dnode, int rom_id)
 	DT_READ_U32_DEFAULT(dnode, "rom_dualcal_slave2_size", finfo->rom_dualcal_slave2_size, -1);
 
 	DT_READ_U32_DEFAULT(dnode, "rom_pdxtc_cal_data_start_addr", finfo->rom_pdxtc_cal_data_start_addr, -1);
-	DT_READ_U32_DEFAULT(dnode, "rom_pdxtc_cal_data_coef_size", finfo->rom_pdxtc_cal_data_coef_size, -1);
-	DT_READ_U32_DEFAULT(dnode, "rom_pdxtc_cal_data_val_size", finfo->rom_pdxtc_cal_data_val_size, -1);
 	DT_READ_U32_DEFAULT(dnode, "rom_pdxtc_cal_data_0_size", finfo->rom_pdxtc_cal_data_0_size, -1);
 	DT_READ_U32_DEFAULT(dnode, "rom_pdxtc_cal_data_1_size", finfo->rom_pdxtc_cal_data_1_size, -1);
 	DT_READ_U32_DEFAULT(dnode, "rom_spdc_cal_data_start_addr", finfo->rom_spdc_cal_data_start_addr, -1);
@@ -1161,6 +1163,9 @@ int is_vendor_rom_parse_dt(struct device_node *dnode, int rom_id)
 
 	DT_READ_U32_DEFAULT(dnode, "rom_dualcal_slave1_cropshift_x_addr", finfo->rom_dualcal_slave1_cropshift_x_addr, -1);
 	DT_READ_U32_DEFAULT(dnode, "rom_dualcal_slave1_cropshift_y_addr", finfo->rom_dualcal_slave1_cropshift_y_addr, -1);
+
+	DT_READ_U32_DEFAULT(dnode, "rom_dualcal_slave1_oisshift_x_addr", finfo->rom_dualcal_slave1_oisshift_x_addr, -1);
+	DT_READ_U32_DEFAULT(dnode, "rom_dualcal_slave1_oisshift_y_addr", finfo->rom_dualcal_slave1_oisshift_y_addr, -1);
 
 	DT_READ_U32_DEFAULT(dnode, "rom_dualcal_slave1_dummy_flag_addr", finfo->rom_dualcal_slave1_dummy_flag_addr, -1);
 
@@ -1289,21 +1294,6 @@ void is_vendor_prepare_retention(struct is_core *core, int sensor_id, int positi
 			warn("v4l2_subdev_call(cis_set_global_setting) is fail(%d)", ret);
 			goto p_power_off;
 		}
-
-		ret = CALL_CISOPS(cis, cis_stream_on, sensor_peri->subdev_cis);
-		if (ret) {
-			warn("v4l2_subdev_call(cis_stream_on) is fail(%d)", ret);
-			goto p_power_off;
-		}
-		CALL_CISOPS(cis, cis_wait_streamon, sensor_peri->subdev_cis);
-
-
-		ret = CALL_CISOPS(cis, cis_stream_off, sensor_peri->subdev_cis);
-		if (ret) {
-			warn("v4l2_subdev_call(cis_stream_off) is fail(%d)", ret);
-			goto p_power_off;
-		}
-		CALL_CISOPS(cis, cis_wait_streamoff, sensor_peri->subdev_cis);
 	}
 
 p_power_off:
@@ -1913,10 +1903,24 @@ void sensor_pwr_ctrl(struct work_struct *work)
 static DECLARE_DELAYED_WORK(sensor_pwr_ctrl_work, sensor_pwr_ctrl);
 #endif
 
-int is_vender_sensor_gpio_on_sel(struct is_vender *vender, u32 scenario, u32 *gpio_scenario)
+int is_vender_sensor_gpio_on_sel(struct is_vender *vender, u32 scenario, u32 *gpio_scenario
+		, void *module_data)
 {
 	int ret = 0;
+#ifdef USE_FAKE_RETENTION
+	struct is_module_enum *module = module_data;
+	struct sensor_open_extended *ext_info;
+	struct is_core *core;
 
+	core = container_of(vender, struct is_core, vender);
+	ext_info = &(((struct is_module_enum *)module)->ext);
+
+	if (ext_info->use_retention_mode == SENSOR_RETENTION_REOPEN) {
+		*gpio_scenario = GPIO_SCENARIO_STANDBY_OFF;
+		ext_info->use_retention_mode = SENSOR_RETENTION_UNSUPPORTED;
+		info("%s: set rollback retention mode \n", __func__);
+	}
+#endif
 	return ret;
 }
 
@@ -1935,6 +1939,13 @@ int is_vender_sensor_gpio_off_sel(struct is_vender *vender, u32 scenario, u32 *g
 	struct is_module_enum *module = module_data;
 	struct sensor_open_extended *ext_info;
 	struct is_core *core;
+	struct is_cis *cis;
+	struct is_device_sensor_peri *sensor_peri;
+
+	sensor_peri = (struct is_device_sensor_peri *)module->private_data;
+	FIMC_BUG(!sensor_peri);
+
+	cis = (struct is_cis *)v4l2_get_subdevdata(sensor_peri->subdev_cis);
 
 	core = container_of(vender, struct is_core, vender);
 	ext_info = &(((struct is_module_enum *)module)->ext);
@@ -1950,14 +1961,51 @@ int is_vender_sensor_gpio_off_sel(struct is_vender *vender, u32 scenario, u32 *g
 		info("%s: use_retention_mode\n", __func__);
 	}
 #endif
+#ifdef USE_FAKE_RETENTION
+	if (ext_info->use_retention_mode == SENSOR_RETENTION_UNSUPPORTED) {
+		if (vender->closing_hint == IS_CLOSING_HINT_REOPEN
+			&& cis->cis_ops->cis_set_fake_retention
+			&& (scenario == SENSOR_SCENARIO_NORMAL)) {
+			*gpio_scenario = GPIO_SCENARIO_STANDBY_ON;
+			ext_info->use_retention_mode = SENSOR_RETENTION_REOPEN;
+			info("%s: use fake retention mode\n", __func__);
+		}
+	}
 
+	if (ext_info->use_retention_mode != SENSOR_RETENTION_REOPEN) {
+		ret = CALL_CISOPS(cis, cis_set_fake_retention, sensor_peri->subdev_cis, false);
+			if (ret)
+				warn("cis_set_fake_retention (false) is fail(%d)", ret);
+	}
+#endif
 	return ret;
 }
 
-int is_vender_sensor_gpio_off(struct is_vender *vender, u32 scenario, u32 gpio_scenario)
+int is_vender_sensor_gpio_off(struct is_vender *vender, u32 scenario, u32 gpio_scenario
+		, void *module_data)
 {
 	int ret = 0;
+	struct is_module_enum *module = module_data;
+	struct sensor_open_extended *ext_info;
+	struct is_cis *cis;
+	struct is_device_sensor_peri *sensor_peri;
 
+	sensor_peri = (struct is_device_sensor_peri *)module->private_data;
+	FIMC_BUG(!sensor_peri);
+
+	cis = (struct is_cis *)v4l2_get_subdevdata(sensor_peri->subdev_cis);
+
+	ext_info = &(((struct is_module_enum *)module)->ext);
+
+	info("%s sensor = %d", __func__, module->device);
+
+#ifdef USE_FAKE_RETENTION
+	if (ext_info->use_retention_mode == SENSOR_RETENTION_REOPEN) {
+		ret = CALL_CISOPS(cis, cis_set_fake_retention, sensor_peri->subdev_cis, true);
+		if (ret)
+			warn("cis_set_fake_retention (true) is fail(%d)", ret);
+	}
+#endif
 	return ret;
 }
 
@@ -2109,7 +2157,7 @@ int is_vender_video_s_ctrl(struct v4l2_control *ctrl,
 
 	WARN_ON(!device);
 	WARN_ON(!ctrl);
-	
+
 	WARN_ON(!device->pdev);
 
 	core = (struct is_core *)platform_get_drvdata(device->pdev);
@@ -2396,6 +2444,13 @@ int is_vendor_shaking_gpio_on(struct is_vender *vender)
 
 	info("%s E\n", __func__);
 
+	mutex_lock(&g_shaking_mutex);
+
+	if (check_shaking_noise) {
+		mutex_unlock(&g_shaking_mutex);
+		return ret;
+	}
+
 	core = container_of(vender, struct is_core, vender);
 	device = &core->sensor[SENSOR_POSITION_REAR];
 	device2 = &core->sensor[SENSOR_POSITION_REAR2];
@@ -2431,6 +2486,7 @@ int is_vendor_shaking_gpio_on(struct is_vender *vender)
 #if defined(CONFIG_CAMERA_USE_INTERNAL_MCU) && defined(USE_TELE_OIS_AF_COMMON_INTERFACE)
 	if (device2->mcu->mcu_ctrl_actuator) {
 		is_vender_mcu_power_on(false);
+		is_ois_init_rear2(core);
 		ret = CALL_OISOPS(device2->mcu->ois, ois_set_af_active, device2->subdev_mcu, 1);
 		if (ret < 0)
 			err("ois set af active fail");
@@ -2439,7 +2495,9 @@ int is_vendor_shaking_gpio_on(struct is_vender *vender)
 	is_af_move_lens_rear2(core);
 #endif
 
-p_err:
+p_err:	
+	check_shaking_noise = true;
+	mutex_unlock(&g_shaking_mutex);
 	info("%s X\n", __func__);
 
 	return ret;
@@ -2456,6 +2514,13 @@ int is_vendor_shaking_gpio_off(struct is_vender *vender)
 	int i = 0;
 
 	info("%s E\n", __func__);
+
+	mutex_lock(&g_shaking_mutex);
+
+	if (!check_shaking_noise) {
+		mutex_unlock(&g_shaking_mutex);
+		return ret;
+	}
 
 	core = container_of(vender, struct is_core, vender);
 	device = &core->sensor[SENSOR_POSITION_REAR];
@@ -2497,6 +2562,8 @@ int is_vendor_shaking_gpio_off(struct is_vender *vender)
 	}
 
 p_err:
+	check_shaking_noise = false;
+	mutex_unlock(&g_shaking_mutex);
 	info("%s X\n", __func__);
 
 	return ret;
@@ -2514,55 +2581,38 @@ void is_vender_resource_put(struct is_vender *vender, u32 rsc_type)
 		is_vender_mcu_power_off(true);
 }
 
-static noinline_for_stack long __get_file_size(struct file *file)
-{
-	struct kstat st;
-	u32 request_mask = (STATX_MODE | STATX_SIZE);
-
-	if (vfs_getattr(&file->f_path, &st, request_mask, KSTAT_QUERY_FLAGS))
-		return -1;
-	if (!S_ISREG(st.mode))
-		return -1;
-	if (st.size != (long)st.size)
-		return -1;
-
-	return st.size;
-}
-
 long  is_vender_read_efs(char *efs_path, u8 *buf, int buflen)
 {
 	struct file *fp = NULL;
 	mm_segment_t old_fs;
-	char *filename;
+	char filename[100];
 	long ret = 0, fsize = 0, nread = 0;
-	loff_t file_offset = 0;
+
+	info("%s  start", __func__);
+
+	mutex_lock(&g_efs_mutex);
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	filename = __getname();
-	if (unlikely(!filename)) {
-		set_fs(old_fs);
-		return 0;
-	}
-
-	snprintf(filename, PATH_MAX, "%s", efs_path);
+	snprintf(filename, sizeof(filename), "%s", efs_path);
 
 	fp = filp_open(filename, O_RDONLY, 0);
 	if (IS_ERR_OR_NULL(fp)) {
-		__putname(filename);
 		set_fs(old_fs);
+		mutex_unlock(&g_efs_mutex);
+		err("file open  fail(%ld)\n", fsize);
 		return 0;
 	}
 
-	fsize = __get_file_size(fp);
+	fsize = fp->f_path.dentry->d_inode->i_size;
 	if (fsize <= 0 || fsize > buflen) {
 		err(" __get_file_size fail(%ld)\n", fsize);
 		ret = 0;
 		goto p_err;
 	}
 
-	nread = kernel_read(fp, buf, fsize, &file_offset);
+	nread = vfs_read(fp, (char __user *)buf, fsize, &fp->f_pos);
 	if (nread != fsize) {
 		err("kernel_read was failed(%ld != %ld)n",
 			nread, fsize);
@@ -2573,9 +2623,13 @@ long  is_vender_read_efs(char *efs_path, u8 *buf, int buflen)
 	ret = fsize;
 
 p_err:
-	__putname(filename);
 	filp_close(fp, current->files);
+
 	set_fs(old_fs);
+
+	mutex_unlock(&g_efs_mutex);
+
+	info("%s  end, size = %ld", __func__, ret);
 
 	return ret;
 }

@@ -281,15 +281,15 @@ static void recover_gpio_pins(struct exynos5_i2c *i2c)
 	if (sda_val == 1)
 		return ;
 
-	/* Wait for SCL as high for 500msec */
+	/* Wait for SCL as high for 100msec */
 	if (scl_val == 0) {
-		timeout = jiffies + msecs_to_jiffies(500);
+		timeout = jiffies + msecs_to_jiffies(100);
 		while (time_before(jiffies, timeout)) {
 			if (gpio_get_value(gpio_scl) != 0) {
 				timeout = 0;
 				break;
 			}
-			msleep(10);
+			usleep_range(1000, 2000);
 		}
 		if (timeout)
 			dev_err(i2c->dev, "SCL line is still LOW!!!\n");

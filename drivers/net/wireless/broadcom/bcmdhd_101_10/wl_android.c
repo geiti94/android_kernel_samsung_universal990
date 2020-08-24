@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Android related functions
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <linux/module.h>
@@ -545,6 +545,15 @@ struct io_cfg {
 				           (JOIN_PREF_WPA_TUPLE_SIZE * JOIN_PREF_MAX_WPA_TUPLES))
 #endif /* BCMFW_ROAM_ENABLE */
 
+#if defined(CONFIG_TIZEN)
+/*
+ * adding these private commands corresponding to atd-server's implementation
+ * __atd_control_pm_state()
+ */
+#define CMD_POWERSAVEMODE_SET "SETPOWERSAVEMODE"
+#define CMD_POWERSAVEMODE_GET "GETPOWERSAVEMODE"
+#endif /* CONFIG_TIZEN */
+
 #define CMD_DEBUG_VERBOSE          "DEBUG_VERBOSE"
 #ifdef WL_NATOE
 
@@ -1060,6 +1069,7 @@ static char* wl_android_get_band_str(u16 band)
 	}
 }
 
+#ifdef WBTEXT
 static int wl_android_bandstr_to_fwband(char *band, u8 *fw_band)
 {
 	int err = BCME_OK;
@@ -1080,6 +1090,7 @@ static int wl_android_bandstr_to_fwband(char *band, u8 *fw_band)
 
 	return err;
 }
+#endif /* WBTEXT */
 
 #ifdef WLWFDS
 static int wl_android_set_wfds_hash(
@@ -4408,7 +4419,7 @@ int wl_android_wifi_on(struct net_device *dev)
 		if (ret != 0) {
 			DHD_ERROR(("\nfailed to power up wifi chip, max retry reached **\n\n"));
 #ifdef BCM_DETECT_TURN_ON_FAILURE
-//			BUG_ON(1);
+			BUG_ON(1);
 #endif /* BCM_DETECT_TURN_ON_FAILURE */
 			goto exit;
 		}
@@ -5885,9 +5896,11 @@ wl_android_set_auto_channel(struct net_device *dev, const char* cmd_str,
 	/* If AP is started on wlan0 iface,
 	 * do not issue any iovar to fw and choose default ACS channel for softap
 	 */
-	if (wl_get_mode_by_netdev(cfg, dev) == WL_MODE_AP) {
-		WL_INFORM_MEM(("Softap started on primary iface\n"));
-		goto done;
+	if (dev == bcmcfg_to_prmry_ndev(cfg)) {
+		if (wl_get_mode_by_netdev(cfg, dev) == WL_MODE_AP) {
+			WL_INFORM_MEM(("Softap started on primary iface\n"));
+			goto done;
+		}
 	}
 
 	ret = wldev_ioctl_get(dev, WLC_GET_SPECT_MANAGMENT, &spect, sizeof(spect));
@@ -6024,7 +6037,7 @@ wl_android_set_roam_vsie_enab(struct net_device *dev, const char *cmd, u32 cmd_l
 {
 	s32 err = BCME_OK;
 	u32 roam_vsie_enable = 0;
-	u32 cmd_str_len = strlen(CMD_ROAM_VSIE_ENAB_SET);
+	u32 cmd_str_len = (u32)strlen(CMD_ROAM_VSIE_ENAB_SET);
 	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 
 	/* <CMD><SPACE><VAL> */
@@ -8963,6 +8976,59 @@ wl_android_pktlog_dbg_dump(struct net_device *dev, char *command, int total_len)
 }
 #endif /* DHD_PKT_LOGGING */
 
+#if defined(CONFIG_TIZEN)
+static int wl_android_set_powersave_mode(
+	struct net_device *dev, char* command, int total_len)
+{
+	int pm;
+
+	int err = BCME_OK;
+#ifdef DHD_PM_OVERRIDE
+	extern bool g_pm_override;
+#endif /* DHD_PM_OVERRIDE */
+	sscanf(command, "%*s %10d", &pm);
+	if (pm < PM_OFF || pm > PM_FAST) {
+		WL_ERR(("check pm=%d\n", pm));
+		return BCME_ERROR;
+	}
+
+#ifdef DHD_PM_OVERRIDE
+	if (pm > PM_OFF) {
+		g_pm_override = FALSE;
+	}
+#endif /* DHD_PM_OVERRIDE */
+
+	err =  wldev_ioctl_set(dev, WLC_SET_PM, &pm, sizeof(pm));
+
+#ifdef DHD_PM_OVERRIDE
+	if (pm == PM_OFF) {
+		g_pm_override = TRUE;
+	}
+
+	WL_ERR(("%s: PM:%d, pm_override=%d\n", __FUNCTION__, pm, g_pm_override));
+#endif /* DHD_PM_OVERRIDE */
+	return err;
+}
+
+static int wl_android_get_powersave_mode(
+	struct net_device *dev, char *command, int total_len)
+{
+	int err, bytes_written;
+	int pm;
+
+	err = wldev_ioctl_get(dev, WLC_GET_PM, &pm, sizeof(pm));
+	if (err != BCME_OK) {
+		WL_ERR(("failed to get pm (%d)", err));
+		return err;
+	}
+
+	bytes_written = snprintf(command, total_len, "%s %d",
+		CMD_POWERSAVEMODE_GET, pm);
+
+	return bytes_written;
+}
+#endif /* CONFIG_TIZEN */
+
 #ifdef DHD_EVENT_LOG_FILTER
 uint32 dhd_event_log_filter_serialize(dhd_pub_t *dhdp, char *buf, uint32 tot_len, int type);
 
@@ -10778,6 +10844,18 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 		bytes_written = dhd_statlog_query(dhdp, command, priv_cmd.total_len);
 	}
 #endif /* DHD_STATUS_LOGGING */
+#if defined(CONFIG_TIZEN)
+	else if (strnicmp(command, CMD_POWERSAVEMODE_SET,
+			strlen(CMD_POWERSAVEMODE_SET)) == 0) {
+		bytes_written = wl_android_set_powersave_mode(net, command,
+			priv_cmd.total_len);
+	}
+	else if (strnicmp(command, CMD_POWERSAVEMODE_GET,
+			strlen(CMD_POWERSAVEMODE_GET)) == 0) {
+		bytes_written = wl_android_get_powersave_mode(net, command,
+			priv_cmd.total_len);
+	}
+#endif /* CONFIG_TIZEN */
 #ifdef SET_PCIE_IRQ_CPU_CORE
 	else if (strnicmp(command, CMD_PCIE_IRQ_CORE, strlen(CMD_PCIE_IRQ_CORE)) == 0) {
 		int affinity_cmd = *(command + strlen(CMD_PCIE_IRQ_CORE) + 1) - '0';

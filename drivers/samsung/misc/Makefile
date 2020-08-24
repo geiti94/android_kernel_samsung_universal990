@@ -10,6 +10,8 @@ obj-m				:=
 obj-n				:=
 obj-				:=
 
+ccflags-y := -Wformat
+
 obj-$(CONFIG_BATTERY_SAMSUNG)	+= sec_batt.o
 # Samsung Debug Feature
 obj-$(CONFIG_SEC_LOG)		+= sec_log.o
@@ -21,6 +23,8 @@ obj-$(CONFIG_SEC_NAD)		+= sec_nad.o
 obj-$(CONFIG_SEC_NAD_BALANCER)		+= sec_nad_balancer.o
 # Samsung sec BPS Feature
 obj-$(CONFIG_SEC_BPS_INFO)		+= sec_bps.o
+# Samsung sec Motto Feature
+obj-$(CONFIG_SEC_SUPPORT_MOTTOTEST_WITH_ACT)	+= sec_motto.o
 
 # Samsung HQM device feature
 obj-$(CONFIG_SEC_HQM_DEVICE)		+= sec_hqm_device.o

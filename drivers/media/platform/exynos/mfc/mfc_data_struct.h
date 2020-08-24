@@ -926,7 +926,8 @@ struct mfc_dev {
 	struct mfc_debug	*logging_data;
 
 	int num_inst;
-	int num_otf_inst;
+
+	unsigned long otf_inst_bits;
 
 	struct mutex mfc_mutex;
 
@@ -1298,6 +1299,8 @@ struct mfc_enc_params {
 	u32 display_primaries_0;
 	u32 display_primaries_1;
 	u32 display_primaries_2;
+	u32 chroma_qp_offset_cb; /* H.264, HEVC */
+	u32 chroma_qp_offset_cr; /* H.264, HEVC */
 
 	union {
 		struct mfc_h264_enc_params h264;

@@ -95,15 +95,15 @@ TRACE_EVENT(ems_select_fit_cpus,
  */
 TRACE_EVENT(ems_candidates,
 
-	TP_PROTO(struct task_struct *p, int prefer_idle,
+	TP_PROTO(struct task_struct *p, int sched_policy,
 		unsigned int candidates, unsigned int idle_candidates),
 
-	TP_ARGS(p, prefer_idle, candidates, idle_candidates),
+	TP_ARGS(p, sched_policy, candidates, idle_candidates),
 
 	TP_STRUCT__entry(
 		__array(	char,		comm,	TASK_COMM_LEN	)
 		__field(	pid_t,		pid			)
-		__field(	int,		prefer_idle		)
+		__field(	int,		sched_policy		)
 		__field(	unsigned int,	candidates		)
 		__field(	unsigned int,	idle_candidates		)
 	),
@@ -111,15 +111,131 @@ TRACE_EVENT(ems_candidates,
 	TP_fast_assign(
 		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
 		__entry->pid			= p->pid;
-		__entry->prefer_idle		= prefer_idle;
+		__entry->sched_policy		= sched_policy;
 		__entry->candidates		= candidates;
 		__entry->idle_candidates	= idle_candidates;
 	),
 
-	TP_printk("comm=%s pid=%d prefer_idle=%d candidates=%#x idle_candidates=%#x",
-		  __entry->comm, __entry->pid, __entry->prefer_idle,
+	TP_printk("comm=%s pid=%d sched_policy=%d candidates=%#x idle_candidates=%#x",
+		  __entry->comm, __entry->pid, __entry->sched_policy,
 		  __entry->candidates, __entry->idle_candidates)
 );
+
+TRACE_EVENT(ems_snapshot_cpu,
+
+	TP_PROTO(int cpu, unsigned int task_util,
+		unsigned int util_wo, unsigned int util_s_wo,
+		unsigned int util_with, unsigned int rt_util,
+		unsigned int util, unsigned int nr_running),
+
+	TP_ARGS(cpu, task_util, util_wo, util_s_wo, util_with, rt_util,
+		util, nr_running),
+
+	TP_STRUCT__entry(
+		__field(	unsigned int,	cpu)
+		__field(	unsigned int,	task_util)
+		__field(	unsigned int,	util_wo)
+		__field(	unsigned int,	util_s_wo)
+		__field(	unsigned int,	util_with)
+		__field(	unsigned int,	rt_util)
+		__field(	unsigned int,	util)
+		__field(	unsigned int,	nr_running)
+	),
+
+	TP_fast_assign(
+		__entry->cpu       		= cpu;
+		__entry->task_util		= task_util;
+		__entry->util_wo   		= util_wo;
+		__entry->util_s_wo 		= util_s_wo;
+		__entry->util_with 		= util_with;
+		__entry->rt_util   		= rt_util;
+		__entry->util			= util;
+		__entry->nr_running		= nr_running;
+	),
+
+	TP_printk("cpu%u tsk=%u, u_wo=%u u_s_wo=%u, u_with=%u, u_rt=%u util=%u nr=%u\n",
+		  __entry->cpu, __entry->task_util,
+		  __entry->util_wo, __entry->util_s_wo,
+		  __entry->util_with, __entry->rt_util,
+		  __entry->util, __entry->nr_running)
+);
+
+TRACE_EVENT(ems_energy_candidates,
+
+	TP_PROTO(struct task_struct *p, unsigned int candidates),
+
+	TP_ARGS(p, candidates),
+
+	TP_STRUCT__entry(
+		__array(	char,		comm,	TASK_COMM_LEN	)
+		__field(	pid_t,		pid			)
+		__field(	unsigned int,	candidates		)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
+		__entry->pid			= p->pid;
+		__entry->candidates		= candidates;
+	),
+
+	TP_printk("comm=%s pid=%d candidates=%#x",
+		  __entry->comm, __entry->pid, __entry->candidates)
+);
+
+/*
+ * Tracepoint for computing energy
+ */
+TRACE_EVENT(ems_compute_energy,
+
+	TP_PROTO(struct task_struct *p, int tsk_util, int weight, int dst, int cpu,
+		unsigned int util, unsigned int util_s, unsigned int cap, unsigned int cap_s,
+		unsigned int power, unsigned int power_s, unsigned int energy),
+
+	TP_ARGS(p, tsk_util, weight, dst, cpu, util, util_s, cap, cap_s, power, power_s, energy),
+
+	TP_STRUCT__entry(
+		__array(	char,		comm,	TASK_COMM_LEN	)
+		__field(	pid_t,		pid			)
+		__field(	int,		sse			)
+		__field(	unsigned long,	tsk_util		)
+		__field(	int,		weight			)
+		__field(	int,		src			)
+		__field(	int,		dst			)
+		__field(	int,		cpu			)
+		__field(	unsigned int,	util			)
+		__field(	unsigned int,	util_s			)
+		__field(	unsigned int,	cap			)
+		__field(	unsigned int,	cap_s			)
+		__field(	unsigned int,	power			)
+		__field(	unsigned int,	power_s			)
+		__field(	unsigned int,	energy			)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
+		__entry->pid		= p->pid;
+		__entry->sse		= p->sse;
+		__entry->tsk_util	= tsk_util;
+		__entry->weight		= weight;
+		__entry->src		= p->cpu;
+		__entry->dst		= dst;
+		__entry->cpu		= cpu;
+		__entry->util		= util;
+		__entry->util_s		= util_s;
+		__entry->cap		= cap;
+		__entry->cap_s		= cap_s;
+		__entry->power		= power;
+		__entry->power_s	= power_s;
+		__entry->energy		= energy;
+	),
+
+	TP_printk("comm=%s pid=%d sse=%d tsk_ut=%lu(w %d) cpu%d->%d cpu%d ut=%u/%u cap=%u/%u pwr=%u/%u e=%u",
+		__entry->comm, __entry->pid, __entry->sse, __entry->tsk_util, __entry->weight,
+		__entry->src, __entry->dst,
+		__entry->cpu,  __entry->util, __entry->util_s,  __entry->cap, __entry->cap_s,
+		__entry->power, __entry->power_s, __entry->energy)
+);
+
 
 /*
  * Tracepoint for computing energy/capacity efficiency
@@ -246,6 +362,31 @@ TRACE_EVENT(esg_cpu_step_util,
 	TP_printk("cpu=%d allowed_cap=%d active_ratio=%d, max=%d, util=%d",
 			__entry->cpu, __entry->allowed_cap, __entry->active_ratio,
 			__entry->max, __entry->util)
+);
+
+TRACE_EVENT(esg_migov_boost,
+
+	TP_PROTO(int cpu, int boost, int util, int boosted_util),
+
+	TP_ARGS(cpu, boost, util, boosted_util),
+
+	TP_STRUCT__entry(
+		__field( int,		cpu				)
+		__field( int,		boost				)
+		__field( int,		util				)
+		__field( int,		boosted_util			)
+	),
+
+	TP_fast_assign(
+		__entry->cpu			= cpu;
+		__entry->boost			= boost;
+		__entry->util			= util;
+		__entry->boosted_util		= boosted_util;
+	),
+
+	TP_printk("cpu=%d boostp=%d util=%d, boosted_util=%d",
+			__entry->cpu, __entry->boost, __entry->util,
+			__entry->boosted_util)
 );
 
 /*

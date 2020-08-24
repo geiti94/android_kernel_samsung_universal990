@@ -29,6 +29,9 @@
 #include <linux/spinlock.h>
 #include <crypto/fmp.h>
 
+/* Performance */
+#include "ufs-perf.h"
+
 /*
  * Unipro attribute value
  */
@@ -66,10 +69,10 @@ static ssize_t exynos_ufs_eom1_show(struct device *dev,
 
 	while (current_cnt != EOM_PH_SEL_MAX * EOM_DEF_VREF_MAX) {
 		len += snprintf(buf + len, PAGE_SIZE,
-				"%u %u %ld\n",
+				"%u %u %lu\n",
 				p[i][current_cnt].phase,
 				p[i][current_cnt].vref,
-				p[i][current_cnt].err);
+				(unsigned long)p[i][current_cnt].err);
 		current_cnt++;
 		test_cnt++;
 		if (test_cnt == 100)
@@ -146,10 +149,10 @@ static ssize_t exynos_ufs_eom2_show(struct device *dev,
 
 	while (current_cnt != EOM_PH_SEL_MAX * EOM_DEF_VREF_MAX) {
 		len += snprintf(buf + len, PAGE_SIZE,
-				"%u %u %ld\n",
+				"%u %u %lu\n",
 				p[i][current_cnt].phase,
 				p[i][current_cnt].vref,
-				p[i][current_cnt].err);
+				(unsigned long)p[i][current_cnt].err);
 		current_cnt++;
 		test_cnt++;
 		if (test_cnt == 100)
@@ -698,6 +701,9 @@ static int exynos_ufs_init_system(struct exynos_ufs *ufs)
 		exynos_ufs_modify_sysreg(ufs, 0);
 	}
 
+	/* performance */
+	ufs_perf_reset(ufs->perf, true);
+
 	return ret;
 }
 
@@ -910,6 +916,8 @@ static int exynos_ufs_setup_clocks(struct ufs_hba *hba, bool on)
 		/* HWAGC enable */
 		exynos_ufs_set_hwacg_control(ufs, true);
 
+		/* PM Qos Release */
+		ufs_perf_reset(ufs->perf, false);
 #ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 		exynos_update_ip_idle_status(ufs->idle_ip_index, 1);
 #endif
@@ -1267,7 +1275,7 @@ static int exynos_ufs_access_control_abort(struct ufs_hba *hba)
 {
 	struct exynos_ufs *ufs = to_exynos_ufs(hba);
 
-	dev_err(ufs->dev, "%s: smu:%d, ret:%d\n", __func__, ufs->smu);
+	dev_err(ufs->dev, "%s: smu:%d\n", __func__, ufs->smu);
 	return exynos_fmp_smu_abort(ufs->smu);
 }
 #else
@@ -1283,6 +1291,19 @@ static int exynos_ufs_crypto_sec_cfg(struct ufs_hba *hba, bool init)
 	return 0;
 }
 #endif
+
+static void exynos_ufs_perf_mode(struct ufs_hba *hba, struct scsi_cmnd *cmd)
+{
+	struct exynos_ufs *ufs = to_exynos_ufs(hba);
+	enum ufs_perf_op op = UFS_PERF_OP_NONE;
+
+	/* performance, only for SCSI */
+	if (cmd->cmnd[0] == 0x28)
+		op = UFS_PERF_OP_R;
+	else if (cmd->cmnd[0] == 0x2A)
+		op = UFS_PERF_OP_W;
+	ufs_perf_update_stat(ufs->perf, cmd->request->__data_len, op);
+}
 
 static struct ufs_hba_variant_ops exynos_ufs_ops = {
 	.init = exynos_ufs_init,
@@ -1307,6 +1328,7 @@ static struct ufs_hba_variant_ops exynos_ufs_ops = {
 	.access_control_abort = exynos_ufs_access_control_abort,
 #endif
 	.crypto_sec_cfg = exynos_ufs_crypto_sec_cfg,
+	.perf_mode = exynos_ufs_perf_mode,
 };
 
 static int exynos_ufs_populate_dt_sys_per_feature(struct device *dev,
@@ -1454,6 +1476,9 @@ static int exynos_ufs_populate_dt(struct device *dev, struct exynos_ufs *ufs)
 	if (of_property_read_u32(np, "ufs-pm-qos-fsys0", &ufs->pm_qos_fsys0_value))
 		ufs->pm_qos_fsys0_value = 0;
 
+	/* performance */
+	if (ufs_perf_populate_dt(ufs->perf, np))
+		dev_err(dev, "ufs perf disable\n");
 out:
 	return ret;
 }
@@ -1497,6 +1522,12 @@ static int exynos_ufs_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	/*
+	 * performance, init IO perf stat, need an identifier later
+	 */
+	if (!ufs_perf_init(&ufs->perf, dev))
+		dev_err(dev, "cannot enable UFS performance mode\n");
+
 	/* This must be before calling exynos_ufs_populate_dt */
 	ret = ufs_init_cal(ufs, ufs_host_index, pdev);
 	if (ret)
@@ -1531,6 +1562,9 @@ static int exynos_ufs_remove(struct platform_device *pdev)
 	ufshcd_pltfrm_exit(pdev);
 
 	pm_qos_remove_request(&ufs->pm_qos_int);
+
+	/* performance */
+	ufs_perf_exit(ufs->perf);
 
 	ufs->misc_flags = EXYNOS_UFS_MISC_TOGGLE_LOG;
 

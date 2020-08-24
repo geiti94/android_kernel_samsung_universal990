@@ -897,12 +897,13 @@ u64 get_sensor_scanning_info(struct ssp_data *data)
 	if (iRet != SUCCESS)
 		pr_err("[SSP]: %s - i2c fail %d\n", __func__, iRet);
 
+	memset(data->sensor_state, 0, sizeof(data->sensor_state));
 	for (z = 0; z < SENSOR_MAX; z++) {
 		if(z % 10 == 0 && z != 0)
 			data->sensor_state[len - 1 - cnt++] = ' ';
 		data->sensor_state[len - 1 - cnt++] = (result & (1ULL << z)) ? '1' : '0';
 	}
-	data->sensor_state[cnt - 1] = '\0';
+	//data->sensor_state[cnt - 1] = '\0';
 #if defined (CONFIG_SENSORS_SSP_DAVINCI)
 	if (data->ap_rev == 18 &&  data->ap_type <= 1) {
 		iRet = 0; len = 0;

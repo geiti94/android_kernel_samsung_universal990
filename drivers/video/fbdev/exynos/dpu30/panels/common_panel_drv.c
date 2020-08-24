@@ -329,8 +329,6 @@ static void exynos_panel_get_display_modes(struct exynos_panel_info *info,
 }
 #endif
 
-
-
 void parse_lcd_info(struct device_node *np, EXYNOS_PANEL_INFO *lcd_info)
 {
 	u32 res[2];
@@ -362,7 +360,7 @@ void parse_lcd_info(struct device_node *np, EXYNOS_PANEL_INFO *lcd_info)
 	exynos_panel_get_color_mode_info(lcd_info, np);
 #ifdef CONFIG_EXYNOS_SET_ACTIVE
 	exynos_panel_get_display_modes(lcd_info, np);
-#endif	
+#endif
 }
 
 static void exynos_panel_list_up(void)
@@ -448,7 +446,7 @@ static void exynos_panel_init_panel_drv(struct exynos_panel_device *panel)
 	ret = call_panel_ops(panel, init, panel);
 }
 
-static int exynos_panel_parse_dt(struct exynos_panel_device *panel)
+int exynos_panel_parse_dt(struct exynos_panel_device *panel)
 {
 	int ret = 0;
 
@@ -498,7 +496,7 @@ static long exynos_panel_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *a
 	case EXYNOS_PANEL_IOC_READ_STATE:
 		ret = call_panel_ops(panel, read_state, panel);
 		break;
-	case EXYNOS_PANEL_IOC_SET_VRRFRESH:
+	case EXYNOS_PANEL_IOC_SET_VREFRESH:
 		call_panel_ops(panel, set_vrefresh, panel, (struct vrr_config_data*)arg);
 		break;
 #if defined(CONFIG_EXYNOS_COMMON_PANEL)
@@ -537,6 +535,14 @@ static long exynos_panel_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *a
 	case EXYNOS_PANEL_IOC_SET_ERROR_CB:
 		ret = call_panel_ops(panel, set_error_cb, panel, arg);
 		break;
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	case EXYNOS_PANEL_IOC_GET_DISPLAY_MODE:
+		ret = call_panel_ops(panel, get_display_mode, panel, arg);
+		break;
+	case EXYNOS_PANEL_IOC_SET_DISPLAY_MODE:
+		ret = call_panel_ops(panel, set_display_mode, panel, arg);
+		break;
+#endif
 #endif
 	default:
 		DPU_ERR_PANEL("not supported ioctl (0x%x) by panel driver\n", cmd);

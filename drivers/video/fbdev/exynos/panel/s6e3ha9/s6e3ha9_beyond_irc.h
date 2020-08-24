@@ -26,7 +26,6 @@
 static u8 irc_buffer[S6E3HA9_IRC_TOTAL_LEN];
 static u8 irc_ref_tbl[S6E3HA9_IRC_TOTAL_LEN];
 
-
 static struct panel_irc_info s6e3ha9_beyond_irc = {
 	.irc_version = IRC_INTERPOLATION_V2,
 	.fixed_offset = S6E3HA9_IRC_FIXED_OFS,

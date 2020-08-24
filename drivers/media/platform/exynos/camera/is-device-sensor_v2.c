@@ -652,7 +652,7 @@ int is_sensor_gpio_on(struct is_device_sensor *device)
 		struct exynos_platform_is_module *pdata;
 
 		ret = is_vender_sensor_gpio_on_sel(vender,
-			scenario, &gpio_scenario);
+			scenario, &gpio_scenario, module);
 		if (ret) {
 			clear_bit(IS_MODULE_GPIO_ON, &module->state);
 			merr("is_vender_sensor_gpio_on_sel is fail(%d)",
@@ -759,7 +759,7 @@ int is_sensor_gpio_off(struct is_device_sensor *device)
 			goto p_err;
 		}
 
-		ret = is_vender_sensor_gpio_off(vender, scenario, gpio_scenario);
+		ret = is_vender_sensor_gpio_off(vender, scenario, gpio_scenario, module);
 		if (ret) {
 			merr("is_vender_sensor_gpio_off is fail(%d)", device, ret);
 			goto p_err;
@@ -1155,6 +1155,15 @@ int is_sensor_dm_tag(struct is_device_sensor *device,
 		frame->shot->dm.request.frameCount = frame->fcount;
 		frame->shot->dm.sensor.timeStamp = device->timestamp[hashkey];
 		frame->shot->udm.sensor.timeStampBoot = device->timestampboot[hashkey];
+
+		if (device->timestampboot[hashkey] < device->prev_timestampboot)
+			minfo("[SS%d][F%d] Reverse timestampboot(p[%llu], c[%llu])\n",
+				device, device->device_id,
+				frame->fcount,
+				device->prev_timestampboot,
+				device->timestampboot[hashkey]);
+
+		device->prev_timestampboot = device->timestampboot[hashkey];
 		/*
 		 * frame_id is extraced form embedded data of sensor.
 		 * So, embedded data should be extraced before frame end.
@@ -1852,6 +1861,7 @@ int is_sensor_open(struct is_device_sensor *device,
 	FIMC_BUG(!vctx);
 	FIMC_BUG(!GET_VIDEO(vctx));
 
+	mutex_lock(&device->mlock_state);
 	if (test_bit(IS_SENSOR_OPEN, &device->state)) {
 		merr("already open", device);
 		ret = -EMFILE;
@@ -1932,6 +1942,7 @@ int is_sensor_open(struct is_device_sensor *device,
 	device->dtp_check = true;
 #endif
 	set_bit(IS_SENSOR_OPEN, &device->state);
+	mutex_unlock(&device->mlock_state);
 
 	minfo("[SS%d:D] %s():%d\n", device, device->device_id, __func__, ret);
 	return 0;
@@ -1947,6 +1958,7 @@ err_devicemgr_open:
 err_csi_open:
 err_camif_open:
 err_open_state:
+	mutex_unlock(&device->mlock_state);
 	merr("[SS%d:D] ret(%d)\n", device, device->device_id, ret);
 	return ret;
 
@@ -2539,6 +2551,7 @@ int is_sensor_s_input(struct is_device_sensor *device,
 		sensor_peri->laser_af = device->laser_af;
 		sensor_peri->laser_af->sensor_peri = sensor_peri;
 		sensor_peri->laser_af->laser_lock = &core->laser_lock;
+		sensor_peri->laser_af->active = false;
 
 		info("%s[%d] laser_af position = %d\n",
 				__func__, __LINE__, core->current_position);
@@ -3967,7 +3980,6 @@ const struct is_queue_ops is_sensor_ops = {
 
 static int is_sensor_suspend(struct device *dev)
 {
-#ifdef CONFIG_SOC_EXYNOS9820
 	struct platform_device *pdev = to_platform_device(dev);
 	struct is_device_sensor *device;
 	struct exynos_platform_is_sensor *pdata;
@@ -3978,7 +3990,6 @@ static int is_sensor_suspend(struct device *dev)
 		pdata = device->pdata;
 		pdata->mclk_force_off(dev, 0);
 	}
-#endif
 
 	info("%s\n", __func__);
 

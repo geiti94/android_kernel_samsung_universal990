@@ -382,6 +382,13 @@ static int sc_ext_get_dmabuf(struct sc_ext_dev *xdev,
 	struct sc_ext_dma *dma = buf->dma;
 	int i, ret;
 
+	if (taskbuf->count > MSCL_MAX_PLANES) {
+		dev_err(xdev->dev,
+			"taskbuf->count(%d) is larger than MAX(%d)\n",
+			taskbuf->count, MSCL_MAX_PLANES);
+		return -EINVAL;
+	}
+
 	buf->count = taskbuf->count;
 
 	for (i = 0; i < buf->count; i++) {

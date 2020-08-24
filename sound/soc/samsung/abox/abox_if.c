@@ -27,6 +27,35 @@
 /* Predefined rate of MUX_CLK_AUD_UAIF for slave mode */
 #define RATE_MUX_SLAVE 100000000
 
+enum abox_if_quirk {
+	ABOX_IF_QUIRK_DELAYED_STOP,
+	ABOX_IF_QUIRK_COUNT,
+};
+
+static const char * const abox_if_quirk_str[ABOX_IF_QUIRK_COUNT] = {
+	"delayed stop",
+};
+
+static unsigned long abox_if_probe_quirks(struct device_node *np)
+{
+	int i, res;
+	unsigned long ret = 0;
+
+	for (i = 0; i < ABOX_IF_QUIRK_COUNT; i++) {
+		res = of_property_match_string(np, "samsung,quirks",
+				abox_if_quirk_str[i]);
+		if (res >= 0)
+			ret |= BIT(i);
+	}
+
+	return ret;
+}
+
+static bool abox_if_test_quirk(unsigned long quirks, enum abox_if_quirk quirk)
+{
+	return !!(quirks & BIT(quirk));
+}
+
 static int abox_if_disable_qchannel(struct abox_if_data *data, int disable)
 {
 	struct device *dev = data->cmpnt->dev;
@@ -108,6 +137,15 @@ static int abox_if_hw_free(struct snd_pcm_substream *substream,
 			'C' : 'P');
 
 	abox_register_bclk_usage(dev, abox_data, dai->id, 0, 0, 0);
+
+	if (abox_if_test_quirk(data->quirks, ABOX_IF_QUIRK_DELAYED_STOP)) {
+		unsigned long time;
+
+		/* time of 1 frame in us */
+		time = DIV_ROUND_UP(USEC_PER_SEC, data->config[ABOX_IF_RATE]);
+		udelay(time);
+		dev_info(dev, "delayed stop: %dus\n", time);
+	}
 
 	return 0;
 }
@@ -591,6 +629,9 @@ static int abox_if_config_put(struct snd_kcontrol *kcontrol,
 
 	dev_info(dev, "%s(0x%08x, %u)\n", __func__, reg, val);
 
+	if (val < mc->min || val > mc->max)
+		return -EINVAL;
+
 	data->config[reg] = val;
 
 	return 0;
@@ -919,6 +960,8 @@ static int samsung_abox_if_probe(struct platform_device *pdev)
 	data->clk_bclk_gate = devm_clk_get_and_prepare(pdev, "bclk_gate");
 	if (IS_ERR(data->clk_bclk_gate))
 		return PTR_ERR(data->clk_bclk_gate);
+
+	data->quirks = abox_if_probe_quirks(np);
 
 	data->of_data = of_device_get_match_data(dev);
 	data->abox_data = dev_get_drvdata(dev_abox);

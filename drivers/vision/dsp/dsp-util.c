@@ -256,11 +256,11 @@ int dsp_util_bitmap_init(struct dsp_util_bitmap *map, const char *name,
 		goto p_err;
 	}
 
-	map->bitmap = kzalloc(BITS_TO_LONGS(size), GFP_KERNEL);
+	map->bitmap = kzalloc(BITS_TO_LONGS(size) * sizeof(long), GFP_KERNEL);
 	if (!map->bitmap) {
 		ret = -ENOMEM;
 		dsp_err("Failed to init bitmap(%u/%lu)\n",
-				size, BITS_TO_LONGS(size));
+				size, BITS_TO_LONGS(size) * sizeof(long));
 		goto p_err;
 	}
 

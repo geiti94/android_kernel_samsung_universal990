@@ -29,6 +29,7 @@
 #include <linux/ktime.h>
 #include <linux/rtc.h>
 #include <linux/of.h>
+#include <linux/usb/ch9.h>
 
 #include <linux/usb/typec/common/pdic_core.h>
 #include <linux/usb/typec/common/pdic_notifier.h>
@@ -39,9 +40,6 @@
 #include <linux/sti/abc_common.h>
 #endif
 
-/* dwc3 irq storm patch */
-/* need to check dwc3 link state during dcd time out case */
-extern int dwc3_gadget_get_cmply_link_state_wrapper(void);
 #define DEBUG
 #define SET_MANAGER_NOTIFIER_BLOCK(nb, fn, dev) do {	\
 		(nb)->notifier_call = (fn);		\
@@ -66,7 +64,6 @@ extern unsigned int lpcharge;
 
 struct device *manager_device;
 manager_data_t typec_manager;
-void set_usb_enumeration_state(int state);
 static void manager_cable_type_check(bool state, int time);
 #if defined(CONFIG_USB_HW_PARAM)
 void calc_duration_time(unsigned long sTime, unsigned long eTime, unsigned long *dTime);
@@ -116,7 +113,7 @@ static int manager_notifier_notify(void *data)
 			if (typec_manager.usb_enable_state) {
 				if (typec_manager.cable_type == MANAGER_NOTIFY_MUIC_TIMEOUT_OPEN_DEVICE)
 					manager_cable_type_check(true, 10);
-				manager_cable_type_check(true, 60);
+				manager_cable_type_check(true, 1200);
 			}
 			break;
 		case USB_STATUS_NOTIFY_ATTACH_DFP:
@@ -148,7 +145,8 @@ static int manager_notifier_notify(void *data)
 	}
 
 #ifdef CONFIG_USB_NOTIFY_PROC_LOG
-	store_usblog_notify(NOTIFY_MANAGER, (void*)data , NULL);
+	if (manager_noti.id != CCIC_NOTIFY_ID_POWER_STATUS)
+		store_usblog_notify(NOTIFY_MANAGER, (void*)data , NULL);
 #endif
 
 	ret = blocking_notifier_call_chain(&(typec_manager.manager_notifier),
@@ -258,9 +256,9 @@ void set_usb_enumeration_state(int state)
 		typec_manager.usb_enum_state = state;
 
 #if defined(CONFIG_USB_HW_PARAM)
-		if(typec_manager.usb_enum_state >= 0x300)
+		if(typec_manager.usb_enum_state >= USB_SPEED_SUPER)
 			typec_manager.usb_superspeed_count++;
-		else if(typec_manager.usb_enum_state >= 0x200)
+		else if(typec_manager.usb_enum_state >= USB_SPEED_HIGH)
 			typec_manager.usb_highspeed_count++;
 #endif
 	}
@@ -308,7 +306,7 @@ unsigned long get_wvbus_duration(void)
 	return ret;
 }
 
-unsigned long manager_hw_param_update(int param)
+static unsigned long manager_hw_param_update(int param)
 {
 	unsigned long ret = 0;
 
@@ -548,11 +546,19 @@ static int manager_external_notifier_notification(struct notifier_block *nb,
 	return ret;
 }
 
+void probe_typec_manager_gadget_ops (struct typec_manager_gadget_ops *ops)
+{
+	typec_manager.gadget_ops = ops;
+}
+EXPORT_SYMBOL(probe_typec_manager_gadget_ops);
+
 static void manager_cable_type_check_work(struct work_struct *work)
 {
 	int dwc3_link_check = 0;
 
-	dwc3_link_check= dwc3_gadget_get_cmply_link_state_wrapper();
+	if(typec_manager.gadget_ops && typec_manager.gadget_ops->gadget_get_cmply_link_state)
+		dwc3_link_check = typec_manager.gadget_ops->gadget_get_cmply_link_state();
+
 
 	if ((typec_manager.ccic_drp_state != USB_STATUS_NOTIFY_ATTACH_UFP) ||
 		typec_manager.is_MPSM || dwc3_link_check == 1 ) {
@@ -999,6 +1005,9 @@ int manager_notifier_register(struct notifier_block *nb, notifier_fn_t notifier,
 {
 	int ret = 0;
 	MANAGER_NOTI_TYPEDEF m_noti = {0, };
+#if defined(CONFIG_USB_HW_PARAM)
+	struct otg_notify *o_notify = get_otg_notify();
+#endif
 
 	pr_info("%s: listener=%d register\n", __func__, listener);
 	if(!manager_notifier_init_done)
@@ -1089,6 +1098,10 @@ int manager_notifier_register(struct notifier_block *nb, notifier_fn_t notifier,
 		pr_info("%s: [USB] drp:%s \n", __func__,	CCIC_NOTI_USB_STATUS_Print[m_noti.sub2]);
 		nb->notifier_call(nb, m_noti.id, &(m_noti));
 		manager_set_alternate_mode(listener);
+#if defined(CONFIG_USB_HW_PARAM)
+		if (o_notify)
+			register_hw_param_manager(o_notify, manager_hw_param_update);
+#endif
 		break;
 	case MANAGER_NOTIFY_CCIC_DP:
 		m_noti.src = CCIC_NOTIFY_DEV_MANAGER;

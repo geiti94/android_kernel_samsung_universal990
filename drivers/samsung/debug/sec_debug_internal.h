@@ -59,6 +59,7 @@ struct sec_debug_ksyms {
 	uint64_t relative_base;
 	uint64_t offsets_pa;
 	uint64_t kimage_voffset;
+	uint64_t reserved[4];
 };
 
 /* kcnst has some kernel constant (offset) data for bootloader */
@@ -97,6 +98,7 @@ struct sec_debug_kcnst {
 
 	uint64_t pa_text;
 	uint64_t pa_start_rodata;
+	uint64_t reserved[4];
 };
 
 struct member_type {
@@ -267,6 +269,12 @@ struct sec_debug_map {
 		(PTR)->offset = offsetof(TYPE, MEMBER); \
 	}
 
+struct sec_debug_memtab {
+	uint64_t table_start_pa;
+	uint64_t table_end_pa;
+	uint64_t reserved[4];
+};
+
 #define THREAD_START_SP		(THREAD_SIZE - 16)
 #define IRQ_STACK_START_SP	THREAD_START_SP
 
@@ -340,7 +348,7 @@ struct sec_debug_auto_comment {
 /* increase if sec_debug_next is not changed and other feature is upgraded */
 #define SEC_DEBUG_KERNEL_UPPER_VERSION		(0x0001)
 /* increase if sec_debug_next is changed */
-#define SEC_DEBUG_KERNEL_LOWER_VERSION		(0x0001)
+#define SEC_DEBUG_KERNEL_LOWER_VERSION		(0x0002)
 
 /* SEC DEBUG NEXT DEFINITION */
 struct sec_debug_next {
@@ -348,6 +356,7 @@ struct sec_debug_next {
 	unsigned int version[2];
 
 	struct sec_debug_map map;
+	struct sec_debug_memtab memtab;
 	struct sec_debug_ksyms ksyms;
 	struct sec_debug_kcnst kcnst;
 	struct sec_debug_task task;
@@ -391,8 +400,12 @@ extern void secdbg_exin_get_extra_info_B(char *ptr);
 extern void secdbg_exin_get_extra_info_C(char *ptr);
 extern void secdbg_exin_get_extra_info_M(char *ptr);
 extern void secdbg_exin_get_extra_info_F(char *ptr);
+extern void secdbg_exin_get_extra_info_T(char *ptr);
 
 /* sec_debug_ksym.c */
 extern void secdbg_base_set_kallsyms_info(struct sec_debug_ksyms *ksyms, int magic);
+
+/* sec_debug_memtab.c */
+extern void secdbg_base_set_memtab_info(struct sec_debug_memtab *ksyms);
 
 #endif /* __SEC_DEBUG_INTERNAL_H__ */

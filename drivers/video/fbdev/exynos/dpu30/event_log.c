@@ -62,6 +62,8 @@ static inline void dpu_event_log_decon
 	case DPU_EVT_DECON_RESUME:
 	case DPU_EVT_ENTER_HIBER:
 	case DPU_EVT_EXIT_HIBER:
+	case DPU_EVT_DOZE:
+	case DPU_EVT_DOZE_SUSPEND:
 		log->data.pm.pm_status = pm_runtime_active(decon->dev);
 		log->data.pm.elapsed = ktime_sub(ktime_get(), log->time);
 		break;
@@ -275,6 +277,8 @@ void DPU_EVENT_LOG(dpu_event_t type, struct v4l2_subdev *sd, ktime_t time)
 	case DPU_EVT_ACQUIRE_RSC:
 	case DPU_EVT_RELEASE_RSC:
 	case DPU_EVT_STORE_RSC:
+	case DPU_EVT_DOZE:
+	case DPU_EVT_DOZE_SUSPEND:
 		dpu_event_log_decon(type, sd, time);
 		break;
 	case DPU_EVT_DSIM_FRAMEDONE:
@@ -466,7 +470,7 @@ void DPU_EVENT_LOG_APPLY_REGION(struct v4l2_subdev *sd,
 }
 
 void DPU_EVENT_LOG_MEMMAP(dpu_event_t type, struct v4l2_subdev *sd,
-		dma_addr_t dma_addr, int dpp_ch)
+		dma_addr_t dma_addr, int dpp_ch, struct sg_table *sg_table)
 {
 	struct decon_device *decon = container_of(sd, struct decon_device, sd);
 	int idx = 0;
@@ -486,6 +490,7 @@ void DPU_EVENT_LOG_MEMMAP(dpu_event_t type, struct v4l2_subdev *sd,
 
 	log->data.memmap.dma_addr = dma_addr;
 	log->data.memmap.dpp_ch = dpp_ch;
+	log->data.memmap.sg_table = sg_table;
 
 	dpp_sd = decon->dpp_sd[dpp_ch];
 	v4l2_subdev_call(dpp_sd, core, ioctl, DPP_GET_SHD_ADDR, &shd_addr);
@@ -730,6 +735,12 @@ void DPU_EVENT_SHOW(struct seq_file *s, struct decon_device *decon)
 		case DPU_EVT_DECON_RESUME:
 			seq_printf(s, "%20s  %20s", "DECON_RESUME", "-\n");
 			break;
+		case DPU_EVT_DOZE:
+			seq_printf(s, "%20s  %20s", "DPU_EVT_DOZE", "-\n");
+			break;
+		case DPU_EVT_DOZE_SUSPEND:
+			seq_printf(s, "%20s  %20s", "DPU_EVT_DOZE_SUSPEND", "-\n");
+			break;
 		case DPU_EVT_ENTER_HIBER:
 			seq_printf(s, "%20s  ", "ENTER_HIBER");
 			tv = ktime_to_timeval(log->data.pm.elapsed);
@@ -862,7 +873,7 @@ static ssize_t decon_debug_bts_write(struct file *file, const char __user *buf,
 	char *buf_data;
 	int ret;
 
-	if (count <= 0)
+	if (!count)
 		return count;
 
 	buf_data = kmalloc(count, GFP_KERNEL);
@@ -908,6 +919,9 @@ static ssize_t decon_debug_win_write(struct file *file, const char __user *buf,
 	char *buf_data;
 	int ret;
 
+	if (!count)
+		return count;
+
 	buf_data = kmalloc(count, GFP_KERNEL);
 	if (buf_data == NULL)
 		return count;
@@ -951,6 +965,9 @@ static ssize_t decon_debug_mres_write(struct file *file, const char __user *buf,
 	char *buf_data;
 	int ret;
 
+	if (!count)
+		return count;
+
 	buf_data = kmalloc(count, GFP_KERNEL);
 	if (buf_data == NULL)
 		return count;
@@ -992,6 +1009,9 @@ static ssize_t decon_systrace_write(struct file *file, const char __user *buf,
 {
 	char *buf_data;
 	int ret;
+
+	if (!count)
+		return count;
 
 	buf_data = kmalloc(count, GFP_KERNEL);
 	if (buf_data == NULL)
@@ -1038,6 +1058,9 @@ static ssize_t decon_debug_cmd_write(struct file *file, const char __user *buf,
 	struct dsim_device *dsim;
 	u32 id, d1;
 	unsigned long d0;
+
+	if (!count)
+		return count;
 
 	buf_data = kmalloc(count, GFP_KERNEL);
 	if (buf_data == NULL)
@@ -1147,6 +1170,9 @@ static ssize_t decon_debug_cmd_lp_ref_write(struct file *file, const char __user
 	struct dsim_device *dsim;
 	u32 idx;
 
+	if (!count)
+		return count;
+
 	buf_data = kmalloc(count, GFP_KERNEL);
 	if (buf_data == NULL)
 		return count;
@@ -1227,6 +1253,9 @@ static ssize_t decon_debug_low_persistence_write(struct file *file, const char _
 	int ret;
 	unsigned int low_persistence;
 
+	if (!count)
+		return count;
+
 	buf_data = kmalloc(count, GFP_KERNEL);
 	if (buf_data == NULL)
 		return count;
@@ -1273,6 +1302,9 @@ static ssize_t decon_debug_fence_write(struct file *file, const char __user *buf
 	char *buf_data;
 	int ret;
 
+	if (!count)
+		return count;
+
 	buf_data = kmalloc(count, GFP_KERNEL);
 	if (buf_data == NULL)
 		return count;
@@ -1315,6 +1347,9 @@ static ssize_t decon_debug_dma_buf_write(struct file *file, const char __user *b
 {
 	char *buf_data;
 	int ret;
+
+	if (!count)
+		return count;
 
 	buf_data = kmalloc(count, GFP_KERNEL);
 	if (buf_data == NULL)
@@ -1474,6 +1509,9 @@ static ssize_t decon_profile_hiber_write(struct file *file, const char __user *b
 		goto out_cnt;
 	}
 
+	if (!count)
+		return count;
+
 	buf_data = kmalloc(count, GFP_KERNEL);
 	if (buf_data == NULL)
 		goto out_cnt;
@@ -1526,6 +1564,9 @@ static ssize_t decon_hiber_cnt_write(struct file *file, const char __user *buf,
 	char *buf_data;
 	int ret;
 
+	if (!count)
+		return count;
+
 	buf_data = kmalloc(count, GFP_KERNEL);
 	if (buf_data == NULL)
 		return count;
@@ -1575,6 +1616,9 @@ static ssize_t decon_debug_freq_hop_write(struct file *file, const char __user *
 	int ret;
 
 	if (!decon->freq_hop.enabled)
+		return count;
+
+	if (!count)
 		return count;
 
 	buf_data = kmalloc(count, GFP_KERNEL);

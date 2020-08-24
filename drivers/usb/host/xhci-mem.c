@@ -41,6 +41,226 @@ static void *dma_pre_alloc_coherent(struct xhci_hcd *xhci, size_t size,
 	return (void *)xhci_alloc->pre_dma_alloc + b_offset;
 }
 
+/* URAM Allocation Functions */
+static void xhci_segment_free(struct xhci_hcd *xhci, struct xhci_segment *seg);
+static void xhci_link_segments(struct xhci_hcd *xhci, struct xhci_segment *prev,
+		struct xhci_segment *next, enum xhci_ring_type type);
+static void xhci_initialize_ring_info(struct xhci_ring *ring,
+					unsigned int cycle_state);
+
+#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
+static struct xhci_segment *xhci_segment_alloc_uram(struct xhci_hcd *xhci,
+					       unsigned int cycle_state,
+					       unsigned int max_packet,
+					       gfp_t flags)
+{
+	struct xhci_segment *seg;
+	dma_addr_t	dma;
+	int		i;
+	struct device *dev = xhci_to_hcd(xhci)->self.sysdev;
+
+	seg = kzalloc_node(sizeof(*seg), flags, dev_to_node(dev));
+	if (!seg)
+		return NULL;
+
+	seg->trbs = ioremap(EXYNOS_URAM_ABOX_EVT_RING_ADDR, TRB_SEGMENT_SIZE);
+	if (!seg->trbs)
+		return NULL;
+
+	dma = EXYNOS_URAM_ABOX_EVT_RING_ADDR;
+
+	if (max_packet) {
+		seg->bounce_buf = kzalloc_node(max_packet, flags,
+					dev_to_node(dev));
+		if (!seg->bounce_buf) {
+			dma_pool_free(xhci->segment_pool, seg->trbs, dma);
+			kfree(seg);
+			return NULL;
+		}
+	}
+	/* If the cycle state is 0, set the cycle bit to 1 for all the TRBs */
+	if (cycle_state == 0) {
+		for (i = 0; i < TRBS_PER_SEGMENT; i++)
+			seg->trbs[i].link.control |= cpu_to_le32(TRB_CYCLE);
+	}
+	seg->dma = dma;
+	xhci_info(xhci, "ABOX Event Ring is allocated at 0x%x",
+					EXYNOS_URAM_ABOX_EVT_RING_ADDR);
+	seg->next = NULL;
+
+	return seg;
+}
+
+static struct xhci_segment *xhci_segment_alloc_uram_ep(struct xhci_hcd *xhci,
+					       unsigned int cycle_state,
+					       unsigned int max_packet,
+					       gfp_t flags, int seg_num,
+					       u32 endpoint_type)
+{
+	struct xhci_segment *seg;
+	dma_addr_t	dma;
+	int		i;
+	struct device *dev = xhci_to_hcd(xhci)->self.sysdev;
+
+	seg = kzalloc_node(sizeof(*seg), flags, dev_to_node(dev));
+	if (!seg)
+		return NULL;
+
+	if (seg_num != 0) {
+		/* Support just one segment */
+		xhci_err(xhci, "%s : Unexpected SEG NUMBER!\n", __func__);
+		return NULL;
+	}
+
+	if (endpoint_type == ISOC_OUT_EP) {
+		seg->trbs = ioremap(EXYNOS_URAM_ISOC_OUT_RING_ADDR,
+							TRB_SEGMENT_SIZE);
+		if (!seg->trbs)
+			return NULL;
+
+		dma = EXYNOS_URAM_ISOC_OUT_RING_ADDR;
+		xhci_info(xhci, "First ISOC-OUT Ring is allocated at 0x%llx", dma);
+	} else if (endpoint_type == ISOC_IN_EP) {
+		seg->trbs = ioremap(EXYNOS_URAM_ISOC_IN_RING_ADDR,
+							TRB_SEGMENT_SIZE);
+		if (!seg->trbs)
+			return NULL;
+
+		dma = EXYNOS_URAM_ISOC_IN_RING_ADDR;
+		xhci_info(xhci, "First ISOC-IN Ring is allocated at 0x%llx", dma);
+	} else {
+		xhci_err(xhci, "%s : Unexpected EP Type!\n", __func__);
+		return NULL;
+	}
+
+	for (i = 0; i < 256; i++) {
+		seg->trbs[i].link.segment_ptr = 0;
+		seg->trbs[i].link.intr_target = 0;
+		seg->trbs[i].link.control = 0;
+	}
+
+
+	if (max_packet) {
+		seg->bounce_buf = kzalloc_node(max_packet, flags,
+					dev_to_node(dev));
+		if (!seg->bounce_buf) {
+			dma_pool_free(xhci->segment_pool, seg->trbs, dma);
+			kfree(seg);
+			return NULL;
+		}
+	}
+	/* If the cycle state is 0, set the cycle bit to 1 for all the TRBs */
+	if (cycle_state == 0) {
+		for (i = 0; i < TRBS_PER_SEGMENT; i++)
+			seg->trbs[i].link.control |= cpu_to_le32(TRB_CYCLE);
+	}
+	seg->dma = dma;
+	seg->next = NULL;
+
+	return seg;
+}
+
+static int xhci_alloc_segments_for_ring_uram(struct xhci_hcd *xhci,
+		struct xhci_segment **first, struct xhci_segment **last,
+		unsigned int num_segs, unsigned int cycle_state,
+		enum xhci_ring_type type, unsigned int max_packet, gfp_t flags,
+		u32 endpoint_type)
+{
+	struct xhci_segment *prev;
+
+	if (type == TYPE_ISOC) {
+		prev = xhci_segment_alloc_uram_ep(xhci, cycle_state,
+							max_packet, flags, 0,
+							endpoint_type);
+	} else if (type == TYPE_EVENT) {
+		prev = xhci_segment_alloc_uram(xhci, cycle_state, max_packet, flags);
+	} else {
+		xhci_err(xhci, "Unexpected TYPE for URAM allocation!\n");
+		return -ENOMEM;
+	}
+
+	if (!prev)
+		return -ENOMEM;
+	num_segs--;
+
+	*first = prev;
+	while (num_segs > 0) {
+		struct xhci_segment	*next;
+
+		if (type == TYPE_ISOC) {
+			prev = xhci_segment_alloc_uram_ep(xhci, cycle_state,
+							max_packet, flags, 1,
+							endpoint_type);
+		} else if (type == TYPE_EVENT) {
+			next = xhci_segment_alloc_uram(xhci, cycle_state,
+							max_packet, flags);
+		} else {
+			xhci_err(xhci, "Unexpected TYPE for URAM alloc(multi)!\n");
+			return -ENOMEM;
+		}
+
+		if (!next) {
+			prev = *first;
+			while (prev) {
+				next = prev->next;
+				xhci_segment_free(xhci, prev);
+				prev = next;
+			}
+			return -ENOMEM;
+		}
+		xhci_link_segments(xhci, prev, next, type);
+
+		prev = next;
+		num_segs--;
+	}
+	xhci_link_segments(xhci, prev, *first, type);
+	*last = prev;
+
+	return 0;
+}
+
+struct xhci_ring *xhci_ring_alloc_uram(struct xhci_hcd *xhci,
+		unsigned int num_segs, unsigned int cycle_state,
+		enum xhci_ring_type type, unsigned int max_packet, gfp_t flags,
+		u32 endpoint_type)
+{
+	struct xhci_ring	*ring;
+	int ret;
+	struct device *dev = xhci_to_hcd(xhci)->self.sysdev;
+
+	ring = kzalloc_node(sizeof(*ring), flags, dev_to_node(dev));
+	if (!ring)
+		return NULL;
+
+	ring->num_segs = num_segs;
+	ring->bounce_buf_len = max_packet;
+	INIT_LIST_HEAD(&ring->td_list);
+	ring->type = type;
+	if (num_segs == 0)
+		return ring;
+
+	ret = xhci_alloc_segments_for_ring_uram(xhci, &ring->first_seg,
+			&ring->last_seg, num_segs, cycle_state, type,
+			max_packet, flags, endpoint_type);
+	if (ret)
+		goto fail;
+
+	/* Only event ring does not use link TRB */
+	if (type != TYPE_EVENT) {
+		/* See section 4.9.2.1 and 6.4.4.1 */
+		ring->last_seg->trbs[TRBS_PER_SEGMENT - 1].link.control |=
+			cpu_to_le32(LINK_TOGGLE);
+	}
+	xhci_initialize_ring_info(ring, cycle_state);
+	trace_xhci_ring_alloc(ring);
+	return ring;
+
+fail:
+	kfree(ring);
+	return NULL;
+}
+#endif
+
 /*
  * Allocates a generic ring segment from the ring pool, sets the dma address,
  * initializes the segment to zero, and sets the private next pointer to NULL.
@@ -97,7 +317,33 @@ static struct xhci_segment *xhci_segment_alloc(struct xhci_hcd *xhci,
 static void xhci_segment_free(struct xhci_hcd *xhci, struct xhci_segment *seg)
 {
 	if (seg->trbs) {
+#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
+		/* Check URAM address for memory free */
+		if (seg->dma == EXYNOS_URAM_ABOX_EVT_RING_ADDR) {
+			iounmap(seg->trbs);
+		} else if (seg->dma == EXYNOS_URAM_ISOC_OUT_RING_ADDR) {
+			xhci->exynos_uram_isoc_out_alloc = 0;
+			if (in_interrupt()) {
+				dump_stack();
+				xhci_err(xhci, "iounmap in unexpected context!\n");
+				/* It will be free at xhci_mem_cleanup. */
+				xhci->usb_audio_isoc_out_addr = (u8 *)seg->trbs;
+			} else
+				iounmap(seg->trbs);
+		} else if (seg->dma == EXYNOS_URAM_ISOC_IN_RING_ADDR) {
+			xhci->exynos_uram_isoc_in_alloc = 0;
+			if (in_interrupt()) {
+				dump_stack();
+				xhci_err(xhci, "iounmap in unexpected context!\n");
+				/* It will be free at xhci_mem_cleanup. */
+				xhci->usb_audio_isoc_in_addr = (u8 *)seg->trbs;
+			} else
+				iounmap(seg->trbs);
+		} else
+			dma_pool_free(xhci->segment_pool, seg->trbs, seg->dma);
+#else
 		dma_pool_free(xhci->segment_pool, seg->trbs, seg->dma);
+#endif
 		seg->trbs = NULL;
 	}
 	kfree(seg->bounce_buf);
@@ -510,11 +756,40 @@ struct xhci_container_ctx *xhci_alloc_container_ctx(struct xhci_hcd *xhci,
 #ifdef CONFIG_USB_XHCI_ALLOC_FROM_DMA_POOL
 	flags &= ~(__GFP_DIRECT_RECLAIM);
 #endif
+#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
+	if (type != XHCI_CTX_TYPE_INPUT && xhci->exynos_uram_ctx_alloc == 0 &&
+			xhci->quirks & XHCI_USE_URAM_FOR_EXYNOS_AUDIO) {
+		/* Only first Device Context uses URAM */
+		int i;
+		ctx->bytes = ioremap(EXYNOS_URAM_DEVICE_CTX_ADDR, 2112);
+		if (!ctx->bytes) {
+			kfree(ctx);
+			return NULL;
+		}
+
+		for (i = 0; i < 2112; i++)
+			ctx->bytes[i] = 0;
+
+		ctx->dma = EXYNOS_URAM_DEVICE_CTX_ADDR;
+		xhci->usb_audio_ctx_addr = ctx->bytes;
+		xhci->exynos_uram_ctx_alloc = 1;
+		xhci_info(xhci, "First device context allocated at URAM(%x)",
+					EXYNOS_URAM_DEVICE_CTX_ADDR);
+	} else {
+		ctx->bytes = dma_pool_zalloc(xhci->device_pool, flags, &ctx->dma);
+		if (!ctx->bytes) {
+			kfree(ctx);
+			return NULL;
+		}
+	}
+#else
 	ctx->bytes = dma_pool_zalloc(xhci->device_pool, flags, &ctx->dma);
 	if (!ctx->bytes) {
 		kfree(ctx);
 		return NULL;
 	}
+#endif
+
 	return ctx;
 }
 
@@ -523,7 +798,15 @@ void xhci_free_container_ctx(struct xhci_hcd *xhci,
 {
 	if (!ctx)
 		return;
+
+#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
+	/* Ignore dma_pool_free if it is allocated from URAM */
+	if (ctx->dma != EXYNOS_URAM_DEVICE_CTX_ADDR)
+		dma_pool_free(xhci->device_pool, ctx->bytes, ctx->dma);
+#else
 	dma_pool_free(xhci->device_pool, ctx->bytes, ctx->dma);
+#endif
+
 	kfree(ctx);
 }
 
@@ -1537,10 +1820,52 @@ int xhci_endpoint_init(struct xhci_hcd *xhci,
 		mult = 0;
 
 	/* Set up the endpoint ring */
+#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
+	if (xhci->quirks & XHCI_USE_URAM_FOR_EXYNOS_AUDIO) {
+		/* If URAM is not allocated, it try to allocate from URAM */
+		if (xhci->exynos_uram_isoc_out_alloc == 0 &&
+						endpoint_type == ISOC_OUT_EP) {
+			xhci_info(xhci, "First ISOC OUT ring is allocated from URAM.\n");
+			virt_dev->eps[ep_index].new_ring =
+				xhci_ring_alloc_uram(xhci, 1, 1, ring_type,
+							max_packet, mem_flags,
+							endpoint_type);
+			if (!virt_dev->eps[ep_index].new_ring)
+				return -ENOMEM;
+
+			xhci->exynos_uram_isoc_out_alloc = 1;
+		} else if (xhci->exynos_uram_isoc_in_alloc == 0 &&
+					endpoint_type == ISOC_IN_EP &&
+					EXYNOS_URAM_ISOC_IN_RING_ADDR != 0x0) {
+			xhci_info(xhci, "First ISOC IN ring is allocated from URAM.\n");
+			virt_dev->eps[ep_index].new_ring =
+				xhci_ring_alloc_uram(xhci, 1, 1, ring_type,
+							max_packet, mem_flags,
+							endpoint_type);
+			if (!virt_dev->eps[ep_index].new_ring)
+				return -ENOMEM;
+
+			xhci->exynos_uram_isoc_in_alloc = 1;
+		} else {
+			virt_dev->eps[ep_index].new_ring =
+				xhci_ring_alloc(xhci, 2, 1, ring_type,
+							max_packet, mem_flags);
+			if (!virt_dev->eps[ep_index].new_ring)
+				return -ENOMEM;
+		}
+
+	} else {
+		virt_dev->eps[ep_index].new_ring =
+			xhci_ring_alloc(xhci, 2, 1, ring_type, max_packet, mem_flags);
+		if (!virt_dev->eps[ep_index].new_ring)
+			return -ENOMEM;
+	}
+#else
 	virt_dev->eps[ep_index].new_ring =
 		xhci_ring_alloc(xhci, 2, 1, ring_type, max_packet, mem_flags);
 	if (!virt_dev->eps[ep_index].new_ring)
 		return -ENOMEM;
+#endif
 
 	virt_dev->eps[ep_index].skip = false;
 	ep_ring = virt_dev->eps[ep_index].new_ring;
@@ -1879,7 +2204,11 @@ void xhci_mem_cleanup(struct xhci_hcd *xhci)
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init, "Freed event ring");
 
 #ifdef CONFIG_SND_EXYNOS_USB_AUDIO
-	xhci->erst_audio.entries = NULL;
+	if (xhci->quirks & XHCI_USE_URAM_FOR_EXYNOS_AUDIO)
+		iounmap(xhci->erst_audio.entries);
+	else
+		xhci->erst_audio.entries = NULL;
+
 	xhci_info(xhci, "%s: Freed ERST for Audio offloading", __func__);
 
 	if (xhci->event_ring_audio)
@@ -1928,7 +2257,26 @@ void xhci_mem_cleanup(struct xhci_hcd *xhci)
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init,
 			"Freed medium stream array pool");
 
+#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
+	if (xhci->quirks & XHCI_USE_URAM_FOR_EXYNOS_AUDIO) {
+		iounmap(xhci->dcbaa);
+		if (xhci->usb_audio_ctx_addr != NULL) {
+			iounmap(xhci->usb_audio_ctx_addr);
+			xhci->usb_audio_ctx_addr = NULL;
+		}
+		if (xhci->usb_audio_isoc_out_addr != NULL) {
+			iounmap(xhci->usb_audio_isoc_out_addr);
+			xhci->usb_audio_isoc_out_addr = NULL;
+		}
+		if (xhci->usb_audio_isoc_in_addr != NULL) {
+			iounmap(xhci->usb_audio_isoc_in_addr);
+			xhci->usb_audio_isoc_in_addr = NULL;
+		}
+	} else
+		xhci->dcbaa = NULL;
+#else
 	xhci->dcbaa = NULL;
+#endif
 
 	/* init offset about pre alloc CMA */
 	xhci->xhci_alloc->offset = 0;
@@ -2479,11 +2827,36 @@ int xhci_mem_init(struct xhci_hcd *xhci, gfp_t flags)
 	 * xHCI section 5.4.6 - doorbell array must be
 	 * "physically contiguous and 64-byte (cache line) aligned".
 	 */
-	xhci->dcbaa = dma_pre_alloc_coherent(xhci, sizeof(*xhci->dcbaa), &dma,
-			flags);
+#ifdef CONFIG_SND_EXYNOS_USB_AUDIO
+	if (xhci->quirks & XHCI_USE_URAM_FOR_EXYNOS_AUDIO) {
+		int i;
+
+		xhci_info(xhci, "DCBAA is allocated at 0x%x(URAM)",
+						EXYNOS_URAM_DCBAA_ADDR);
+		/* URAM allocation for DCBAA */
+		xhci->dcbaa = ioremap(EXYNOS_URAM_DCBAA_ADDR,
+						sizeof(*xhci->dcbaa));
+		if (!xhci->dcbaa)
+			goto fail;
+		/* Clear DCBAA */
+		for (i = 0; i < MAX_HC_SLOTS; i++)
+			xhci->dcbaa->dev_context_ptrs[i] = 0x0;
+
+		dma = EXYNOS_URAM_DCBAA_ADDR;
+	} else {
+		xhci->dcbaa = dma_pre_alloc_coherent(xhci, sizeof(*xhci->dcbaa),
+				&dma, flags);
+		if (!xhci->dcbaa)
+			goto fail;
+		memset(xhci->dcbaa, 0, sizeof *(xhci->dcbaa));
+	}
+#else
+	xhci->dcbaa = dma_pre_alloc_coherent(xhci, sizeof(*xhci->dcbaa),
+			&dma, flags);
 	if (!xhci->dcbaa)
 		goto fail;
 	memset(xhci->dcbaa, 0, sizeof *(xhci->dcbaa));
+#endif
 	xhci->dcbaa->dma = dma;
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init,
 			"// Device context base array address = 0x%llx (DMA), %p (virt)",
@@ -2608,24 +2981,44 @@ int xhci_mem_init(struct xhci_hcd *xhci, gfp_t flags)
 	xhci->save_dma = dma;
 	xhci_info(xhci, "// Save address = 0x%llx (DMA), %p (virt)",
 			(unsigned long long)xhci->save_dma, xhci->save_addr);
-	/* for AUDIO erst */
-	xhci->event_ring_audio = xhci_ring_alloc(xhci, ERST_NUM_SEGS, 1, TYPE_EVENT,
-					0, flags);
-	if (!xhci->event_ring_audio)
-		goto fail;
-	if (xhci_check_trb_in_td_math(xhci) < 0)
-		goto fail;
+	if (xhci->quirks & XHCI_USE_URAM_FOR_EXYNOS_AUDIO) {
+		/* for AUDIO erst */
+		xhci->event_ring_audio = xhci_ring_alloc_uram(xhci, ERST_NUM_SEGS,
+				1, TYPE_EVENT, 0, flags, 0);
+		if (!xhci->event_ring_audio)
+			goto fail;
+		if (xhci_check_trb_in_td_math(xhci) < 0)
+			goto fail;
 
-	xhci->erst_audio.entries = dma_pre_alloc_coherent(xhci,
-			sizeof(struct xhci_erst_entry) * ERST_NUM_SEGS, &dma,
-			flags);
-	if (!xhci->erst_audio.entries)
-		goto fail;
+		xhci->erst_audio.entries = ioremap(EXYNOS_URAM_ABOX_ERST_SEG_ADDR,
+				sizeof(struct xhci_erst_entry) * ERST_NUM_SEGS);
+		if (!xhci->erst_audio.entries)
+			goto fail;
+
+		dma = EXYNOS_URAM_ABOX_ERST_SEG_ADDR;
+		xhci_info(xhci, "ABOX audio ERST allocated at 0x%x",
+					EXYNOS_URAM_ABOX_ERST_SEG_ADDR);
+	} else {
+		/* for AUDIO erst */
+		xhci->event_ring_audio = xhci_ring_alloc(xhci, ERST_NUM_SEGS, 1,
+					TYPE_EVENT, 0, flags);
+		if (!xhci->event_ring_audio)
+			goto fail;
+		if (xhci_check_trb_in_td_math(xhci) < 0)
+			goto fail;
+		xhci->erst_audio.entries = dma_pre_alloc_coherent(xhci,
+				sizeof(struct xhci_erst_entry) * ERST_NUM_SEGS, &dma,
+				flags);
+		if (!xhci->erst_audio.entries)
+			goto fail;
+	}
 	xhci_info(xhci,
 			"// Allocated event ring segment table at 0x%llx",
 			(unsigned long long)dma);
 
-	memset(xhci->erst_audio.entries, 0, sizeof(struct xhci_erst_entry)*ERST_NUM_SEGS);
+
+	memset(xhci->erst_audio.entries, 0, sizeof(struct xhci_erst_entry) *
+							ERST_NUM_SEGS);
 	xhci->erst_audio.num_entries = ERST_NUM_SEGS;
 	xhci->erst_audio.erst_dma_addr = dma;
 	xhci_info(xhci,

@@ -1,7 +1,7 @@
 /*
  * Neighbor Awareness Networking
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifdef WL_NAN
@@ -106,41 +106,160 @@ static s32 wl_cfgnan_del_ndi_data(struct bcm_cfg80211 *cfg, char *name);
 static s32 wl_cfgnan_add_ndi_data(struct bcm_cfg80211 *cfg, s32 idx, char *name);
 static void wl_cfgnan_terminate_all_obsolete_ranging_sessions(struct bcm_cfg80211 *cfg);
 
-static const char *nan_role_to_str(u8 role)
+static const char *
+nan_role_to_str(u8 role)
 {
+	const char *id2str;
+
 	switch (role) {
-		C2S(WL_NAN_ROLE_AUTO)
-		C2S(WL_NAN_ROLE_NON_MASTER_NON_SYNC)
-		C2S(WL_NAN_ROLE_NON_MASTER_SYNC)
-		C2S(WL_NAN_ROLE_MASTER)
-		C2S(WL_NAN_ROLE_ANCHOR_MASTER)
+		C2S(WL_NAN_ROLE_AUTO);
+			break;
+		C2S(WL_NAN_ROLE_NON_MASTER_NON_SYNC);
+			break;
+		C2S(WL_NAN_ROLE_NON_MASTER_SYNC);
+			break;
+		C2S(WL_NAN_ROLE_MASTER);
+			break;
+		C2S(WL_NAN_ROLE_ANCHOR_MASTER);
+			break;
 		default:
-			return "WL_NAN_ROLE_UNKNOWN";
+			id2str = "WL_NAN_ROLE_UNKNOWN";
 	}
+
+	return id2str;
 }
 
-static const char *nan_event_to_str(u16 cmd)
+static const char *
+nan_event_to_str(u16 cmd)
 {
+	const char *id2str;
+
 	switch (cmd) {
-	C2S(WL_NAN_EVENT_START)
-	C2S(WL_NAN_EVENT_DISCOVERY_RESULT)
-	C2S(WL_NAN_EVENT_TERMINATED)
-	C2S(WL_NAN_EVENT_RECEIVE)
-	C2S(WL_NAN_EVENT_MERGE)
-	C2S(WL_NAN_EVENT_STOP)
-	C2S(WL_NAN_EVENT_PEER_DATAPATH_IND)
-	C2S(WL_NAN_EVENT_DATAPATH_ESTB)
-	C2S(WL_NAN_EVENT_SDF_RX)
-	C2S(WL_NAN_EVENT_DATAPATH_END)
-	C2S(WL_NAN_EVENT_RNG_REQ_IND)
-	C2S(WL_NAN_EVENT_RNG_RPT_IND)
-	C2S(WL_NAN_EVENT_RNG_TERM_IND)
-	C2S(WL_NAN_EVENT_TXS)
-	C2S(WL_NAN_EVENT_INVALID)
+	C2S(WL_NAN_EVENT_START);
+		break;
+	C2S(WL_NAN_EVENT_DISCOVERY_RESULT);
+		break;
+	C2S(WL_NAN_EVENT_TERMINATED);
+		break;
+	C2S(WL_NAN_EVENT_RECEIVE);
+		break;
+	C2S(WL_NAN_EVENT_MERGE);
+		break;
+	C2S(WL_NAN_EVENT_STOP);
+		break;
+	C2S(WL_NAN_EVENT_PEER_DATAPATH_IND);
+		break;
+	C2S(WL_NAN_EVENT_DATAPATH_ESTB);
+		break;
+	C2S(WL_NAN_EVENT_SDF_RX);
+		break;
+	C2S(WL_NAN_EVENT_DATAPATH_END);
+		break;
+	C2S(WL_NAN_EVENT_PEER_DATAPATH_RESP);
+		break;
+	C2S(WL_NAN_EVENT_PEER_DATAPATH_CONF);
+		break;
+	C2S(WL_NAN_EVENT_PEER_DATAPATH_SEC_INST);
+		break;
+	C2S(WL_NAN_EVENT_RNG_REQ_IND);
+		break;
+	C2S(WL_NAN_EVENT_RNG_RPT_IND);
+		break;
+	C2S(WL_NAN_EVENT_RNG_TERM_IND);
+		break;
+	C2S(WL_NAN_EVENT_TXS);
+		break;
+	C2S(WL_NAN_EVENT_INVALID);
+		break;
 
 	default:
-		return "WL_NAN_EVENT_UNKNOWN";
+		id2str = "WL_NAN_EVENT_UNKNOWN";
 	}
+
+	return id2str;
+}
+
+static const char *
+nan_frm_type_to_str(u16 frm_type)
+{
+	const char *id2str;
+
+	switch (frm_type) {
+	C2S(WL_NAN_FRM_TYPE_PUBLISH);
+		break;
+	C2S(WL_NAN_FRM_TYPE_SUBSCRIBE);
+		break;
+	C2S(WL_NAN_FRM_TYPE_FOLLOWUP);
+		break;
+
+	C2S(WL_NAN_FRM_TYPE_DP_REQ);
+		break;
+	C2S(WL_NAN_FRM_TYPE_DP_RESP);
+		break;
+	C2S(WL_NAN_FRM_TYPE_DP_CONF);
+		break;
+	C2S(WL_NAN_FRM_TYPE_DP_INSTALL);
+		break;
+	C2S(WL_NAN_FRM_TYPE_DP_END);
+		break;
+
+	C2S(WL_NAN_FRM_TYPE_SCHED_REQ);
+		break;
+	C2S(WL_NAN_FRM_TYPE_SCHED_RESP);
+		break;
+	C2S(WL_NAN_FRM_TYPE_SCHED_CONF);
+		break;
+	C2S(WL_NAN_FRM_TYPE_SCHED_UPD);
+		break;
+
+	C2S(WL_NAN_FRM_TYPE_RNG_REQ);
+		break;
+	C2S(WL_NAN_FRM_TYPE_RNG_RESP);
+		break;
+	C2S(WL_NAN_FRM_TYPE_RNG_TERM);
+		break;
+	C2S(WL_NAN_FRM_TYPE_RNG_REPORT);
+		break;
+
+	default:
+		id2str = "WL_NAN_FRM_TYPE_UNKNOWN";
+	}
+
+	return id2str;
+}
+
+static const char *
+nan_event_cause_to_str(u8 cause)
+{
+	const char *id2str;
+
+	switch (cause) {
+	C2S(WL_NAN_DP_TERM_WITH_INACTIVITY);
+		break;
+	C2S(WL_NAN_DP_TERM_WITH_FSM_DESTROY);
+		break;
+	C2S(WL_NAN_DP_TERM_WITH_PEER_DP_END);
+		break;
+	C2S(WL_NAN_DP_TERM_WITH_STALE_NDP);
+		break;
+	C2S(WL_NAN_DP_TERM_WITH_DISABLE);
+		break;
+	C2S(WL_NAN_DP_TERM_WITH_NDI_DEL);
+		break;
+	C2S(WL_NAN_DP_TERM_WITH_PEER_HB_FAIL);
+		break;
+	C2S(WL_NAN_DP_TERM_WITH_HOST_IOVAR);
+		break;
+	C2S(WL_NAN_DP_TERM_WITH_ESTB_FAIL);
+		break;
+	C2S(WL_NAN_DP_TERM_WITH_SCHED_REJECT);
+		break;
+
+	default:
+		id2str = "WL_NAN_EVENT_CAUSE_UNKNOWN";
+	}
+
+	return id2str;
 }
 
 static int wl_cfgnan_execute_ioctl(struct net_device *ndev,
@@ -2487,6 +2606,9 @@ wl_cfgnan_check_nan_disable_pending(struct bcm_cfg80211 *cfg,
 		 * rely on dhd_stop context to do the nan clean up work and
 		 * just do return from delayed WQ based on state check.
 		 */
+
+		DHD_NAN_WAKE_UNLOCK(cfg->pub);
+
 		if (is_sync_reqd == true) {
 			cancel_delayed_work_sync(&cfg->nancfg->nan_disable);
 		} else {
@@ -3070,6 +3192,9 @@ wl_cfgnan_delayed_disable(struct work_struct *work)
 		WL_INFORM_MEM(("nan is in disabled state\n"));
 	}
 	rtnl_unlock();
+
+	DHD_NAN_WAKE_UNLOCK(cfg->pub);
+
 	return;
 }
 
@@ -3342,6 +3467,7 @@ wl_cfgnan_config_handler(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 		 */
 		if (cmd_data->nmi_rand_intvl & NAN_NMI_RAND_PVT_CMD_VENDOR) {
 			uint8 merge_enable;
+			uint8 lwt_mode_enable;
 			int status = BCME_OK;
 
 			merge_enable = !!(cmd_data->nmi_rand_intvl &
@@ -3356,9 +3482,29 @@ wl_cfgnan_config_handler(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 				}
 				goto fail;
 			}
+
+			lwt_mode_enable = !!(cmd_data->nmi_rand_intvl &
+					NAN_NMI_RAND_AUTODAM_LWT_MODE_ENAB);
+
+			/* set CFG CTRL2 flags1 and flags2 */
+			ret = wl_cfgnan_config_control_flag(ndev, cfg,
+					WL_NAN_CTRL2_FLAG1_AUTODAM_LWT_MODE,
+					0, WL_NAN_CMD_CFG_NAN_CONFIG2,
+					&status, lwt_mode_enable);
+			if (unlikely(ret) || unlikely(status)) {
+				WL_ERR(("Enable dam lwt mode: "
+					"failed to set config request  [%d]\n", ret));
+				/* As there is no cmd_reply, check if error is in status or ret */
+				if (status) {
+					ret = status;
+				}
+				goto fail;
+			}
+
 			/* reset pvt merge enable bits */
 			cmd_data->nmi_rand_intvl &= ~(NAN_NMI_RAND_PVT_CMD_VENDOR |
-					NAN_NMI_RAND_CLUSTER_MERGE_ENAB);
+					NAN_NMI_RAND_CLUSTER_MERGE_ENAB |
+					NAN_NMI_RAND_AUTODAM_LWT_MODE_ENAB);
 		}
 #endif /* WL_NAN_ENABLE_MERGE */
 
@@ -4166,7 +4312,6 @@ wl_cfgnan_trigger_geofencing_ranging(struct net_device *dev,
 		}
 	} else {
 		/* already in progress..This should not happen */
-		ASSERT(0);
 		ret = BCME_ERROR;
 		err_at = 4;
 		goto exit;
@@ -4292,13 +4437,13 @@ wl_cfgnan_ranging_allowed(struct bcm_cfg80211 *cfg)
 }
 
 uint8
-wl_cfgnan_cancel_rng_responders(struct net_device *ndev,
-	struct bcm_cfg80211 *cfg)
+wl_cfgnan_cancel_rng_responders(struct net_device *ndev)
 {
 	int i = 0;
 	uint8 num_resp_cancelled = 0;
 	int status, ret;
 	nan_ranging_inst_t *ranging_inst = NULL;
+	struct bcm_cfg80211 *cfg = wl_get_cfg(ndev);
 
 	for (i =  0; i < NAN_MAX_RANGING_INST; i++) {
 		ranging_inst = &cfg->nancfg->nan_ranging_info[i];
@@ -7264,9 +7409,10 @@ wl_nan_dp_cmn_event_data(struct bcm_cfg80211 *cfg, void *event_data,
 			/* Remove peer from data ndp peer list */
 			wl_cfgnan_data_remove_peer(cfg, &ev_dp->peer_nmi);
 			wl_cfgnan_update_dp_info(cfg, false, nan_event_data->ndp_id);
+			WL_INFORM_MEM(("DP_END for REMOTE_NMI: " MACDBG " with %s\n",
+				MAC2STRDBG(&ev_dp->peer_nmi),
+				nan_event_cause_to_str(ev_dp->event_cause)));
 #ifdef RTT_SUPPORT
-			WL_INFORM_MEM(("DP_END for REMOTE_NMI: " MACDBG "\n",
-				MAC2STRDBG(&ev_dp->peer_nmi)));
 			rng_inst = wl_cfgnan_check_for_ranging(cfg, &ev_dp->peer_nmi);
 			if (rng_inst) {
 				/* Trigger/Reset geofence RTT */
@@ -7489,10 +7635,15 @@ wl_cfgnan_process_range_report(struct bcm_cfg80211 *cfg,
 	UNUSED_PARAMETER(nan_event_data);
 	rng_inst = wl_cfgnan_check_for_ranging(cfg, &range_res->peer_m_addr);
 	if (!rng_inst) {
-		WL_ERR(("wl_cfgnan_process_range_report: No ranging instance "
-		"but received RNG RPT event..check \n"));
+		WL_ERR(("No ranging instance but received RNG RPT event..check \n"));
 		goto exit;
 	}
+
+	if (rng_inst->range_status != NAN_RANGING_SESSION_IN_PROGRESS) {
+		WL_ERR(("SSN not in prog but received RNG RPT event..ignore \n"));
+		goto exit;
+	}
+
 #ifdef NAN_RTT_DBG
 	DUMP_NAN_RTT_INST(rng_inst);
 	DUMP_NAN_RTT_RPT(range_res);
@@ -7541,37 +7692,22 @@ exit:
 static void
 wl_nan_print_status(wl_nan_conf_status_t *nstatus)
 {
-	printf("> enabled: %d\n", nstatus->enabled);
-	printf("> Current NMI: " MACDBG "\n", MAC2STRDBG(nstatus->nmi.octet));
-	printf("> Current cluster_id: " MACDBG "\n", MAC2STRDBG(nstatus->cid.octet));
+	WL_INFORM_MEM(("> NMI: " MACDBG " Cluster_ID: " MACDBG "\n",
+		MAC2STRDBG(nstatus->nmi.octet),
+		MAC2STRDBG(nstatus->cid.octet)));
 
-	switch (nstatus->role) {
-	case WL_NAN_ROLE_AUTO:
-		printf("> role: %s (%d)\n", "auto", nstatus->role);
-		break;
-	case WL_NAN_ROLE_NON_MASTER_NON_SYNC:
-		printf("> role: %s (%d)\n", "non-master-non-sync", nstatus->role);
-		break;
-	case WL_NAN_ROLE_NON_MASTER_SYNC:
-		printf("> role: %s (%d)\n", "non-master-sync", nstatus->role);
-		break;
-	case WL_NAN_ROLE_MASTER:
-		printf("> role: %s (%d)\n", "master", nstatus->role);
-		break;
-	case WL_NAN_ROLE_ANCHOR_MASTER:
-		printf("> role: %s (%d)\n", "anchor-master", nstatus->role);
-		break;
-	default:
-		printf("> role: %s (%d)\n", "undefined", nstatus->role);
-		break;
-	}
+	WL_INFORM_MEM(("> NAN Device Role %s\n", nan_role_to_str(nstatus->role)));
+	WL_INFORM_MEM(("> Social channels: %d, %d\n",
+		nstatus->social_chans[0], nstatus->social_chans[1]));
 
-	printf("> social channels: %d, %d\n",
-		nstatus->social_chans[0], nstatus->social_chans[1]);
-	printf("> master_rank: " NMRSTR "\n", NMR2STR(nstatus->mr));
-	printf("> amr        : " NMRSTR "\n", NMR2STR(nstatus->amr));
-	printf("> hop_count: %d\n", nstatus->hop_count);
-	printf("> ambtt: %d\n", nstatus->ambtt);
+	WL_INFORM_MEM(("> Master_rank: " NMRSTR " AMR : " NMRSTR " Hop Count : %d, AMBTT : %d\n",
+		NMR2STR(nstatus->mr),
+		NMR2STR(nstatus->amr),
+		nstatus->hop_count,
+		nstatus->ambtt));
+
+	WL_INFORM_MEM(("> Cluster TSF_H: %x , Cluster TSF_L: %x\n",
+		nstatus->cluster_tsf_h, nstatus->cluster_tsf_l));
 }
 
 static void
@@ -7687,6 +7823,9 @@ wl_cfgnan_reset_geofence_ranging(struct bcm_cfg80211 *cfg,
 		/* Create range inst if not present and reset explicitly */
 		rng_inst = wl_cfgnan_get_ranging_inst(cfg,
 			&geofence_target->peer_addr, NAN_RANGING_ROLE_INITIATOR);
+		if (rng_inst) {
+			rng_inst->range_type = RTT_TYPE_NAN_GEOFENCE;
+		}
 	}
 
 	/* Avoid schedule if
@@ -7861,8 +8000,9 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 		ret = -EINVAL;
 		goto exit;
 	}
-	WL_DBG((">> Nan Event Received: %s (num=%d, len=%d)\n",
-		nan_event_to_str(event_num), event_num, data_len));
+
+	WL_INFORM_MEM((">> Nan Event Received: %s (num=%d, len=%d)\n",
+			nan_event_to_str(event_num), event_num, data_len));
 
 #ifdef WL_NAN_DEBUG
 	prhex("nan_event_data:", event_data, data_len);
@@ -7911,9 +8051,10 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 			goto exit;
 		}
 		nan_event_data->nan_de_evt_type = event_num;
-#ifdef WL_NAN_DEBUG
-		wl_nan_print_status(nstatus);
-#endif /* WL_NAN_DEBUG */
+		if (event_num == WL_NAN_EVENT_ROLE) {
+			wl_nan_print_status(nstatus);
+		}
+
 		if (event_num == WL_NAN_EVENT_START) {
 			OSL_SMP_WMB();
 			cfg->nancfg->nan_event_recvd = true;
@@ -7933,6 +8074,7 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 		WL_TRACE(("Service Type: %d\n", pev->svctype));
 
 #ifdef WL_NAN_DISC_CACHE
+		wl_cfgnan_clear_svc_cache(cfg, pev->instance_id);
 		/* if we have to store disc_res even after sub_cancel
 		* donot call below api..but need to device on the criteria to expire
 		*/
@@ -7992,8 +8134,8 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 		wl_nan_event_txs_t *txs = (wl_nan_event_txs_t *)xtlv->data;
 		wl_nan_event_sd_txs_t *txs_sd = NULL;
 		if (txs->status == WL_NAN_TXS_SUCCESS) {
-			WL_INFORM_MEM(("TXS success for type %d token %d\n",
-				txs->type, txs->host_seq));
+			WL_INFORM_MEM(("TXS success for type %s(%d) token %d\n",
+				nan_frm_type_to_str(txs->type), txs->type, txs->host_seq));
 			nan_event_data->status = NAN_STATUS_SUCCESS;
 			ret = memcpy_s(nan_event_data->nan_reason,
 				sizeof(nan_event_data->nan_reason),
@@ -8007,8 +8149,9 @@ wl_cfgnan_notify_nan_status(struct bcm_cfg80211 *cfg,
 			/* TODO : populate status based on reason codes
 			For now adding it as no ACK, so that app/framework can retry
 			*/
-			WL_INFORM_MEM(("TXS failed for type %d status %d token %d\n",
-				txs->type, txs->status, txs->host_seq));
+			WL_INFORM_MEM(("TXS failed for type %s(%d) status %d token %d\n",
+				nan_frm_type_to_str(txs->type), txs->type, txs->status,
+				txs->host_seq));
 			nan_event_data->status = NAN_STATUS_NO_OTA_ACK;
 			ret = memcpy_s(nan_event_data->nan_reason,
 				sizeof(nan_event_data->nan_reason),
@@ -8803,23 +8946,18 @@ done:
 
 }
 
-int
+void
 wl_cfgnan_detach(struct bcm_cfg80211 *cfg)
 {
-	int err = BCME_OK;
-
 	if (cfg && cfg->nancfg) {
 		if (delayed_work_pending(&cfg->nancfg->nan_disable)) {
 			WL_DBG(("Cancel nan_disable work\n"));
+			DHD_NAN_WAKE_UNLOCK(cfg->pub);
 			cancel_delayed_work_sync(&cfg->nancfg->nan_disable);
 		}
 		MFREE(cfg->osh, cfg->nancfg, sizeof(wl_nancfg_t));
 		cfg->nancfg = NULL;
-	} else {
-		WL_ERR(("cfg/cfg->nancfg is null\n"));
-		err = BCME_OK;
 	}
 
-	return err;
 }
 #endif /* WL_NAN */

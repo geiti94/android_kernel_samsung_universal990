@@ -162,6 +162,7 @@ struct exynos_usbdrd_phy {
 		u32 pmu_mask;
 		u32 pmu_offset_tcxobuf;
 		u32 pmu_mask_tcxobuf;
+		u32 tcxo_ctrl_offset;
 		const struct exynos_usbdrd_phy_config *phy_cfg;
 	} phys[EXYNOS_DRDPHYS_NUM];
 	u32 extrefclk;
@@ -192,6 +193,8 @@ struct exynos_usbdrd_phy {
 	int irq_conn;
 	int is_conn;
 	int is_irq_enabled;
+	int is_usb3_rewa_enabled;
+	int is_usb3_phy_on;
 	int idle_ip_idx;
 	u32 phy_port;
 	u32 reverse_phy_port;

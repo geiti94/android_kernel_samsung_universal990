@@ -39,7 +39,7 @@ const char *cisd_data_str_d[] = {
 
 const char *cisd_cable_data_str[] = {"TA", "AFC", "AFC_FAIL", "QC", "QC_FAIL", "PD", "PD_HIGH", "HV_WC_20"};
 const char *cisd_tx_data_str[] = {"ON", "OTHER", "GEAR", "PHONE", "BUDS"};
-const char *cisd_event_data_str[] = {"DC_ERR", "TA_OCP_DET", "TA_OCP_ON"};
+const char *cisd_event_data_str[] = {"DC_ERR", "TA_OCP_DET", "TA_OCP_ON", "OVP_EVENT_POWER", "OVP_EVENT_SIGNAL"};
 
 bool sec_bat_cisd_check(struct sec_battery_info *battery)
 {
@@ -64,7 +64,7 @@ bool sec_bat_cisd_check(struct sec_battery_info *battery)
 		if ((pcisd->ab_vbat_check_count >= pcisd->ab_vbat_max_count) &&
 			!(pcisd->state & CISD_STATE_OVER_VOLTAGE)) {
 			dev_info(battery->dev, "%s : [CISD] Battery Over Voltage Protction !! vbat(%d)mV\n",
-				 __func__, battery->voltage_now);
+				__func__, battery->voltage_now);
 			vbat_val.intval = true;
 			psy_do_property("battery", set, POWER_SUPPLY_EXT_PROP_VBAT_OVP,
 					vbat_val);
@@ -201,9 +201,81 @@ bool sec_bat_cisd_check(struct sec_battery_info *battery)
 	return ret;
 }
 
+static irqreturn_t cisd_irq_thread(int irq, void *data)
+{
+	struct cisd *pcisd = data;
+
+	pr_info("%s: irq(%d)\n", __func__, irq);
+	if (irq == pcisd->irq_ovp_power &&
+		!gpio_get_value(pcisd->gpio_ovp_power))
+		pcisd->event_data[EVENT_OVP_POWER]++;
+
+	if (irq == pcisd->irq_ovp_signal &&
+		!gpio_get_value(pcisd->gpio_ovp_signal))
+		pcisd->event_data[EVENT_OVP_SIGNAL]++;
+
+	return IRQ_HANDLED;
+}
+
+#ifdef CONFIG_OF
+static void sec_cisd_parse_dt(struct cisd *pcisd)
+{
+	struct device_node *np;
+	int ret = 0;
+
+	np = of_find_node_by_name(NULL, "sec-cisd");
+	if (!np) {
+		pr_err("%s: np NULL\n", __func__);
+		return;
+	}
+
+	ret = of_get_named_gpio(np, "ovp_power", 0);
+	if (ret >= 0) {
+		pcisd->gpio_ovp_power = ret;
+		pr_info("%s: set ovp_power gpio(%d)\n", __func__, pcisd->gpio_ovp_power);
+		pcisd->irq_ovp_power = gpio_to_irq(pcisd->gpio_ovp_power);
+		ret = request_threaded_irq(pcisd->irq_ovp_power, NULL,
+			cisd_irq_thread, IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+			"cisd-ovp-power", pcisd);
+		if (ret < 0) {
+			pr_err("%s: failed to request ovp_power irq(ret = %d)\n",
+				__func__, ret);
+			pcisd->irq_ovp_power = 0;
+		} else
+			pr_info("%s: set irq_ovp_power(%d)\n", __func__, pcisd->irq_ovp_power);
+	} else
+		pr_err("%s: failed to get ovp_power\n", __func__);
+
+	ret = of_get_named_gpio(np, "ovp_signal", 0);
+	if (ret >= 0) {
+		pcisd->gpio_ovp_signal = ret;
+		pr_info("%s: set ovp_signal gpio(%d)\n", __func__, pcisd->gpio_ovp_signal);
+		pcisd->irq_ovp_signal = gpio_to_irq(pcisd->gpio_ovp_signal);
+		ret = request_threaded_irq(pcisd->irq_ovp_signal, NULL,
+			cisd_irq_thread, IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+			"cisd-ovp-signal", pcisd);
+		if (ret < 0) {
+			pr_err("%s: failed to request ovp_signal irq(ret = %d)\n",
+				__func__, ret);
+			pcisd->irq_ovp_signal = 0;
+		} else
+			pr_info("%s: set irq_ovp_signal(%d)\n", __func__, pcisd->irq_ovp_signal);
+	} else
+		pr_err("%s: failed to get ovp_signal\n", __func__);
+}
+#else
+static void sec_cisd_parse_dt(struct cisd *pcisd)
+{
+}
+#endif
+
 struct cisd *gcisd;
 void sec_battery_cisd_init(struct sec_battery_info *battery)
 {
+	/* parse dt */
+	sec_cisd_parse_dt(&battery->cisd);
+
+	/* init cisd data */
 	battery->cisd.state = CISD_STATE_NONE;
 
 	battery->cisd.data[CISD_DATA_ALG_INDEX] = battery->pdata->cisd_alg_index;
@@ -319,9 +391,10 @@ static void add_pad_data(struct cisd* cisd, unsigned int pad_id, unsigned int pa
 
 void init_cisd_pad_data(struct cisd* cisd)
 {
-	struct pad_data* temp_data = cisd->pad_array;
+	struct pad_data* temp_data = NULL;
 
 	mutex_lock(&cisd->padlock);
+	temp_data = cisd->pad_array;
 	while (temp_data) {
 		struct pad_data* next_data = temp_data->next;
 
@@ -518,9 +591,10 @@ static void add_power_data(struct cisd* cisd, unsigned int power, unsigned int p
 
 void init_cisd_power_data(struct cisd* cisd)
 {
-	struct power_data* temp_data = cisd->power_array;
+	struct power_data* temp_data = NULL;
 
 	mutex_lock(&cisd->powerlock);
+	temp_data = cisd->power_array;
 	while (temp_data) {
 		struct power_data* next_data = temp_data->next;
 

@@ -2,7 +2,7 @@
  * Misc utility routines for accessing chip-specific features
  * of the SiliconBackplane-based Broadcom chips.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,7 +19,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <typedefs.h>
@@ -933,7 +933,7 @@ ai_corereg(si_t *sih, uint coreidx, uint regoff, uint mask, uint val)
 	si_info_t *sii = SI_INFO(sih);
 	si_cores_info_t *cores_info = (si_cores_info_t *)sii->cores_info;
 
-	ASSERT(GOODIDX(coreidx));
+	ASSERT(GOODIDX(coreidx, sii->numcores));
 	ASSERT(regoff < SI_CORE_SIZE);
 	ASSERT((val & ~mask) == 0);
 
@@ -1027,7 +1027,7 @@ ai_corereg_writeonly(si_t *sih, uint coreidx, uint regoff, uint mask, uint val)
 	si_info_t *sii = SI_INFO(sih);
 	si_cores_info_t *cores_info = (si_cores_info_t *)sii->cores_info;
 
-	ASSERT(GOODIDX(coreidx));
+	ASSERT(GOODIDX(coreidx, sii->numcores));
 	ASSERT(regoff < SI_CORE_SIZE);
 	ASSERT((val & ~mask) == 0);
 
@@ -1115,7 +1115,7 @@ ai_corereg_addr(si_t *sih, uint coreidx, uint regoff)
 	si_info_t *sii = SI_INFO(sih);
 	si_cores_info_t *cores_info = (si_cores_info_t *)sii->cores_info;
 
-	ASSERT(GOODIDX(coreidx));
+	ASSERT(GOODIDX(coreidx, sii->numcores));
 	ASSERT(regoff < SI_CORE_SIZE);
 
 	if (coreidx >= SI_MAXCORES)
@@ -1295,6 +1295,14 @@ ai_core_reset(si_t *sih, uint32 bits, uint32 resetbits)
 
 	_ai_core_reset(sih, bits, resetbits);
 }
+
+#ifdef BOOKER_NIC400_INF
+void
+ai_core_reset_ext(const si_t *sih, uint32 bits, uint32 resetbits)
+{
+	_ai_core_reset(sih, bits, resetbits);
+}
+#endif /* BOOKER_NIC400_INF */
 
 void
 ai_core_cflags_wo(const si_t *sih, uint32 mask, uint32 val)
@@ -1532,7 +1540,9 @@ ai_update_backplane_timeouts(const si_t *sih, bool enable, uint32 timeout_exp, u
 				}
 			}
 		}
-		if (axi_wrapper[i].wrapper_type != AI_SLAVE_WRAPPER) {
+		if (axi_wrapper[i].wrapper_type != AI_SLAVE_WRAPPER || (BCM4389_CHIP(sih->chip) &&
+				(axi_wrapper[i].wrapper_addr == WL_BRIDGE1_S ||
+				axi_wrapper[i].wrapper_addr == WL_BRIDGE2_S))) {
 			SI_VMSG(("SKIP ENABLE BPT: MFG:%x, CID:%x, ADDR:%x\n",
 				axi_wrapper[i].mfg,
 				axi_wrapper[i].cid,
@@ -1604,6 +1614,20 @@ ai_ignore_errlog(const si_info_t *sii, const aidmp_t *ai,
 
 	/* ignore the BT slave errors if the errlog is to chipcommon addr 0x190 */
 	switch (CHIPID(sii->pub.chip)) {
+#if defined(BT_WLAN_REG_ON_WAR)
+		/*
+		 * 4389B0/C0 - WL and BT turn on WAR, ignore AXI error originating from
+		 * AHB-AXI bridge i.e, any slave error or timeout from BT access
+		 */
+		case BCM4389_CHIP_GRPID:
+			axi_id = BCM4389_BT_AXI_ID;
+			ignore_errsts = AIELS_SLAVE_ERR;
+			axi_id2 = BCM4389_BT_AXI_ID;
+			ignore_errsts_2 = AIELS_TIMEOUT;
+			address_check = FALSE;
+			extd_axi_id_mask = TRUE;
+			break;
+#endif /* BT_WLAN_REG_ON_WAR */
 #ifdef BTOVERPCIE
 		case BCM4369_CHIP_GRPID:
 			axi_id = BCM4369_BT_AXI_ID;

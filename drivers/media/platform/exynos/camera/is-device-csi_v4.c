@@ -35,9 +35,11 @@ inline void csi_frame_start_inline(struct is_device_csi *csi)
 	u32 inc = 1;
 	u32 fcount, hw_fcount;
 	struct is_device_sensor *sensor;
-	u32 hashkey;
+	u32 hashkey, hashkey_1, hashkey_2;
 	u32 index;
 	u32 hw_frame_id[2] = {0, 0};
+	u64 timestamp;
+	u64 timestampboot;
 
 	/* frame start interrupt */
 	csi->sw_checker = EXPECT_FRAME_END;
@@ -71,14 +73,27 @@ inline void csi_frame_start_inline(struct is_device_csi *csi)
 
 	sensor = v4l2_get_subdev_hostdata(*csi->subdev);
 	if (!sensor) {
-	    err("sensor is NULL");
-	    BUG();
+		err("sensor is NULL");
+		BUG();
 	}
 
+	/*
+	 * Sometimes, frame->fcount is bigger than sensor->fcount if gtask is delayed.
+	 * hashkey_1~2 is to prenvet reverse timestamp.
+	 */
 	sensor->fcount = fcount;
 	hashkey = fcount % IS_TIMESTAMP_HASH_KEY;
-	sensor->timestamp[hashkey] = is_get_timestamp();
-	sensor->timestampboot[hashkey] = is_get_timestamp_boot();
+	hashkey_1 = (fcount + 1) % IS_TIMESTAMP_HASH_KEY;
+	hashkey_2 = (fcount + 2) % IS_TIMESTAMP_HASH_KEY;
+
+	timestamp = is_get_timestamp();
+	timestampboot = is_get_timestamp_boot();
+	sensor->timestamp[hashkey] = timestamp;
+	sensor->timestamp[hashkey_1] = timestamp;
+	sensor->timestamp[hashkey_2] = timestamp;
+	sensor->timestampboot[hashkey] = timestampboot;
+	sensor->timestampboot[hashkey_1] = timestampboot;
+	sensor->timestampboot[hashkey_2] = timestampboot;
 
 	v4l2_subdev_notify(*csi->subdev, CSI_NOTIFY_VSYNC, &fcount);
 
@@ -713,7 +728,8 @@ static void csi_dma_tag(struct v4l2_subdev *subdev,
 		data_type = CSIS_NOTIFY_DMA_END;
 	} else {
 		/* get internal VC buffer for embedded data */
-		if (csi->sensor_cfg->output[vc].type == VC_EMBEDDED) {
+		if ((csi->sensor_cfg->output[vc].type == VC_EMBEDDED) ||
+			(csi->sensor_cfg->output[vc].type == VC_EMBEDDED2)) {
 			u32 frameptr = csi_hw_g_frameptr(csi->vc_reg[csi->scm][vc], vc);
 
 			if (frameptr < framemgr->num_frames) {
@@ -1004,7 +1020,7 @@ static void csi_err_handle(struct is_device_csi *csi)
 		core = device->private_data;
 
 		/* Call sensor DTP */
-#ifdef CONFIG_SEC_FACTORY /* TEMP_2020 - for ESD recovery */
+#ifdef CONFIG_SEC_FACTORY /* for ESD recovery */
 		set_bit(IS_SENSOR_FRONT_DTP_STOP, &device->state);
 #endif
 
@@ -1410,7 +1426,8 @@ static irqreturn_t is_isr_csi_dma(int irq, void *data)
 			 * So, csi_dma_tag is performed in ISR in only case of embedded data.
 			 */
 			if (IS_ENABLED(CHAIN_TAG_VC0_DMA_IN_HARDIRQ_CONTEXT) ||
-				(csi->sensor_cfg->output[vc].type == VC_EMBEDDED)) {
+				(csi->sensor_cfg->output[vc].type == VC_EMBEDDED) ||
+				(csi->sensor_cfg->output[vc].type == VC_EMBEDDED2)) {
 				framemgr = csis_get_vc_framemgr(csi, vc);
 				if (framemgr)
 					csi_dma_tag(*csi->subdev, csi, framemgr, vc);
@@ -1608,8 +1625,6 @@ static int csi_s_power(struct v4l2_subdev *subdev,
 			csi_hw_dma_common_reset(csi_dma->base_reg_stat, on);
 #endif
 		}
-
-		ret = phy_power_on(csi->phy);
 	} else {
 		if (atomic_dec_return(&csi_dma->rcount_pwr) == 0) {
 			/* For safe power-off: IP processing = 0 */
@@ -1618,17 +1633,8 @@ static int csi_s_power(struct v4l2_subdev *subdev,
 			csi_hw_dma_common_reset(csi_dma->base_reg_stat, on);
 #endif
 		}
-
-		/* Disable phy is not recomended. */
 	}
 
-	if (ret) {
-		err("fail to csi%d power on/off(%d)", csi->ch, on);
-		goto p_err;
-	}
-
-p_err:
-	mdbgd_front("%s(%d, %d)\n", csi, __func__, on, ret);
 	return ret;
 }
 
@@ -2399,6 +2405,11 @@ static int csi_s_format(struct v4l2_subdev *subdev,
 			bytes_per_pixel = 1;
 			buffer_num = SUBDEV_INTERNAL_BUF_MAX;
 			type_name = "VC_EMBEDDED";
+			break;
+		case VC_EMBEDDED2:
+			bytes_per_pixel = 1;
+			buffer_num = SUBDEV_INTERNAL_BUF_MAX;
+			type_name = "VC_EMBEDDED2";
 			break;
 		case VC_PRIVATE:
 			bytes_per_pixel = 1;

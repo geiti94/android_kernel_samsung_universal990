@@ -581,6 +581,7 @@ struct hcd_hw_info {
 	u64 out_dma;
 	void *in_buf;
 	u64 in_dma;
+	int use_uram;
 };
 
 /**

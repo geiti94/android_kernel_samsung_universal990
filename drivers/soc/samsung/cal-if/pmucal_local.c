@@ -1,6 +1,7 @@
 #include "pmucal_local.h"
 #include "pmucal_rae.h"
 #include <soc/samsung/exynos-debug.h>
+#include <linux/sec_debug.h>
 
 #ifndef PWRCAL_TARGET_LINUX
 struct pmucal_pd *pmucal_blkpwr_list[PMUCAL_NUM_PDS];
@@ -137,6 +138,7 @@ int pmucal_local_disable(unsigned int pd_id)
 	return 0;
 
 err_out:
+	secdbg_exin_set_epd(pmucal_pd_list[pd_id].name);
 	dump_stack();
 	s3c2410wdt_set_emergency_reset(0, 0);
 

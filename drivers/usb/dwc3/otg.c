@@ -42,6 +42,10 @@
 #define OTG_NO_CONNECT		0
 #define OTG_CONNECT_ONLY	1
 #define OTG_DEVICE_CONNECT	2
+#define LINK_DEBUG_L		(0x0C)
+#define LINK_DEBUG_H		(0x10)
+#define BUS_ACTIVITY_CHECK (0x3F << 16)
+#define READ_TRANS_OFFSET	10
 
 struct dwc3 *g_dwc;
 extern int exynos_usbdrd_pipe3_enable(struct phy *phy);
@@ -216,6 +220,32 @@ static void dwc3_otg_drv_vbus(struct otg_fsm *fsm, int on)
 						on ? "on" : "off");
 }
 
+void dwc3_otg_check_bus_act(struct dwc3 *dwc)
+{
+	u32 reg;
+	u32 xm_wtran, xm_rtran, xm_ch_status;
+	int retries = 100;
+
+	reg = dwc3_readl(dwc->regs, DWC3_GDBGLSPMUX);
+	reg |= BUS_ACTIVITY_CHECK;
+	dwc3_writel(dwc->regs, DWC3_GDBGLSPMUX, reg);
+
+	do {
+		reg = readl(phycon_base_addr + LINK_DEBUG_L);
+		xm_ch_status = reg & 0x3FF;
+		xm_rtran = (reg >> READ_TRANS_OFFSET) & 0x3FFFFF;
+		reg = readl(phycon_base_addr + LINK_DEBUG_H);
+		xm_wtran = reg & 0x3FFFFF;
+
+		if (!xm_rtran && !xm_wtran)
+			break;
+		mdelay(1);
+	} while (--retries);
+
+	pr_info("%s %s: retries = %d\n", __func__,
+		retries ? "clear" : "timeout", retries);
+}
+
 int exynos_usbdrd_inform_dp_use(int use, int lane_cnt)
 {
 	int ret = 0;
@@ -379,8 +409,18 @@ int dwc3_otg_phy_enable(struct otg_fsm *fsm, int owner, bool on)
 				pm_qos_update_request(&dotg->pm_qos_int_req,
 						dotg->pm_qos_int_val);
 
-			pm_runtime_get_sync(dev);
+			ret = pm_runtime_get_sync(dev);
+			if (ret)
+				dev_info(dwc->dev, "%s: runtime_get device ret %d\n",
+						__func__, ret);
+
 			dwc3_exynos_set_bus_clock(dwc->dev->parent, 1);
+
+			dev_info(dwc->dev, "usb2_generic_phy -> init_count : %d power_count : %d\n",
+				dwc->usb2_generic_phy->init_count, dwc->usb2_generic_phy->power_count);
+			dev_info(dwc->dev, "usb3_generic_phy -> init_count : %d power_count : %d\n",
+				dwc->usb3_generic_phy->init_count, dwc->usb3_generic_phy->power_count);
+
 			ret = dwc3_core_init(dwc);
 			if (ret) {
 				dev_err(dwc->dev, "%s: failed to reinitialize core\n",
@@ -415,6 +455,7 @@ err:
 			/* Cancel Delayed work */
 			cancel_delayed_work_sync(&dwc->usb_qos_lock_delayed_work);
 			dwc3_exynos_set_bus_clock(dwc->dev->parent, -1);
+			dwc3_otg_check_bus_act(dwc);
 			pm_runtime_put_sync_suspend(dev);
 			if (dotg->pm_qos_int_val)
 				pm_qos_update_request(&dotg->pm_qos_int_req, 0);
@@ -442,6 +483,10 @@ static int dwc3_otg_start_host(struct otg_fsm *fsm, int on)
 
 	dev_info(dev, "Turn %s host\n", on ? "on" : "off");
 	if (on) {
+		if (otg_connection == 1) {
+			dev_info(dev, "Host is already recognized!\n");
+			return -EINVAL;
+		}
 		otg_connection = 1;
 		ret = dwc3_otg_phy_enable(fsm, 0, on);
 		if (ret) {
@@ -474,6 +519,10 @@ static int dwc3_otg_start_host(struct otg_fsm *fsm, int on)
 		usbpd_set_host_on(dotg->man, on);
 #endif
 	} else {
+		if (otg_connection == 0) {
+			dev_info(dev, "Host is already unrecognized!\n");
+			return -EINVAL;
+		}
 		otg_connection = 0;
 #if defined(CONFIG_IF_CB_MANAGER)
 		usbpd_set_host_on(dotg->man, on);
@@ -948,6 +997,46 @@ int get_idle_ip_index(void)
 }
 EXPORT_SYMBOL_GPL(get_idle_ip_index);
 
+struct work_struct recovery_reconn_work;
+static void dwc3_recovery_reconnection(struct work_struct *w)
+{
+	struct dwc3_otg *dotg = g_dwc->dotg;
+	struct otg_fsm	*fsm = &dotg->fsm;
+	int ret = 0;
+
+	pr_err("Recovery Host Reconnection\n");
+	/* Lock to avoid real cable insert/remove operation. */
+	mutex_lock(&fsm->lock);
+
+	/* To ignore PHY disable */
+	dwc3_otg_phy_enable(fsm, DWC3_PHY_OWNER_EMEG, 1);
+	ret = dwc3_otg_start_host(fsm, 0);
+	if (ret < 0) {
+		pr_err("Cable was already disconnected!!\n");
+		goto emeg_out;
+	}
+	msleep(50);
+	dwc3_otg_start_host(fsm, 1);
+
+emeg_out:
+	dwc3_otg_phy_enable(fsm, DWC3_PHY_OWNER_EMEG, 0);
+
+	mutex_unlock(&fsm->lock);
+}
+
+int exynos_usb_recovery_reconn(void)
+{
+	if (g_dwc == NULL) {
+		pr_err("WARNING : g_dwc is NULL\n");
+		return -ENODEV;
+	}
+
+	schedule_work(&recovery_reconn_work);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(exynos_usb_recovery_reconn);
+
 static int dwc3_otg_pm_notifier(struct notifier_block *nb,
 		unsigned long action, void *nb_data)
 {
@@ -992,6 +1081,7 @@ int dwc3_otg_init(struct dwc3 *dwc)
 		return 0;
 
 	g_dwc = dwc;
+	INIT_WORK(&recovery_reconn_work, dwc3_recovery_reconnection);
 
 	/* Allocate and init otg instance */
 	dotg = devm_kzalloc(dwc->dev, sizeof(struct dwc3_otg), GFP_KERNEL);

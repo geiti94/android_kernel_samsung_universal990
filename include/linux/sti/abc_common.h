@@ -38,6 +38,10 @@
 #include <linux/rtc.h>
 #include <linux/sched/clock.h>
 
+#if defined(CONFIG_SEC_SUPPORT_MOTTOTEST_WITH_ACT)
+#include <linux/kq/sec_motto.h>
+#endif
+
 #define ABC_UEVENT_MAX		20
 #define ABC_BUFFER_MAX		256
 #define ABC_LOG_STR_LEN		50

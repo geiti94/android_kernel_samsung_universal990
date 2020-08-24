@@ -151,6 +151,7 @@ struct abox_dma_data {
 	enum abox_buffer_type buf_type;
 	bool ack_enabled;
 	bool backend;
+	bool auto_fade_in;
 	struct completion closed;
 	struct abox_compr_data compr_data;
 	struct regmap *mailbox;
@@ -270,6 +271,24 @@ extern int abox_dma_hw_params_put(struct snd_kcontrol *kcontrol,
 		struct snd_ctl_elem_value *ucontrol);
 
 /**
+ * Shared callback for auto fade in kcontrol get
+ * @param[in]	kcontrol	kcontrol
+ * @param[in]	ucontrol	ucontrol
+ * @return	0 or error code
+ */
+extern int abox_dma_auto_fade_in_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol);
+
+/**
+ * Shared callback for auto fade in kcontrol put
+ * @param[in]	kcontrol	kcontrol
+ * @param[in]	ucontrol	ucontrol
+ * @return	0 or error code
+ */
+extern int abox_dma_auto_fade_in_put(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol);
+
+/**
  * Get dai of the dma
  * @param[in]	dev		pointer to abox_dma device
  * @param[in]	type		type of the dai
@@ -277,5 +296,54 @@ extern int abox_dma_hw_params_put(struct snd_kcontrol *kcontrol,
  */
 extern struct snd_soc_dai *abox_dma_get_dai(struct device *dev,
 		enum abox_dma_dai type);
+
+/**
+ * Test dma can be closed
+ * @param[in]	substream	substream
+ * @return	true or false
+ */
+extern int abox_dma_can_close(struct snd_pcm_substream *substream);
+
+/**
+ * Test dma can be freed
+ * @param[in]	substream	substream
+ * @return	true or false
+ */
+extern int abox_dma_can_free(struct snd_pcm_substream *substream);
+
+/**
+ * Test dma can be stopped
+ * @param[in]	substream	substream
+ * @return	true or false
+ */
+extern int abox_dma_can_stop(struct snd_pcm_substream *substream);
+
+/**
+ * Test dma can be started
+ * @param[in]	substream	substream
+ * @return	true or false
+ */
+extern int abox_dma_can_start(struct snd_pcm_substream *substream);
+
+/**
+ * Test dma can be prepared
+ * @param[in]	substream	substream
+ * @return	true or false
+ */
+extern int abox_dma_can_prepare(struct snd_pcm_substream *substream);
+
+/**
+ * Test dma can be configured
+ * @param[in]	substream	substream
+ * @return	true or false
+ */
+extern int abox_dma_can_params(struct snd_pcm_substream *substream);
+
+/**
+ * Test dma can be opened
+ * @param[in]	substream	substream
+ * @return	true or false
+ */
+extern int abox_dma_can_open(struct snd_pcm_substream *substream);
 
 #endif /* __SND_SOC_ABOX_DMA_H */

@@ -17,8 +17,6 @@
 
 #define HVC_FID_SET_S2MPU			(HVC_FID_BASE + 0x100)
 #define HVC_FID_SET_S2MPU_FOR_WIFI		(HVC_FID_BASE + 0x100 + 0x1)
-#define HVC_FID_ENABLE_S2MPU			(HVC_FID_BASE + 0x900 + 0x1)
-#define HVC_FID_SET_S2MPU_ALLMAP                (HVC_FID_BASE + 0x900 + 0x2)
 
 #define EXYNOS_MAX_S2MPU_INSTANCE		(64)
 #define EXYNOS_MAX_S2MPU_NAME_LEN		(10)
@@ -48,10 +46,6 @@ uint64_t exynos_set_dev_stage2_ap(const char *s2mpu_name,
 				  uint32_t vid,
 				  uint64_t base,
 				  uint64_t size,
-				  uint32_t ap);
-uint64_t exynos_enable_s2mpu(const char *s2mpu_name);
-uint64_t exynos_set_s2mpu_allmap(const char *s2mpu_name,
-				  uint32_t vid,
 				  uint32_t ap);
 #endif	/* __ASSEMBLY__ */
 #endif	/* __EXYNOS_S2MPU_H__ */

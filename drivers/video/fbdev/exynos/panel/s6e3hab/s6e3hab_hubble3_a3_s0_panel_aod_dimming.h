@@ -34,6 +34,9 @@ static struct brightness_table s6e3hab_hubble3_a3_s0_panel_aod_brightness_table 
 	.sz_brt = ARRAY_SIZE(hubble3_a3_s0_aod_brt_tbl),
 	.lum = hubble3_a3_s0_aod_lum_tbl,
 	.sz_lum = ARRAY_SIZE(hubble3_a3_s0_aod_lum_tbl),
+	.sz_ui_lum = S6E3HAB_AOD_NR_LUMINANCE,
+	.sz_hbm_lum = 0,
+	.sz_ext_hbm_lum = 0,
 	.brt_to_step = hubble3_a3_s0_aod_brt_tbl,
 	.sz_brt_to_step = ARRAY_SIZE(hubble3_a3_s0_aod_brt_tbl),
 };

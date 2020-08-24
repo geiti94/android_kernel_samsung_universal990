@@ -131,6 +131,11 @@ config DECON_BTS_VRR_ASYNC
         depends on EXYNOS_DPU30
         default n
 
+config DECON_VRR_MODULATION
+	bool "Support VRR Modulation"
+        depends on EXYNOS_DPU30
+        default n
+
 config FB_TEST
 	bool "Framebuffer test only"
         depends on EXYNOS_DPU30
@@ -183,6 +188,11 @@ config EXYNOS_LATENCY_MONITOR
 
 config EXYNOS_DPU_SYSTRACE
 	bool "Support Systrace for DPU"
+		depends on EXYNOS_DPU30
+		default n
+
+config EXYNOS_FPS_CHANGE_NOTIFY
+	bool "Support fps change notify"
 		depends on EXYNOS_DPU30
 		default n
 

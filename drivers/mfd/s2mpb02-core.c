@@ -52,7 +52,7 @@ int s2mpb02_read_reg(struct i2c_client *i2c, u8 reg, u8 *dest)
 	ret = i2c_smbus_read_byte_data(i2c, reg);
 	mutex_unlock(&s2mpb02->i2c_lock);
 	if (ret < 0) {
-		pr_info("%s:%s reg(0x%x), ret(%d)\n",
+		pr_info("%s:%s reg(0x%02hhx), ret(%d)\n",
 				MFD_DEV_NAME, __func__, reg, ret);
 		return ret;
 	}
@@ -87,7 +87,7 @@ int s2mpb02_write_reg(struct i2c_client *i2c, u8 reg, u8 value)
 	ret = i2c_smbus_write_byte_data(i2c, reg, value);
 	mutex_unlock(&s2mpb02->i2c_lock);
 	if (ret < 0)
-		pr_info("%s:%s reg(0x%x), ret(%d)\n",
+		pr_info("%s:%s reg(0x%02hhx), ret(%d)\n",
 				MFD_DEV_NAME, __func__, reg, ret);
 
 	return ret;
@@ -219,7 +219,7 @@ static int s2mpb02_i2c_probe(struct i2c_client *i2c,
 			S2MPB02_PMIC_REV(s2mpb02) = 1;
 		} else
 			S2MPB02_PMIC_REV(s2mpb02) = 0;
-		pr_info("%s: device id 0x%x is found\n",
+		pr_info("%s: device id 0x%02hhx is found\n",
 				__func__, s2mpb02->rev_num);
 	}
 

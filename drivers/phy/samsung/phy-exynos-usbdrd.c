@@ -45,11 +45,12 @@
 
 static void __iomem *usbdp_combo_phy_reg;
 
+int get_idle_ip_index(void);
 
+#if IS_ENABLED(CONFIG_PHY_EXYNOS_EOM)
 struct usb_eom_result_s *eom_result;
 
 u32 get_speed_and_disu1u2(void);
-int get_idle_ip_index(void);
 
 static ssize_t
 exynos_usbdrd_eom_show(struct device *dev,
@@ -117,6 +118,7 @@ exynos_usbdrd_eom_store(struct device *dev,
 
 static DEVICE_ATTR(eom, S_IWUSR | S_IRUSR | S_IRGRP,
 	exynos_usbdrd_eom_show, exynos_usbdrd_eom_store);
+#endif
 
 static ssize_t
 exynos_usbdrd_hs_phy_tune_show(struct device *dev,
@@ -1526,17 +1528,43 @@ static void exynos_usbdrd_pipe3_ilbk(struct exynos_usbdrd_phy *phy_drd)
 static int exynos_usbdrd_pipe3_vendor_set(struct exynos_usbdrd_phy *phy_drd,
 							int is_enable, int is_cancel)
 {
+	u32 reg_offset = phy_drd->phys[EXYNOS_DRDPHY_PIPE3].tcxo_ctrl_offset;
+	int ret = 0;
+
+	if (!phy_drd->is_usb3_phy_on) {
+		dev_info(phy_drd->dev, "%s - usb3 phy off, skip\n",__func__);
+		return ret;
+	}
+
 	if (is_cancel == 0) {
 		dev_info(phy_drd->dev, "%s - SS ReWA Enable\n",__func__);
 		phy_exynos_usb3p1_u3_rewa_enable(&phy_drd->usbphy_info, 0);
 		enable_irq(phy_drd->usb3_irq_wakeup);
+
+		if (reg_offset != 0) /* To enable TCXO_FAR at AP suspend */
+			regmap_update_bits(phy_drd->phys[EXYNOS_DRDPHY_PIPE3].reg_pmu,
+					reg_offset, 0x1, 0x1);
+
+		phy_drd->is_usb3_rewa_enabled = 1;
+
+
 	} else {
 		dev_info(phy_drd->dev, "%s - SS ReWA Disable\n",__func__);
-		disable_irq_nosync(phy_drd->usb3_irq_wakeup);
-		phy_exynos_usb3p1_u3_rewa_disable(&phy_drd->usbphy_info);
+		if (phy_drd->is_usb3_rewa_enabled == 1) {
+			disable_irq_nosync(phy_drd->usb3_irq_wakeup);
+			phy_exynos_usb3p1_u3_rewa_disable(&phy_drd->usbphy_info);
+			phy_drd->is_usb3_rewa_enabled = 0;
+		} else {
+			dev_info(phy_drd->dev, "SS ReWA already disabled!!\n");
+			ret = -EPERM;
+		}
+
+		if (reg_offset != 0) /* To set default */
+			regmap_update_bits(phy_drd->phys[EXYNOS_DRDPHY_PIPE3].reg_pmu,
+					reg_offset, 0x1, 0x0);
 	}
 
-	return 0;
+	return ret;
 }
 
 static int exynos_usbdrd_utmi_vendor_set(struct exynos_usbdrd_phy *phy_drd,
@@ -1552,9 +1580,6 @@ static int exynos_usbdrd_utmi_vendor_set(struct exynos_usbdrd_phy *phy_drd,
 			if (phy_drd->is_irq_enabled == 1) {
 				dev_info(phy_drd->dev, "[%s] REWA CANCEL\n", __func__);
 				phy_exynos_usb3p1_rewa_cancel(&phy_drd->usbphy_info);
-
-				/* inform what USB state is not idle to IDLE_IP */
-				exynos_update_ip_idle_status(phy_drd->idle_ip_idx, 0);
 
 				dev_info(phy_drd->dev, "REWA wakeup/conn IRQ disable\n");
 
@@ -1573,9 +1598,6 @@ static int exynos_usbdrd_utmi_vendor_set(struct exynos_usbdrd_phy *phy_drd,
 				return ret;
 			}
 
-			/* inform what USB state is idle to IDLE_IP */
-			exynos_update_ip_idle_status(phy_drd->idle_ip_idx, 1);
-
 			dev_info(phy_drd->dev, "REWA ENABLE Complete\n");
 
 			if (phy_drd->is_irq_enabled == 0) {
@@ -1587,9 +1609,6 @@ static int exynos_usbdrd_utmi_vendor_set(struct exynos_usbdrd_phy *phy_drd,
 			}
 		} else {
 			dev_info(phy_drd->dev, "REWA Disconn & Wakeup IRQ DISABLE\n");
-
-			/* inform what USB state is not idle to IDLE_IP */
-			exynos_update_ip_idle_status(phy_drd->idle_ip_idx, 0);
 
 			ret = phy_exynos_usb3p1_rewa_disable(&phy_drd->usbphy_info);
 			if (ret) {
@@ -1898,6 +1917,7 @@ int exynos_usbdrd_pipe3_enable(struct phy *phy)
 	struct phy_usb_instance *inst = phy_get_drvdata(phy);
 	struct exynos_usbdrd_phy *phy_drd = to_usbdrd_phy(inst);
 
+	phy_drd->is_usb3_phy_on = 1;
 	phy_exynos_usb_v3p1_g2_pma_ready(&phy_drd->usbphy_info);
 	phy_exynos_usbdp_g2_v2_enable(&phy_drd->usbphy_sub_info);
 
@@ -1910,6 +1930,7 @@ int exynos_usbdrd_pipe3_disable(struct phy *phy)
 	struct phy_usb_instance *inst = phy_get_drvdata(phy);
 	struct exynos_usbdrd_phy *phy_drd = to_usbdrd_phy(inst);
 
+	phy_drd->is_usb3_phy_on = 0;
 	/* phy_exynos_usb_v3p1_pipe_ovrd(&phy_drd->usbphy_info); */
 	phy_exynos_usbdp_g2_v2_disable(&phy_drd->usbphy_sub_info);
 
@@ -1933,7 +1954,10 @@ static irqreturn_t exynos_usbdrd_usb3_phy_wakeup_interrupt(int irq, void *_phydr
 	struct exynos_usbdrd_phy *phy_drd = (struct exynos_usbdrd_phy *)_phydrd;
 
 	phy_exynos_usb3p1_u3_rewa_disable(&phy_drd->usbphy_info);
-	dev_info(phy_drd->dev, "[%s] USB3 ReWA disabled...\n", __func__);
+	dev_info_ratelimited(phy_drd->dev, "[%s] USB3 ReWA disabled...\n",
+								__func__);
+	phy_drd->is_usb3_rewa_enabled = 0;
+	disable_irq_nosync(phy_drd->usb3_irq_wakeup);
 
 	return IRQ_HANDLED;
 }
@@ -2029,6 +2053,7 @@ static int exynos_usbdrd_phy_probe(struct platform_device *pdev)
 	const struct exynos_usbdrd_phy_drvdata *drv_data;
 	struct regmap *reg_pmu;
 	u32 pmu_offset, pmu_offset_dp, pmu_offset_tcxo, pmu_mask, pmu_mask_tcxo;
+	u32 tcxo_ctrl_offset;
 	int i, ret;
 
 	pr_info("%s: +++ %s %s\n", __func__, dev->init_name, pdev->name);
@@ -2058,7 +2083,7 @@ static int exynos_usbdrd_phy_probe(struct platform_device *pdev)
 	phy_drd->irq_conn = platform_get_irq(pdev, 1);
 	irq_set_status_flags(phy_drd->irq_conn, IRQ_NOAUTOEN);
 	ret = devm_request_irq(dev, phy_drd->irq_conn, exynos_usbdrd_phy_conn_interrupt,
-					0, "phydrd-conn", phy_drd);
+					0, "usb2-phydrd-conn", phy_drd);
 	if (ret) {
 		dev_err(dev, "failed to request irq #%d --> %d\n",
 				phy_drd->irq_conn, ret);
@@ -2070,7 +2095,7 @@ static int exynos_usbdrd_phy_probe(struct platform_device *pdev)
 	irq_set_status_flags(phy_drd->usb3_irq_wakeup, IRQ_NOAUTOEN);
 	ret = devm_request_irq(dev, phy_drd->usb3_irq_wakeup,
 					exynos_usbdrd_usb3_phy_wakeup_interrupt,
-					0, "phydrd-conn", phy_drd);
+					0, "usb3-phydrd-conn", phy_drd);
 	if (ret) {
 		dev_err(dev, "failed to request irq #%d --> %d (For SS ReWA)\n",
 				phy_drd->usb3_irq_wakeup, ret);
@@ -2153,6 +2178,15 @@ static int exynos_usbdrd_phy_probe(struct platform_device *pdev)
 		dev_err(dev, "couldn't read pmu_offset_tcxo on %s node, error = %d\n",
 						dev->of_node->name, ret);
 	}
+
+	ret = of_property_read_u32(dev->of_node,
+		"tcxo_ctrl_offset", &tcxo_ctrl_offset);
+	if (ret < 0) {
+		dev_err(dev, "couldn't read tcxo_ctrl_offset on %s node, error = %d\n",
+						dev->of_node->name, ret);
+		tcxo_ctrl_offset = 0;
+	}
+
 	ret = of_property_read_u32(dev->of_node,
 		"pmu_mask_tcxobuf", &pmu_mask_tcxo);
 	if (ret < 0) {
@@ -2249,6 +2283,7 @@ static int exynos_usbdrd_phy_probe(struct platform_device *pdev)
 		phy_drd->phys[i].pmu_offset_tcxobuf = pmu_offset_tcxo;
 		phy_drd->phys[i].pmu_mask_tcxobuf = pmu_mask_tcxo;
 		phy_drd->phys[i].phy_cfg = &drv_data->phy_cfg[i];
+		phy_drd->phys[i].tcxo_ctrl_offset = tcxo_ctrl_offset;
 		phy_set_drvdata(phy, &phy_drd->phys[i]);
 	}
 #if IS_ENABLED(CONFIG_PHY_EXYNOS_DEBUGFS)
@@ -2298,6 +2333,7 @@ static int exynos_usbdrd_phy_probe(struct platform_device *pdev)
 	}
 
 	phy_drd->is_irq_enabled = 0;
+	phy_drd->is_usb3_rewa_enabled = 0;
 
 	ret = sysfs_create_file(&dev->kobj, &dev_attr_phy_tune.attr);
 	if (ret) {
@@ -2309,11 +2345,12 @@ static int exynos_usbdrd_phy_probe(struct platform_device *pdev)
 		dev_err(dev, "%s - Couldn't create sysfs for HS PHY tune\n", __func__);
 	}
 
+#if IS_ENABLED(CONFIG_PHY_EXYNOS_EOM)
 	ret = sysfs_create_file(&dev->kobj, &dev_attr_eom.attr);
 	if (ret) {
 		dev_err(dev, "%s - Couldn't create sysfs for PHY EOM\n", __func__);
 	}
-
+#endif
 	ret = sysfs_create_file(&dev->kobj, &dev_attr_reverse_phy_port.attr);
 	if (ret) {
 		dev_err(dev, "%s - Couldn't create sysfs for REVERSE PHY PORT\n", __func__);

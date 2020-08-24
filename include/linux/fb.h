@@ -811,7 +811,7 @@ struct dmt_videomode {
 
 extern const char *fb_mode_option;
 extern const struct fb_videomode vesa_modes[];
-extern const struct fb_videomode cea_modes[65];
+extern const struct fb_videomode cea_modes[100];
 extern const struct dmt_videomode dmt_modes[];
 
 struct fb_modelist {

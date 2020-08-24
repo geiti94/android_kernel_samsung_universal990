@@ -25,7 +25,8 @@
  * (maximum index of d2u_decl_cmtpdf table).
  */
 #define UTILAVG_FFSI_VARIANCE	16
-DECLARE_ELASTICITY(cpufreq, 8, 5, 24, 25);
+DECLARE_ELASTICITY(cpufreq, 32, 25, 24, 25);
+#define FFSI_CLUSTER_TRAVERSING
 #endif
 
 struct sugov_tunables {
@@ -1081,7 +1082,7 @@ static int sugov_start(struct cpufreq_policy *policy)
 	struct sugov_policy *sg_policy = policy->governor_data;
 	unsigned int cpu;
 #ifdef CONFIG_SCHED_FFSI_GLUE
-	char alias[FFSI_ALIAS_LEN];
+	char alias[FFSI_ALIAS_LEN] = {0,};
 #endif
 
 	sg_policy->up_rate_delay_ns =
@@ -1100,13 +1101,13 @@ static int sugov_start(struct cpufreq_policy *policy)
 		struct sugov_cpu *sg_cpu = &per_cpu(sugov_cpu, cpu);
 
 #ifdef CONFIG_SCHED_FFSI_GLUE
+#ifndef FFSI_CLUSTER_TRAVERSING
 		if (cpu != policy->cpu) {
 			memset(sg_cpu, 0, sizeof(*sg_cpu));
 			goto skip_subcpus;
 		}
-
+#endif
 		if (!sg_policy->be_stochastic) {
-			memset(alias, 0, FFSI_ALIAS_LEN);
 			sprintf(alias, "govern%d", cpu);
 			memset(sg_cpu, 0, sizeof(*sg_cpu));
 			sg_cpu->util_vessel =
@@ -1125,7 +1126,9 @@ static int sugov_start(struct cpufreq_policy *policy)
 			memset(sg_cpu, 0, sizeof(*sg_cpu));
 			sg_cpu->util_vessel = vptr;
 		}
+#ifndef FFSI_CLUSTER_TRAVERSING		
 skip_subcpus:
+#endif
 #else
 		memset(sg_cpu, 0, sizeof(*sg_cpu));
 #endif

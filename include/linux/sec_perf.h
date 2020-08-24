@@ -17,10 +17,12 @@
 
 #ifdef CONFIG_SEC_PERF_LATENCYCHECKER
 extern void sec_perf_latencychecker_check_latency_other_cpu(void);
+extern void sec_perf_latencychecker_stop(void);
 extern int sec_perf_latencychecker_enable(unsigned int cpu);
 extern int sec_perf_latencychecker_disable(unsigned int cpu);
 #else
-#define sec_perf_latencychecker_check_latency_other_cpu(a) do { } while (0)
+#define sec_perf_latencychecker_check_latency_other_cpu() do { } while (0)
+#define sec_perf_latencychecker_stop() do { } while (0)
 #define sec_perf_latencychecker_enable(a) do { } while (0)
 #define sec_perf_latencychecker_disable(a) do { } while (0)
 #endif

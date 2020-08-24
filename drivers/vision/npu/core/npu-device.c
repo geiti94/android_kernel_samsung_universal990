@@ -276,6 +276,9 @@ static int npu_device_probe(struct platform_device *pdev)
 	}
 	device->dev = dev;
 
+	mutex_init(&device->start_stop_lock);
+	probe_info("NPU Device - init start_stop lock\n");
+
 	ret = npu_system_probe(&device->system, pdev);
 	if (ret) {
 		probe_err("fail(%d) in npu_system_probe\n", ret);
@@ -552,10 +555,12 @@ int npu_device_start(struct npu_device *device)
 
 	BUG_ON(!device);
 
+	mutex_lock(&device->start_stop_lock);
 	ret = __npu_device_start(device);
 	if (ret)
 		npu_err("fail(%d) in __npu_device_start\n", ret);
 
+	mutex_unlock(&device->start_stop_lock);
 	npu_info("%s():%d\n", __func__, ret);
 	return ret;
 }
@@ -566,10 +571,12 @@ int npu_device_stop(struct npu_device *device)
 
 	BUG_ON(!device);
 
+	mutex_lock(&device->start_stop_lock);
 	ret = __npu_device_stop(device);
 	if (ret)
 		npu_err("fail(%d) in __npu_device_stop\n", ret);
 
+	mutex_unlock(&device->start_stop_lock);
 	npu_info("%s():%d\n", __func__, ret);
 
 	return ret;

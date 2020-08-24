@@ -39,6 +39,7 @@
 /***************************************************************************
  *                           Cpuidle state handler                         *
  ***************************************************************************/
+void cpupro_pm_update(int cpu, int idx, int entry);
 static unsigned int prepare_idle(unsigned int cpu, int index)
 {
 	unsigned int entry_state = 0;
@@ -49,6 +50,7 @@ static unsigned int prepare_idle(unsigned int cpu, int index)
 	}
 
 	cpuidle_profile_cpu_idle_enter(cpu, index);
+	cpupro_pm_update(cpu, index, true);
 
 	return entry_state;
 }
@@ -56,6 +58,7 @@ static unsigned int prepare_idle(unsigned int cpu, int index)
 static void post_idle(unsigned int cpu, int index, int fail)
 {
 	cpuidle_profile_cpu_idle_exit(cpu, index, fail);
+	cpupro_pm_update(cpu, index, false);
 
 	if (!index)
 		return;

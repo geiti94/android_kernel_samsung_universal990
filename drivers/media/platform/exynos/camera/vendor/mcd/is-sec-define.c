@@ -998,12 +998,12 @@ int is_sec_parse_rom_info(struct is_rom_info *finfo, char *buf, int rom_id)
 
 #if defined(CONFIG_CAMERA_USE_MCU) || defined(CONFIG_CAMERA_USE_INTERNAL_MCU)
 	if ((rom_id == ROM_ID_REAR
-#ifdef USE_REAR2_OIS_DATA_FROM_EEPROM
-		|| rom_id == ROM_ID_REAR4
+#ifdef TELE_OIS_TILT_ROM_ID
+		|| rom_id == TELE_OIS_TILT_ROM_ID
 #endif
 		) && finfo->rom_ois_list_len == IS_ROM_OIS_MAX_LIST) {
 		is_sec_get_ois_pinfo(&ois_pinfo);
-#ifdef USE_REAR2_OIS_DATA_FROM_EEPROM
+#ifdef TELE_OIS_TILT_ROM_ID
 		if (rom_id == ROM_ID_REAR)
 #endif
 		{
@@ -1015,8 +1015,8 @@ int is_sec_parse_rom_info(struct is_rom_info *finfo, char *buf, int rom_id)
 			memcpy(ois_pinfo->wide_supperssion_yratio, &buf[finfo->rom_ois_list[5]], IS_OIS_SUPPERSSION_RATIO_DATA_SIZE);
 			memcpy(ois_pinfo->wide_cal_mark, &buf[finfo->rom_ois_list[6]], IS_OIS_CAL_MARK_DATA_SIZE);
 		}
-#ifdef USE_REAR2_OIS_DATA_FROM_EEPROM
-		else if (rom_id == ROM_ID_REAR4)
+#ifdef TELE_OIS_TILT_ROM_ID
+		else if (rom_id == TELE_OIS_TILT_ROM_ID)
 #endif
 		{
 			memcpy(ois_pinfo->tele_xgg, &buf[finfo->rom_ois_list[7]], IS_OIS_GYRO_DATA_SIZE);
@@ -1026,7 +1026,7 @@ int is_sec_parse_rom_info(struct is_rom_info *finfo, char *buf, int rom_id)
 			memcpy(ois_pinfo->tele_supperssion_xratio, &buf[finfo->rom_ois_list[11]], IS_OIS_SUPPERSSION_RATIO_DATA_SIZE);
 			memcpy(ois_pinfo->tele_supperssion_yratio, &buf[finfo->rom_ois_list[12]], IS_OIS_SUPPERSSION_RATIO_DATA_SIZE);
 			memcpy(ois_pinfo->tele_cal_mark, &buf[finfo->rom_ois_list[13]], IS_OIS_CAL_MARK_DATA_SIZE);
-		}		
+		}
 	}
 #endif
 
@@ -1303,7 +1303,7 @@ int is_sec_readcal_otprom(int rom_id)
 		is_i2c_write(client, 0xA00, 0x04);
 		is_i2c_write(client, 0xA00, 0x00);
 
-		msleep(1);
+		usleep_range(1000, 1100);
 
 		is_i2c_write(client, 0xA00, 0x04);
 		is_i2c_write(client, 0xA02, 0x03);
@@ -1434,7 +1434,7 @@ int is_sec_check_status(struct is_core *core)
 			break;
 		}
 		retry_read--;
-		msleep(3);
+		usleep_range(3000, 3100);
 	} while (temp[0]);
 
 	return ret;
@@ -2943,6 +2943,8 @@ int is_sec_sensorid_find_front(struct is_core *core)
 
 	if (is_sec_fw_module_compare(finfo->header_ver, FW_3J1_X)) {
 		specific->front_sensor_id = SENSOR_NAME_S5K3J1;
+	} else if (is_sec_fw_module_compare(finfo->header_ver, FW_IMX616_S)) {
+		specific->front_sensor_id = SENSOR_NAME_IMX616;
 	}
 
 	info("%s sensor id %d\n", __func__, specific->front_sensor_id);
@@ -3110,6 +3112,9 @@ int is_sec_fw_find(struct is_core *core)
 	switch (front_id) {
 	case SENSOR_NAME_S5K3J1:
 		snprintf(finfo_front->load_front_setfile_name, sizeof(IS_3J1_SETF), "%s", IS_3J1_SETF);
+		break;
+	case SENSOR_NAME_IMX616:
+		snprintf(finfo_front->load_front_setfile_name, sizeof(IS_IMX616_SETF), "%s", IS_IMX616_SETF);
 		break;
 	default:
 		snprintf(finfo_front->load_front_setfile_name, sizeof(IS_3J1_SETF), "%s", IS_3J1_SETF);

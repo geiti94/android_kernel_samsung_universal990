@@ -70,9 +70,9 @@ static ssize_t dsp_hw_debug_power_write(struct file *filp,
 
 	size = simple_write_to_buffer(command, sizeof(command), ppos,
 			user_buf, count);
-	if (size < 0) {
-		ret = size;
-		dsp_err("Failed to get user parameter(%d)\n", ret);
+	if (size <= 0) {
+		ret = -EINVAL;
+		dsp_err("Failed to get user parameter(%zd)\n", size);
 		goto p_err;
 	}
 
@@ -243,9 +243,9 @@ static ssize_t dsp_hw_debug_devfreq_write(struct file *filp,
 	pm = &debug->dspdev->system.pm;
 
 	size = simple_write_to_buffer(buf, sizeof(buf), ppos, user_buf, count);
-	if (size < 0) {
-		ret = size;
-		dsp_err("Failed to get user parameter(%d)\n", ret);
+	if (size <= 0) {
+		ret = -EINVAL;
+		dsp_err("Failed to get user parameter(%zd)\n", size);
 		goto p_err;
 	}
 	buf[size - 1] = '\0';
@@ -507,9 +507,9 @@ static ssize_t dsp_hw_debug_fw_log_write(struct file *filp,
 
 	size = simple_write_to_buffer(command, sizeof(command), ppos,
 			user_buf, count);
-	if (size < 0) {
-		ret = size;
-		dsp_err("Failed to get user parameter(%d)\n", ret);
+	if (size <= 0) {
+		ret = -EINVAL;
+		dsp_err("Failed to get user parameter(%zd)\n", size);
 		goto p_err;
 	}
 
@@ -584,9 +584,9 @@ static ssize_t dsp_hw_debug_wait_time_write(struct file *filp,
 	dspdev = debug->dspdev;
 
 	size = simple_write_to_buffer(buf, sizeof(buf), ppos, user_buf, count);
-	if (size < 0) {
-		ret = size;
-		dsp_err("Failed to get user parameter(%d)\n", ret);
+	if (size <= 0) {
+		ret = -EINVAL;
+		dsp_err("Failed to get user parameter(%zd)\n", size);
 		goto p_err;
 	}
 	buf[size - 1] = '\0';
@@ -671,9 +671,9 @@ static ssize_t dsp_hw_debug_layer_range_write(struct file *filp,
 	dspdev = debug->dspdev;
 
 	size = simple_write_to_buffer(buf, sizeof(buf), ppos, user_buf, count);
-	if (size < 0) {
-		ret = size;
-		dsp_err("Failed to get user parameter(%d)\n", ret);
+	if (size <= 0) {
+		ret = -EINVAL;
+		dsp_err("Failed to get user parameter(%zd)\n", size);
 		goto p_err;
 	}
 	buf[size - 1] = '\0';
@@ -901,9 +901,9 @@ static ssize_t dsp_hw_debug_userdefined_write(struct file *filp,
 	dspdev = debug->dspdev;
 
 	size = simple_write_to_buffer(buf, sizeof(buf), ppos, user_buf, count);
-	if (size < 0) {
-		ret = size;
-		dsp_err("Failed to get user parameter(%d)\n", ret);
+	if (size <= 0) {
+		ret = -EINVAL;
+		dsp_err("Failed to get user parameter(%zd)\n", size);
 		goto p_err;
 	}
 	buf[size - 1] = '\0';
@@ -990,9 +990,9 @@ static ssize_t dsp_hw_debug_dump_value_write(struct file *filp,
 	dspdev = debug->dspdev;
 
 	size = simple_write_to_buffer(buf, sizeof(buf), ppos, user_buf, count);
-	if (size < 0) {
-		ret = size;
-		dsp_err("Failed to get user parameter(%d)\n", ret);
+	if (size <= 0) {
+		ret = -EINVAL;
+		dsp_err("Failed to get user parameter(%zd)\n", size);
 		goto p_err;
 	}
 	buf[size - 1] = '\0';
@@ -1076,9 +1076,9 @@ static ssize_t dsp_hw_debug_firmware_mode_write(struct file *filp,
 
 	size = simple_write_to_buffer(command, sizeof(command), ppos,
 			user_buf, count);
-	if (size < 0) {
-		ret = size;
-		dsp_err("Failed to get user parameter(%d)\n", ret);
+	if (size <= 0) {
+		ret = -EINVAL;
+		dsp_err("Failed to get user parameter(%zd)\n", size);
 		goto p_err;
 	}
 
@@ -1108,6 +1108,98 @@ static const struct file_operations dsp_hw_debug_firmware_mode_fops = {
 	.open		= dsp_hw_debug_firmware_mode_open,
 	.read		= seq_read,
 	.write		= dsp_hw_debug_firmware_mode_write,
+	.llseek		= seq_lseek,
+	.release	= single_release
+};
+
+static int dsp_hw_debug_bus_show(struct seq_file *file, void *unused)
+{
+	struct dsp_hw_debug *debug;
+	struct dsp_bus *bus;
+	int idx;
+
+	dsp_enter();
+	debug = file->private;
+	bus = &debug->dspdev->system.bus;
+
+	seq_printf(file, "DSP mo scenario count[%u]\n", DSP_MO_SCENARIO_COUNT);
+	for (idx = 0; idx < DSP_MO_SCENARIO_COUNT; ++idx)
+		seq_printf(file, "[%d] [%32s] bts idx:%u, status:%d\n",
+				idx, bus->scen[idx].name,
+				bus->scen[idx].bts_scen_idx,
+				bus->scen[idx].enabled);
+
+	seq_puts(file, "Command to control DSP bus setting\n");
+	seq_puts(file, " [mode 0] set mo setting\n");
+	seq_puts(file, "  echo 0 {scen_name} > /d/dsp/hardware/bus\n");
+	seq_puts(file, " [mode 1] unset mo setting\n");
+	seq_puts(file, "  echo 1 {scen_name} > /d/dsp/hardware/bus\n");
+
+	dsp_leave();
+	return 0;
+}
+
+static int dsp_hw_debug_bus_open(struct inode *inode,
+		struct file *filp)
+{
+	return single_open(filp, dsp_hw_debug_bus_show, inode->i_private);
+}
+
+static ssize_t dsp_hw_debug_bus_write(struct file *filp,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	int ret;
+	struct seq_file *file;
+	struct dsp_hw_debug *debug;
+	struct dsp_bus *bus;
+	char buf[30];
+	ssize_t size;
+	int mode;
+	char bus_scen[DSP_BUS_SCENARIO_NAME_LEN];
+
+	dsp_enter();
+	file = filp->private_data;
+	debug = file->private;
+	bus = &debug->dspdev->system.bus;
+
+	size = simple_write_to_buffer(buf, sizeof(buf), ppos, user_buf, count);
+	if (size <= 0) {
+		ret = -EINVAL;
+		dsp_err("Failed to get user parameter(%zd)\n", size);
+		goto p_err;
+	}
+	buf[size - 1] = '\0';
+
+	ret = sscanf(buf, "%d %s", &mode, bus_scen);
+	if (ret != 2) {
+		dsp_err("Failed to get bus parameter(%d)\n", ret);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	switch (mode) {
+	case 0:
+		dsp_bus_mo_get(bus, bus_scen);
+		break;
+	case 1:
+		dsp_bus_mo_put(bus, bus_scen);
+		break;
+	default:
+		ret = -EINVAL;
+		dsp_err("mode for bus setting is invalid(%d)\n", mode);
+		goto p_err;
+	}
+
+	dsp_leave();
+	return count;
+p_err:
+	return ret;
+}
+
+static const struct file_operations dsp_hw_debug_bus_fops = {
+	.open		= dsp_hw_debug_bus_open,
+	.read		= seq_read,
+	.write		= dsp_hw_debug_bus_write,
 	.llseek		= seq_lseek,
 	.release	= single_release
 };
@@ -1170,11 +1262,10 @@ static void __dsp_hw_debug_npu_enable(struct dsp_hw_debug *debug,
 		return;
 
 	ret = dsp_binary_load(DSP_NPU_FW_NAME, NULL, DSP_FW_EXTENSION,
-			debug->npu_fw.kvaddr, debug->npu_fw.size);
-	if (ret < 0)
+			debug->npu_fw.kvaddr, debug->npu_fw.size,
+			&debug->npu_fw.used_size);
+	if (ret)
 		goto p_err_free;
-
-	debug->npu_fw.used_size = ret;
 
 	mutex_lock(&dspdev->lock);
 	ret = dsp_device_power_on(dspdev, 0);
@@ -1241,9 +1332,9 @@ static ssize_t dsp_hw_debug_npu_test_write(struct file *filp,
 
 	size = simple_write_to_buffer(command, sizeof(command), ppos,
 			user_buf, count);
-	if (size < 0) {
-		ret = size;
-		dsp_err("Failed to get user parameter(%d)\n", ret);
+	if (size <= 0) {
+		ret = -EINVAL;
+		dsp_err("Failed to get user parameter(%zd)\n", size);
 		goto p_err;
 	}
 	command[size - 1] = '\0';
@@ -1623,6 +1714,11 @@ int dsp_hw_debug_probe(struct dsp_device *dspdev)
 	if (!debug->firmware_mode)
 		dsp_warn("Failed to create firmware_mode debugfs file\n");
 
+	debug->bus = debugfs_create_file("bus", 0640, debug->root, debug,
+			&dsp_hw_debug_bus_fops);
+	if (!debug->bus)
+		dsp_warn("Failed to create bus debugfs file\n");
+
 	debug->npu_test = debugfs_create_file("npu_test", 0640, debug->root,
 			debug, &dsp_hw_debug_npu_test_fops);
 	if (!debug->npu_test)
@@ -1634,10 +1730,10 @@ int dsp_hw_debug_probe(struct dsp_device *dspdev)
 		dsp_warn("Failed to create test debugfs file\n");
 
 	debug->log = kzalloc(sizeof(*debug->log), GFP_KERNEL);
-	if (!debug->log)
-		dsp_warn("Failed to alloc dsp_hw_debug_log\n");
-	else
+	if (debug->log)
 		__dsp_hw_debug_log_init(debug);
+	else
+		dsp_warn("Failed to alloc dsp_hw_debug_log\n");
 
 	dsp_leave();
 	return 0;

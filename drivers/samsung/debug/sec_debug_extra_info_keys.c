@@ -23,7 +23,7 @@ static char key32[][MAX_ITEM_KEY_LEN] = {
 
 static char key64[][MAX_ITEM_KEY_LEN] = {
 	"ETC", "BAT", "FAULT", "PINFO", "HINT",
-	"EPD",
+	"EPD", "MOCP", "SOCP",
 };
 
 static char key256[][MAX_ITEM_KEY_LEN] = {
@@ -35,7 +35,7 @@ static char key256[][MAX_ITEM_KEY_LEN] = {
 static char key1024[][MAX_ITEM_KEY_LEN] = {
 	"CPU0", "CPU1", "CPU2", "CPU3", "CPU4",
 	"CPU5", "CPU6", "CPU7", "MFC", "STACK",
-	"FPMU",
+	"FPMU", "REGS"
 };
 
 /* keys are grouped by sysfs node */
@@ -50,10 +50,10 @@ static char akeys[][MAX_ITEM_KEY_LEN] = {
 
 static char bkeys[][MAX_ITEM_KEY_LEN] = {
 	"ID", "RR", "ASB", "PSITE", "DDRID",
-	"RST", "INFO2", "INFO3", "RBASE", "MAGIC",
-	"PWR", "PWROFF", "PINT1", "PINT2", "PINT5",
-	"PINT6", "PSTS1", "PSTS2", "FREQ", "EPD",
-	"UNFZ",
+	"MOCP", "SOCP", "RST", "INFO2", "INFO3",
+	"RBASE", "MAGIC", "PWR", "PWROFF", "PINT1",
+	"PINT2", "PINT5", "PINT6", "PSTS1", "PSTS2",
+	"EPD", "UNFZ", "FREQ",
 };
 
 static char ckeys[][MAX_ITEM_KEY_LEN] = {
@@ -67,6 +67,9 @@ static char fkeys[][MAX_ITEM_KEY_LEN] = {
 
 static char mkeys[][MAX_ITEM_KEY_LEN] = {
 	"ID", "RR", "MFC", "ODR", "AUD",
-	"HINT",
+	"HINT"
 };
 
+static char tkeys[][MAX_ITEM_KEY_LEN] = {
+	"ID", "RR", "REGS",
+};

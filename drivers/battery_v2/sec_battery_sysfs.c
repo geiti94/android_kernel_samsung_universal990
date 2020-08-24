@@ -305,13 +305,36 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 		break;
 	case BATT_CURRENT_UA_NOW:
 		{
+			union power_supply_propval vin = {0, },
+				iin = {0, }, isys = {0, };
+
 			value.intval = SEC_BATTERY_CURRENT_UA;
 			psy_do_property(battery->pdata->fuelgauge_name, get,
 				POWER_SUPPLY_PROP_CURRENT_NOW, value);
-#if defined(CONFIG_SEC_FACTORY)
-			pr_err("%s: batt_current_ua_now (%d)\n",
-					__func__, value.intval);
-#endif
+			if (!is_nocharge_type(battery->cable_type)) {
+				if (is_pd_apdo_wire_type(battery->cable_type)) {
+					vin.intval = SEC_BATTERY_VIN_MA;
+					psy_do_property(battery->pdata->charger_name, get,
+						POWER_SUPPLY_EXT_PROP_MEASURE_INPUT, vin);
+					iin.intval = SEC_BATTERY_IIN_MA;
+					psy_do_property(battery->pdata->charger_name, get,
+						POWER_SUPPLY_EXT_PROP_MEASURE_INPUT, iin);
+				} else {
+					vin.intval = SEC_BATTERY_VBYP;
+					psy_do_property(battery->pdata->fuelgauge_name, get,
+						POWER_SUPPLY_EXT_PROP_MEASURE_INPUT, vin);
+
+					iin.intval = SEC_BATTERY_IIN_MA;
+					psy_do_property(battery->pdata->fuelgauge_name, get,
+						POWER_SUPPLY_EXT_PROP_MEASURE_INPUT, iin);
+				}
+				isys.intval = SEC_BATTERY_ISYS_MA;
+				psy_do_property(battery->pdata->fuelgauge_name, get,
+					POWER_SUPPLY_EXT_PROP_MEASURE_SYS, isys);
+			}
+			pr_err("%s: batt_current_ua_now - Input(%dmV, %dmA), Output(%dmA), ISys(%dmA) \n",
+					__func__, vin.intval, iin.intval, value.intval, isys.intval);
+
 			i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n",
 				value.intval);
 		}
@@ -725,7 +748,7 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 			psy_do_property(battery->pdata->fgsrc_switch_name, set,
 					POWER_SUPPLY_PROP_ENERGY_NOW, value);
 			for (j = 0; j < 10; j++) {
-				mdelay(175);
+				msleep(175);
 				psy_do_property(battery->pdata->fuelgauge_name, get,
 						POWER_SUPPLY_PROP_VOLTAGE_NOW, value);
 				ocv_data[j] = value.intval;
@@ -1138,6 +1161,10 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 	case BATT_TX_EVENT:
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n",
 				battery->tx_event);
+		if (battery->tx_event & BATT_TX_EVENT_WIRELESS_TX_ERR) {
+			/* clear tx all event */
+			sec_bat_set_tx_event(battery, 0, BATT_TX_EVENT_WIRELESS_ALL_MASK);
+		}
 		break;
 	case BATT_EXT_DEV_CHG:
 		break;
@@ -1290,26 +1317,31 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 	case CISD_WC_DATA:
 		{
 			struct cisd *pcisd = &battery->cisd;
-			struct pad_data *pad_data = pcisd->pad_array;
+			struct pad_data *pad_data = NULL;
 			char temp_buf[1024] = {0,};
 			int j = 0, size = 1024;
 
+			mutex_lock(&pcisd->padlock);
+			pad_data = pcisd->pad_array;
 			snprintf(temp_buf, size, "%d", pcisd->pad_count);
 			while ((pad_data != NULL) && ((pad_data = pad_data->next) != NULL) &&
 					(pad_data->id < MAX_PAD_ID) && (j++ < pcisd->pad_count)) {
 				snprintf(temp_buf+strlen(temp_buf), size, " 0x%02x:%d", pad_data->id, pad_data->count);
 				size = sizeof(temp_buf) - strlen(temp_buf);
 			}
+			mutex_unlock(&pcisd->padlock);
 			i += scnprintf(buf + i, PAGE_SIZE - i, "%s\n", temp_buf);
 		}
 		break;
 	case CISD_WC_DATA_JSON:
 		{
 			struct cisd *pcisd = &battery->cisd;
-			struct pad_data *pad_data = pcisd->pad_array;
+			struct pad_data *pad_data = NULL;
 			char temp_buf[1024] = {0,};
 			int j = 0, size = 1024;
 
+			mutex_lock(&pcisd->padlock);
+			pad_data = pcisd->pad_array;
 			snprintf(temp_buf+strlen(temp_buf), size, "\"%s\":\"%d\"",
 				PAD_INDEX_STRING, pcisd->pad_count);
 			while ((pad_data != NULL) && ((pad_data = pad_data->next) != NULL) &&
@@ -1318,32 +1350,38 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 					PAD_JSON_STRING, pad_data->id, pad_data->count);
 				size = sizeof(temp_buf) - strlen(temp_buf);
 			}
+			mutex_unlock(&pcisd->padlock);
 			i += scnprintf(buf + i, PAGE_SIZE - i, "%s\n", temp_buf);
 		}
 		break;
 	case CISD_POWER_DATA:
 		{
 			struct cisd *pcisd = &battery->cisd;
-			struct power_data *power_data = pcisd->power_array;
+			struct power_data *power_data = NULL;
 			char temp_buf[1024] = {0,};
 			int j = 0, size = 1024;
 
+			mutex_lock(&pcisd->powerlock);
+			power_data = pcisd->power_array;
 			snprintf(temp_buf+strlen(temp_buf), size, "%d", pcisd->power_count);
 			while ((power_data != NULL) && ((power_data = power_data->next) != NULL) &&
 					(power_data->power < MAX_CHARGER_POWER) && (j++ < pcisd->power_count)) {
 				snprintf(temp_buf+strlen(temp_buf), size, " %d:%d", power_data->power, power_data->count);
 				size = sizeof(temp_buf) - strlen(temp_buf);
 			}
+			mutex_unlock(&pcisd->powerlock);
 			i += scnprintf(buf + i, PAGE_SIZE - i, "%s\n", temp_buf);
 		}
 		break;
 	case CISD_POWER_DATA_JSON:
 		{
 			struct cisd *pcisd = &battery->cisd;
-			struct power_data *power_data = pcisd->power_array;
+			struct power_data *power_data = NULL;
 			char temp_buf[1024] = {0,};
 			int j = 0, size = 1024;
 
+			mutex_lock(&pcisd->powerlock);
+			power_data = pcisd->power_array;
 			snprintf(temp_buf+strlen(temp_buf), size, "\"%s\":\"%d\"",
 				POWER_COUNT_JSON_STRING, pcisd->power_count);
 			while ((power_data != NULL) && ((power_data = power_data->next) != NULL) &&
@@ -1352,6 +1390,7 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 					POWER_JSON_STRING, power_data->power, power_data->count);
 				size = sizeof(temp_buf) - strlen(temp_buf);
 			}
+			mutex_unlock(&pcisd->powerlock);
 			i += scnprintf(buf + i, PAGE_SIZE - i, "%s\n", temp_buf);
 		}
 		break;
@@ -1659,12 +1698,12 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 		break;
 #endif
 	case PD_DISABLE:
-		if(battery->pd_disable)
+		if (battery->pd_disable)
 			value.strval = "PD Disabled";
 		else
 			value.strval = "PD Enabled";
 		pr_info("%s: PD = %s\n",__func__, value.strval);
-		i += scnprintf(buf + i, PAGE_SIZE - i, "%s\n", value.strval);
+		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", battery->pd_disable);
 		break;
 	default:
 		i = -EINVAL;
@@ -1686,7 +1725,9 @@ ssize_t sec_bat_store_attrs(
 	int x = 0;
 	int t[12];
 	int i = 0;
-
+#if defined(CONFIG_DIRECT_CHARGING)
+	char direct_charging_source_status[2] = {0, };
+#endif
 	union power_supply_propval value = {0, };
 
 	switch (offset) {
@@ -1889,9 +1930,11 @@ ssize_t sec_bat_store_attrs(
 		break;
 	case WC_CONTROL:
 		if (sscanf(buf, "%10d\n", &x) == 1) {
+#if defined(CONFIG_DISABLE_MFC_IC)
 			char wpc_en_status[2];
 
 			wpc_en_status[0] = WPC_EN_SYSFS;
+#endif
 			if (x == 0) {
 				mutex_lock(&battery->wclock);
 				battery->wc_enable = false;
@@ -1900,10 +1943,15 @@ ssize_t sec_bat_store_attrs(
 				psy_do_property(battery->pdata->wireless_charger_name, set,
 					POWER_SUPPLY_EXT_PROP_WC_CONTROL, value);
 
+#if defined(CONFIG_DISABLE_MFC_IC)
 				wpc_en_status[1] = false;
 				value.strval= wpc_en_status;
 				psy_do_property(battery->pdata->wireless_charger_name, set,
 					POWER_SUPPLY_EXT_PROP_WPC_EN, value);
+#else
+				if (battery->pdata->wpc_en)
+					gpio_direction_output(battery->pdata->wpc_en, 1);
+#endif
 				pr_info("%s: WC CONTROL: Disable", __func__);
 				mutex_unlock(&battery->wclock);
 			} else if (x == 1) {
@@ -1913,11 +1961,15 @@ ssize_t sec_bat_store_attrs(
 				value.intval = 1;
 				psy_do_property(battery->pdata->wireless_charger_name, set,
 					POWER_SUPPLY_EXT_PROP_WC_CONTROL, value);
-
+#if defined(CONFIG_DISABLE_MFC_IC)
 				wpc_en_status[1] = true;
 				value.strval= wpc_en_status;
 				psy_do_property(battery->pdata->wireless_charger_name, set,
 					POWER_SUPPLY_EXT_PROP_WPC_EN, value);
+#else
+				if (battery->pdata->wpc_en)
+					gpio_direction_output(battery->pdata->wpc_en, 0);
+#endif
 				pr_info("%s: WC CONTROL: Enable", __func__);
 				mutex_unlock(&battery->wclock);
 			} else {
@@ -1979,6 +2031,14 @@ ssize_t sec_bat_store_attrs(
 				wake_lock(&battery->parse_mode_dt_wake_lock);
 				queue_delayed_work(battery->monitor_wqueue,
 					&battery->parse_mode_dt_work, 0);
+
+#if defined(CONFIG_DIRECT_CHARGING)
+				direct_charging_source_status[0] = SEC_STORE_MODE;
+				direct_charging_source_status[1] = SEC_DIRECT_CHG_CHARGING_SOURCE_SWITCHING;
+				value.strval = direct_charging_source_status;
+				psy_do_property(battery->pdata->charger_name, set,
+					POWER_SUPPLY_EXT_PROP_CHANGE_CHARGING_SOURCE, value);
+#endif
 			}
 #endif
 			ret = count;
@@ -2177,6 +2237,7 @@ ssize_t sec_bat_store_attrs(
 		break;
 	case BATT_CAPACITY_MAX:
 		if (sscanf(buf, "%10d\n", &x) == 1) {
+			mutex_lock(&battery->init_soc_updatelock);
 			dev_err(battery->dev,
 					"%s: BATT_CAPACITY_MAX(%d), fg_reset(%d)\n", __func__, x, fg_reset);
 			if (!fg_reset && !battery->store_mode) {
@@ -2194,6 +2255,7 @@ ssize_t sec_bat_store_attrs(
 				battery->fg_reset = 1;
 #endif
 			}
+			mutex_unlock(&battery->init_soc_updatelock);
 			ret = count;
 		}
 		break;
@@ -2446,6 +2508,10 @@ ssize_t sec_bat_store_attrs(
 			} else {
 				pr_info("@Tx_Mode %s: Set TX Enable (%d)\n", __func__, x);
 				sec_wireless_set_tx_enable(battery, x);
+				if (!x) {
+					/* clear tx all event */
+					sec_bat_set_tx_event(battery, 0, BATT_TX_EVENT_WIRELESS_ALL_MASK);
+				}
 #if defined(CONFIG_BATTERY_CISD)
 				if (x)
 					battery->cisd.tx_data[TX_ON]++;
@@ -3291,14 +3357,16 @@ ssize_t sec_bat_store_attrs(
 		break;
 	case SWITCH_CHARGING_SOURCE:
 		if (sscanf(buf, "%10d\n", &x) == 1) {
-			if (is_pd_apdo_wire_type(battery->cable_type)) {
-				dev_info(battery->dev, "%s: Request Change Charging Source : %s \n",
-					__func__, x == 0 ? "Switch Charger" : "Direct Charger" );
+			dev_info(battery->dev, "%s: Request Change Charging Source : %s \n",
+				__func__, x == 0 ? "Switch Charger" : "Direct Charger" );
 
-				value.intval = (x == 0) ? SEC_DIRECT_CHG_CHARGING_SOURCE_SWITCHING : SEC_DIRECT_CHG_CHARGING_SOURCE_DIRECT;
-				psy_do_property(battery->pdata->charger_name, set,
-					POWER_SUPPLY_EXT_PROP_CHANGE_CHARGING_SOURCE, value);
-			}
+			direct_charging_source_status[0] = SEC_TEST_MODE;
+			direct_charging_source_status[1] =
+				 (x == 0) ? SEC_DIRECT_CHG_CHARGING_SOURCE_SWITCHING : SEC_DIRECT_CHG_CHARGING_SOURCE_DIRECT;
+			value.strval = direct_charging_source_status;
+			psy_do_property(battery->pdata->charger_name, set,
+				POWER_SUPPLY_EXT_PROP_CHANGE_CHARGING_SOURCE, value);
+
 			ret = count;
 		}
 		break;

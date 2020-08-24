@@ -351,7 +351,7 @@ void phy_exynos_usb_v3p1_g2_link_pclk_sel(struct exynos_usbphy_info *info)
 	reg = readl(regs_base + EXYNOS_USBCON_CLKRST);
 	reg |= CLKRST_LINK_PCLK_SEL;
 	writel(reg, regs_base + EXYNOS_USBCON_CLKRST);
-	mdelay(3);
+	usleep_range(3000, 3300);
 }
 
 void phy_exynos_usb_v3p1_pipe_ready(struct exynos_usbphy_info *info)

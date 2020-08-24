@@ -929,7 +929,7 @@ int sensor_imx260_cis_stream_on(struct v4l2_subdev *subdev)
 	 * then 8 ms waiting is needed before the StreamOn of a sensor (IMX260).
 	 */
 	if (test_bit(IS_SENSOR_PREPROCESSOR_AVAILABLE, &sensor_peri->peri_state)) {
-		mdelay(8);
+		usleep_range(8000, 8100);
 	}
 
 	/* Sensor stream on */

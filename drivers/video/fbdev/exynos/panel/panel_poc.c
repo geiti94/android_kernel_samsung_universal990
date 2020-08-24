@@ -1,9 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * linux/drivers/video/fbdev/exynos/panel/panel_poc.c
- *
- * Samsung Common LCD Driver.
- *
- * Copyright (c) 2017 Samsung Electronics
+ * Copyright (c) Samsung Electronics Co., Ltd.
  * Gwanghui Lee <gwanghui.lee@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,12 +20,19 @@
 #include "panel_bl.h"
 #include "panel_drv.h"
 #include "panel_poc.h"
+#ifdef CONFIG_SUPPORT_POC_SPI
+#include "panel_spi.h"
+#endif
 
+#ifdef PANEL_PR_TAG
+#undef PANEL_PR_TAG
+#define PANEL_PR_TAG	"poc"
+#endif
 
 static u8 *poc_wr_img;
 static u8 *poc_rd_img;
 
-const char * const poc_op[] = {
+const char * const poc_op[MAX_POC_OP] = {
 	[POC_OP_NONE] = "POC_OP_NONE",
 	[POC_OP_ERASE] = "POC_OP_ERASE",
 	[POC_OP_WRITE] = "POC_OP_WRITE",
@@ -59,6 +63,7 @@ const char * const poc_op[] = {
 #endif
 	[POC_OP_INITIALIZE] = "POC_OP_INITIALIZE",
 	[POC_OP_UNINITIALIZE] = "POC_OP_UNINITIALIZE",
+	[POC_OP_GM2_READ] = "POC_OP_GM2_READ",
 };
 
 const char * const str_partition_write_check[] = {
@@ -72,13 +77,12 @@ static int panel_do_poc_seqtbl_by_index_nolock(struct panel_poc_device *poc_dev,
 	struct panel_device *panel = to_panel_device(poc_dev);
 
 	if (panel->poc_dev.seqtbl == NULL) {
-		panel_err("ERR:PANEL:%s:invalid seqtbl\n", __func__);
+		panel_err("invalid seqtbl\n");
 		return -EINVAL;
 	}
 
 	if (unlikely(index < 0 || index >= MAX_POC_SEQ)) {
-		panel_err("%s, invalid paramter (panel %p, index %d)\n",
-				__func__, panel, index);
+		panel_err("invalid parameter (panel %p, index %d)\n", panel, index);
 		return -EINVAL;
 	}
 
@@ -102,19 +106,18 @@ static struct seqinfo *find_poc_seqtbl_by_index(struct panel_poc_device *poc_dev
 	struct seqinfo *tbl;
 
 	if (unlikely(!poc_dev->seqtbl)) {
-		panel_err("%s, seqtbl not exist\n", __func__);
+		panel_err("seqtbl not exist\n");
 		return NULL;
 	}
 
 	if (unlikely(index >= MAX_POC_SEQ)) {
-		panel_err("%s, invalid paramter (index %d)\n",
-				__func__, index);
+		panel_err("invalid parameter (index %d)\n", index);
 		return NULL;
 	}
 
 	tbl = &poc_dev->seqtbl[index];
 	if (tbl != NULL)
-		pr_debug("%s, found %s panel seqtbl\n", __func__, tbl->name);
+		panel_dbg("found %s panel seqtbl\n", tbl->name);
 
 	return tbl;
 }
@@ -138,28 +141,18 @@ static int poc_get_poc_chksum(struct panel_device *panel)
 	int ret;
 
 	if (sizeof(poc_info->poc_chksum) != PANEL_POC_CHKSUM_LEN) {
-		pr_err("%s invalid poc control length\n", __func__);
+		panel_err("invalid poc control length\n");
 		return -EINVAL;
 	}
-/*
-	mutex_lock(&panel->op_lock);
-	panel_set_key(panel, 3, true);
-	ret = panel_resource_update_by_name(panel, "poc_chksum");
-	panel_set_key(panel, 3, false);
-	mutex_unlock(&panel->op_lock);
-	if (unlikely(ret < 0)) {
-		pr_err("%s failed to update resource(poc_chksum)\n", __func__);
-		return ret;
-	}
-*/
+
 	ret = resource_copy_by_name(panel_data, poc_info->poc_chksum, "poc_chksum");
 	if (unlikely(ret < 0)) {
-		pr_err("%s failed to copy resource(poc_chksum)\n", __func__);
+		panel_err("failed to copy resource(poc_chksum)\n");
 		return ret;
 	}
 
-	pr_info("%s poc_chksum 0x%02X 0x%02X 0x%02X 0x%02X, result %d\n",
-			__func__, poc_info->poc_chksum[0], poc_info->poc_chksum[1],
+	panel_info("poc_chksum 0x%02X 0x%02X 0x%02X 0x%02X, result %d\n",
+			poc_info->poc_chksum[0], poc_info->poc_chksum[1],
 			poc_info->poc_chksum[2], poc_info->poc_chksum[3],
 			poc_info->poc_chksum[4]);
 
@@ -167,135 +160,39 @@ static int poc_get_poc_chksum(struct panel_device *panel)
 }
 
 #ifdef CONFIG_SUPPORT_POC_SPI
-bool _spi_poc_status_is_busy(struct panel_poc_info *poc_info, int status) {
-	if (status & poc_info->busy_mask)
-		return true;
-	return false;
-}
-
-bool _spi_poc_status_is_init(struct panel_poc_info *poc_info, int status) {
-	if ((status & poc_info->state_mask) == poc_info->state_init)
-		return true;
-	return false;
-}
-
-bool _spi_poc_status_is_uninit(struct panel_poc_info *poc_info, int status) {
-	if ((status & poc_info->state_mask) == poc_info->state_uninit)
-		return true;
-	return false;
-}
-
-int _spi_poc_get_status(struct panel_device *panel)
-{
-	struct panel_poc_device *poc_dev = &panel->poc_dev;
-	struct panel_info *panel_data = &panel->panel_data;
-	int ret;
-	u8 status1, status2;
-
-	ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_SPI_STATUS_SEQ);
-	if (unlikely(ret < 0)) {
-		pr_err("%s, failed to read poc-spi-status-seq seq\n", __func__);
-		return ret;
-	}
-
-	ret = resource_copy_by_name(panel_data, &status1, "poc_spi_status1");
-	if (unlikely(ret < 0)) {
-		pr_err("%s failed to copy resource(poc_spi_status1)\n", __func__);
-		return ret;
-	}
-
-	ret = resource_copy_by_name(panel_data, &status2, "poc_spi_status2");
-	if (unlikely(ret < 0)) {
-		pr_err("%s failed to copy resource(poc_spi_status2)\n", __func__);
-		return ret;
-	}
-//	panel_dbg("%s, status: 0x%04X", __func__, (status2 << 8) | status1);
-
-	return (status2 << 8) | status1;
-}
-
 int _spi_poc_erase(struct panel_device *panel, int addr, int len)
 {
-	struct panel_poc_device *poc_dev = &panel->poc_dev;
-	struct panel_poc_info *poc_info = &poc_dev->poc_info;
-	int ret, sz_block = 0, erased_size = 0, erase_seq_index;
-	int status_retry = 0;
+	struct panel_spi_dev *spi_dev = &panel->panel_spi_dev;
+	struct spi_data_packet data_packet = { 0, };
+	int ret = 0;
+
+	if (unlikely(!SPI_IS_READY(spi_dev))) {
+		panel_err("spi dev is not ready\n");
+		return -EINVAL;
+	}
 
 	if (addr % POC_PAGE > 0 || addr < 0) {
-		pr_err("%s, failed to start erase. invalid addr\n", __func__);
+		panel_err("failed to start erase. invalid addr\n");
 		return -EINVAL;
 	}
 
-	if (len < 0) {
-		panel_err("failed to start erase. invalid len\n");
+	if (len <= 0) {
+		panel_err("failed to start erase. invalid len %d\n", len);
 		return -EINVAL;
 	}
 
-	panel_info("poc erase +++, 0x%x, %d\n", addr, len);
-	len = ALIGN(len, SZ_4K);
+	panel_info("++ addr 0x%06X(%d), 0x%X(%d) bytes\n", addr, addr, len, len);
 
-	mutex_lock(&panel->op_lock);
-	while (len > erased_size) {
-		if (atomic_read(&poc_dev->cancel)) {
-			pr_err("%s, stopped by user at erase 0x%x\n", __func__, erased_size);
-			ret = -EIO;
-			atomic_set(&poc_dev->cancel, 0);
-			goto out_poc_erase;
-		}
+	data_packet.addr = addr;
+	data_packet.size = len;
 
-		if ((len >= erased_size + SZ_64K) &&
-			((addr + erased_size) % SZ_64K) == 0 &&
-			panel_poc_seq_exist(poc_dev, POC_SPI_ERASE_64K_SEQ)) {
-			erase_seq_index = POC_SPI_ERASE_64K_SEQ;
-			sz_block = SZ_64K;
-		} else if ((len >= erased_size + SZ_32K) &&
-			((addr + erased_size) % SZ_32K) == 0 &&
-			panel_poc_seq_exist(poc_dev, POC_SPI_ERASE_32K_SEQ)) {
-			erase_seq_index = POC_SPI_ERASE_32K_SEQ;
-			sz_block = SZ_32K;
-		} else {
-			erase_seq_index = POC_SPI_ERASE_4K_SEQ;
-			sz_block = SZ_4K;
-		}
-
-		poc_info->waddr = addr + erased_size;
-		ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, erase_seq_index);
-		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to poc-erase-seq 0x%x\n", __func__, addr + erased_size);
-			goto out_poc_erase;
-		}
-
-		status_retry = 0;
-		while (status_retry < POC_SPI_WAIT_ERASE_CNT) {
-			ret = _spi_poc_get_status(panel);
-			if (unlikely(ret < 0)) {
-				goto out_poc_erase;
-			}
-
-			if (!_spi_poc_status_is_busy(poc_info, ret))
-				break;
-
-			ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_SPI_WAIT_ERASE_SEQ);
-			if (unlikely(ret < 0)) {
-				pr_err("%s, failed to poc-spi-wait-erase-seq 0x%x\n", __func__, addr + erased_size);
-				goto out_poc_erase;
-			}
-			status_retry++;
-		}
-
-		if (status_retry >= POC_SPI_WAIT_ERASE_CNT) {
-			pr_info("%s spi cmd wait timeout cnt: %d \n", __func__, status_retry);
-			ret = -EIO;
-			goto out_poc_erase;
-		}
-
-		pr_info("%s erased addr %06X, sz_block %06X, wait %d\n",
-				__func__, addr + erased_size, sz_block, status_retry);
-		erased_size += sz_block;
+	ret = spi_dev->ops->erase(spi_dev, &data_packet);
+	if (ret != 0) {
+		panel_err("failed to erase addr: 0x%06x size %d ret %d\n", data_packet.addr, data_packet.size, ret);
+		ret = -EIO;
 	}
-out_poc_erase:
-	mutex_unlock(&panel->op_lock);
-	pr_info("%s poc erase %d ---\n", __func__, ret);
+
+	panel_info("-- ret %d\n", ret);
 	return ret;
 }
 #endif
@@ -307,22 +204,22 @@ int _dsi_poc_erase(struct panel_device *panel, int addr, int len)
 	int ret, sz_block = 0, erased_size = 0, erase_seq_index;
 
 	if (addr % POC_PAGE > 0) {
-		pr_err("%s, failed to start erase. invalid addr\n", __func__);
+		panel_err("failed to start erase. invalid addr\n");
 		return -EINVAL;
 	}
 
 	if (len < 0 || addr + len > get_poc_partition_size(poc_dev, POC_IMG_PARTITION)) {
-		pr_err("%s, failed to start erase. range exceeded\n", __func__);
+		panel_err("failed to start erase. range exceeded\n");
 		return -EINVAL;
 	}
 	len = ALIGN(len, SZ_4K);
 
-	pr_info("%s poc erase +++, 0x%x, %d\n", __func__, addr, len);
+	panel_info("poc erase +++, 0x%x, %d\n", addr, len);
 
 	mutex_lock(&panel->op_lock);
 	ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_ERASE_ENTER_SEQ);
 	if (unlikely(ret < 0)) {
-		pr_err("%s, failed to poc-erase-enter-seq\n", __func__);
+		panel_err("failed to poc-erase-enter-seq\n");
 		goto out_poc_erase;
 	}
 	while (len > erased_size) {
@@ -342,14 +239,14 @@ int _dsi_poc_erase(struct panel_device *panel, int addr, int len)
 		poc_info->waddr = addr + erased_size;
 		ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, erase_seq_index);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to poc-erase-seq 0x%x\n", __func__, addr + erased_size);
+			panel_err("failed to poc-erase-seq 0x%x\n", addr + erased_size);
 			goto out_poc_erase;
 		}
-		pr_info("%s erased addr %06X, sz_block %06X\n",
-				__func__, addr + erased_size, sz_block);
+		panel_info("erased addr %06X, sz_block %06X\n",
+				addr + erased_size, sz_block);
 
 		if (atomic_read(&poc_dev->cancel)) {
-			pr_err("%s, stopped by user at erase 0x%x\n", __func__, erased_size);
+			panel_err("stopped by user at erase 0x%x\n", erased_size);
 			goto cancel_poc_erase;
 		}
 		erased_size += sz_block;
@@ -357,18 +254,18 @@ int _dsi_poc_erase(struct panel_device *panel, int addr, int len)
 
 	ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_ERASE_EXIT_SEQ);
 	if (unlikely(ret < 0)) {
-		pr_err("%s, failed to poc-erase-exit-seq\n", __func__);
+		panel_err("failed to poc-erase-exit-seq\n");
 		goto out_poc_erase;
 	}
 
 	mutex_unlock(&panel->op_lock);
-	pr_info("%s poc erase ---\n", __func__);
+	panel_info("poc erase ---\n");
 	return 0;
 
 cancel_poc_erase:
 	ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_ERASE_EXIT_SEQ);
 	if (unlikely(ret < 0))
-		pr_err("%s, failed to poc-erase-exit-seq\n", __func__);
+		panel_err("failed to poc-erase-exit-seq\n");
 	ret = -EIO;
 	atomic_set(&poc_dev->cancel, 0);
 
@@ -382,6 +279,7 @@ int poc_erase(struct panel_device *panel, int addr, int len)
 #ifdef CONFIG_SUPPORT_POC_SPI
 	struct panel_poc_device *poc_dev = &panel->poc_dev;
 	struct panel_poc_info *poc_info = &poc_dev->poc_info;
+
 	if (poc_info->conn_src == POC_CONN_SRC_SPI)
 		return _spi_poc_erase(panel, addr, len);
 #endif
@@ -391,55 +289,67 @@ int poc_erase(struct panel_device *panel, int addr, int len)
 #ifdef CONFIG_SUPPORT_POC_SPI
 static int _spi_poc_read_data(struct panel_device *panel, u8 *buf, u32 addr, u32 len)
 {
-	struct panel_poc_device *poc_dev = &panel->poc_dev;
-	struct panel_info *panel_data = &panel->panel_data;
-	struct panel_poc_info *poc_info = &poc_dev->poc_info;
+	struct panel_spi_dev *spi_dev = &panel->panel_spi_dev;
+	struct spi_data_packet data_packet = { 0, };
 	int i, ret = 0;
-	u32 poc_addr;
-	u8 *read_buf;
-	int copy_len;
+	int spi_buffer_size;
+	u8 *spi_buffer;
+	int read_len;
 
-	pr_info("%s poc read addr 0x%06X, %d(0x%X) bytes +++\n",
-			__func__, addr, len, len);
-
-	copy_len = get_resource_size_by_name(panel_data, "poc_spi_read");
-	if (copy_len <= 0) {
-		pr_info("%s failed to get resource %d\n", __func__, copy_len);
-		return copy_len;
+	if (unlikely(!SPI_IS_READY(spi_dev))) {
+		panel_err("spi dev is not ready\n");
+		return -EINVAL;
 	}
-	read_buf = (u8 *)devm_kzalloc(panel->dev, copy_len * sizeof(u8), GFP_KERNEL);
-	if (!read_buf) {
-		pr_err("%s memory allocation failed\n", __func__);
+
+	if (len <= 0) {
+		panel_err("failed to start read. invalid len %d\n", len);
+		return -EINVAL;
+	}
+
+	panel_info("++ addr 0x%06X(%d), 0x%X(%d) bytes\n", addr, addr, len, len);
+
+	spi_buffer_size = spi_dev->ops->get_buf_size(spi_dev, PANEL_SPI_GET_READ_SIZE);
+	if (spi_buffer_size < 1) {
+		panel_err("got invalid buffer size %d\n", spi_buffer_size);
+		return -EINVAL;
+	}
+	if (spi_buffer_size > SZ_4K) {
+		panel_warn("buffer size set to %d->%d\n", spi_buffer_size, SZ_4K);
+		spi_buffer_size = SZ_4K;
+	}
+
+	spi_buffer = (u8 *)devm_kzalloc(panel->dev, spi_buffer_size * sizeof(u8), GFP_KERNEL);
+	if (!spi_buffer) {
+		panel_err("memory allocation failed\n");
 		return -ENOMEM;
 	}
 
-	mutex_lock(&panel->op_lock);
 	for (i = 0; i < len;) {
-		poc_addr = addr + i;
-		poc_info->raddr = poc_addr;
-		ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_SPI_READ_SEQ);
-		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to read poc-spi-read-seq seq\n", __func__);
-			goto out;
+		memset(spi_buffer, 0, sizeof(spi_buffer_size));
+		read_len = spi_buffer_size;
+		if (read_len > len - i)
+			read_len = len - i;
+
+		data_packet.addr = addr + i;
+		data_packet.buf = spi_buffer;
+		data_packet.size = read_len;
+
+		ret = spi_dev->ops->read(spi_dev, &data_packet);
+		if (ret != 0) {
+			panel_err("failed to read addr: 0x%06x size %d ret %d\n", data_packet.addr, data_packet.size, ret);
+			ret = -EIO;
+			goto error_exit;
 		}
 
-		ret = resource_copy_by_name(panel_data, read_buf, "poc_spi_read");
-		if (unlikely(ret < 0)) {
-			pr_err("%s failed to copy resource(poc_spi_read)\n", __func__);
-			goto out;
-		}
+		memcpy(&buf[i], spi_buffer, read_len);
+		panel_dbg("[%06X] 0x%02X, len %d\n", data_packet.addr, buf[i], data_packet.size);
 
-		if (copy_len > len - i)
-			copy_len = len - i;
-		memcpy(&buf[i], read_buf, copy_len);
-
-		pr_info("%s [%6d] addr %06X 0x%02X\n", __func__, i, poc_addr, buf[i]);
-
-		i += copy_len;
+		i += read_len;
 	}
-out:
-	mutex_unlock(&panel->op_lock);
-	devm_kfree(panel->dev, read_buf);
+error_exit:
+	panel_info("-- ret %d\n", ret);
+
+	devm_kfree(panel->dev, spi_buffer);
 	return ret;
 }
 #endif
@@ -453,12 +363,11 @@ static int _dsi_poc_read_data(struct panel_device *panel,
 	int i, ret = 0;
 	u32 poc_addr;
 
-	pr_info("%s poc read addr 0x%06X, %d(0x%X) bytes +++\n",
-			__func__, addr, len, len);
+	panel_info("poc read addr 0x%06X, %d(0x%X) bytes +++\n", addr, len, len);
 
 	ret = poc_get_poc_chksum(panel);
 	if (unlikely(ret < 0)) {
-		pr_err("%s, failed to read poc cheksum seq\n", __func__);
+		panel_err("failed to read poc cheksum seq\n");
 		goto exit;
 	}
 
@@ -468,21 +377,20 @@ static int _dsi_poc_read_data(struct panel_device *panel,
 	if (poc_info->poc_chksum[0] != 0x00 || poc_info->poc_chksum[1] != 0x00) {
 		ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_READ_PRE_ENTER_SEQ);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to read poc-rd-pre-enter seq\n", __func__);
+			panel_err("failed to read poc-rd-pre-enter seq\n");
 			goto out_poc_read;
 		}
 	}
 
 	ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_READ_ENTER_SEQ);
 	if (unlikely(ret < 0)) {
-		pr_err("%s, failed to read poc-rd-enter seq\n", __func__);
+		panel_err("failed to read poc-rd-enter seq\n");
 		goto out_poc_read;
 	}
 
 	for (i = 0; i < len; i++) {
 		if (atomic_read(&poc_dev->cancel)) {
-			pr_err("%s, stopped by user at %d bytes\n",
-					__func__, i);
+			panel_err("stopped by user at %d bytes\n", i);
 			goto cancel_poc_read;
 		}
 
@@ -490,28 +398,27 @@ static int _dsi_poc_read_data(struct panel_device *panel,
 		poc_info->raddr = poc_addr;
 		ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_READ_DAT_SEQ);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to read poc-rd-dat seq\n", __func__);
+			panel_err("failed to read poc-rd-dat seq\n");
 			goto out_poc_read;
 		}
 
 		ret = resource_copy_by_name(panel_data, &buf[i], "poc_data");
 		if (unlikely(ret < 0)) {
-			pr_err("%s failed to copy resource(poc_data)\n", __func__);
+			panel_err("failed to copy resource(poc_data)\n");
 			goto out_poc_read;
 		}
 
 		if ((i % 4096) == 0)
-			pr_info("%s [%04d] addr %06X %02X\n", __func__, i, poc_addr, buf[i]);
+			panel_info("[%04d] addr %06X %02X\n", i, poc_addr, buf[i]);
 	}
 
 	ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_READ_EXIT_SEQ);
 	if (unlikely(ret < 0)) {
-		pr_err("%s, failed to read poc-rd-exit seq\n", __func__);
+		panel_err("failed to read poc-rd-exit seq\n");
 		goto out_poc_read;
 	}
 
-	pr_info("%s poc read addr 0x%06X, %d(0x%X) bytes ---\n",
-			__func__, addr, len, len);
+	panel_info("poc read addr 0x%06X, %d(0x%X) bytes ---\n", addr, len, len);
 	poc_info->state = POC_STATE_RD_COMPLETE;
 	mutex_unlock(&panel->op_lock);
 
@@ -520,7 +427,7 @@ static int _dsi_poc_read_data(struct panel_device *panel,
 cancel_poc_read:
 	ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_READ_EXIT_SEQ);
 	if (unlikely(ret < 0))
-		pr_err("%s, failed to read poc-rd-exit seq\n", __func__);
+		panel_err("failed to read poc-rd-exit seq\n");
 	ret = -EIO;
 	atomic_set(&poc_dev->cancel, 0);
 
@@ -536,6 +443,7 @@ int poc_read_data(struct panel_device *panel, u8 *buf, u32 addr, u32 len)
 #ifdef CONFIG_SUPPORT_POC_SPI
 	struct panel_poc_device *poc_dev = &panel->poc_dev;
 	struct panel_poc_info *poc_info = &poc_dev->poc_info;
+
 	if (poc_info->conn_src == POC_CONN_SRC_SPI)
 		return _spi_poc_read_data(panel, buf, addr, len);
 #endif
@@ -545,87 +453,46 @@ int poc_read_data(struct panel_device *panel, u8 *buf, u32 addr, u32 len)
 #ifdef CONFIG_SUPPORT_POC_SPI
 static int _spi_poc_write_data(struct panel_device *panel, u8 *data, u32 addr, u32 size)
 {
-	struct panel_poc_device *poc_dev = &panel->poc_dev;
-	struct panel_poc_info *poc_info = &poc_dev->poc_info;
+	struct panel_spi_dev *spi_dev = &panel->panel_spi_dev;
+	struct spi_data_packet data_packet = { 0, };
 	int i, ret = 0;
-	u32 poc_addr;
+	int spi_buffer_size;
 	int copy_len;
-	int status_retry_total = 0, status_retry = 0;
 
-	if (addr % POC_PAGE > 0) {
-		pr_err("%s, failed to start write. invalid addr\n", __func__);
+	if (unlikely(!SPI_IS_READY(spi_dev))) {
+		panel_err("spi dev is not ready\n");
 		return -EINVAL;
 	}
 
-	poc_info->wdata = (u8 *)devm_kzalloc(panel->dev, poc_info->spi_wdata_len * sizeof(u8), GFP_KERNEL);
-	if (!poc_info->wdata) {
-		pr_err("%s memory allocation failed\n", __func__);
-		return -ENOMEM;
+	if (addr % POC_PAGE > 0) {
+		panel_err("failed to start write. invalid addr\n");
+		return -EINVAL;
 	}
 
-	mutex_lock(&panel->op_lock);
+	panel_info("++ addr 0x%06X(%d), 0x%X(%d) bytes\n", addr, addr, size, size);
+
+	spi_buffer_size = spi_dev->ops->get_buf_size(spi_dev, PANEL_SPI_GET_WRITE_SIZE);
 	for (i = 0; i < size;) {
-		poc_addr = addr + i;
-		poc_info->waddr = poc_addr;
-		memset(poc_info->wdata, 0x00, poc_info->spi_wdata_len);
 		copy_len = size - i;
-		if (copy_len > poc_info->spi_wdata_len)
-			copy_len = poc_info->spi_wdata_len;
-		memcpy(poc_info->wdata, data + i, copy_len);
-		/* W/A for panel-spi,
-		 * panel driver only have fixed-length packet,
-		 * so fill dummy data(0xFF) into end of packet
-		 */
-		if (copy_len < poc_info->spi_wdata_len) {
-			memset(poc_info->wdata + copy_len, 0xFF, poc_info->spi_wdata_len - copy_len);
-			copy_len = poc_info->spi_wdata_len;
-		}
-		poc_info->wdata_len = copy_len;
+		if (copy_len > spi_buffer_size)
+			copy_len = spi_buffer_size;
 
-		ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_SPI_WRITE_SEQ);
-		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to write poc-wr-img seq\n", __func__);
-			goto out_poc_write;
-		}
+		data_packet.addr = addr + i;
+		data_packet.buf = data + i;
+		data_packet.size = copy_len;
 
-		if ((i % 4096) == 0)
-			pr_info("%s addr %06X %02X\n", __func__, poc_addr, data[i]);
-		i += copy_len;
-
-#ifdef PANEL_POC_SPI_BUSY_WAIT
-		status_retry = 0;
-		while (status_retry < POC_SPI_WAIT_WRITE_CNT) {
-			ret = _spi_poc_get_status(panel);
-			if (unlikely(ret < 0)) {
-				goto out_poc_write;
-			}
-
-			if (!_spi_poc_status_is_busy(poc_info, ret))
-				break;
-
-			ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_SPI_WAIT_WRITE_SEQ);
-			if (unlikely(ret < 0)) {
-				pr_err("%s, failed to write poc-spi-wait-write seq\n", __func__);
-				goto out_poc_write;
-			}
-			status_retry++;
-		}
-		if (status_retry >= POC_SPI_WAIT_WRITE_CNT) {
-			pr_info("%s spi cmd wait timeout: %d\n", __func__, status_retry);
+		ret = spi_dev->ops->write(spi_dev, &data_packet);
+		if (ret != 0) {
+			panel_err("failed to write addr: 0x%06x size %d ret %d\n", data_packet.addr, data_packet.size, ret);
 			ret = -EIO;
-			goto out_poc_write;
+			break;
 		}
-#endif
-		status_retry_total += status_retry;
+
+		panel_dbg("[%06X] 0x%02X, len %d\n", data_packet.addr, data_packet.buf, data_packet.size);
+		i += copy_len;
 	}
-out_poc_write:
 
-	pr_info("%s poc write addr 0x%06X, %d(0x%X) bytes, ret %d, wait %d\n",
-			__func__, addr, size, size, ret, status_retry_total);
-
-	if (poc_info->wdata)
-		devm_kfree(panel->dev, poc_info->wdata);
-	mutex_unlock(&panel->op_lock);
+	panel_info("-- ret %d\n", ret);
 	return ret;
 }
 #endif
@@ -645,21 +512,20 @@ static int _dsi_poc_write_data(struct panel_device *panel, u8 *data, u32 addr, u
 
 	poc_info->wdata = (u8 *)devm_kzalloc(panel->dev, poc_info->wdata_len * sizeof(u8), GFP_KERNEL);
 	if (!poc_info->wdata) {
-		pr_err("%s memory allocation failed\n", __func__);
+		panel_err("memory allocation failed\n");
 		return -ENOMEM;
 	}
 
 	mutex_lock(&panel->op_lock);
 	ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_WRITE_ENTER_SEQ);
 	if (unlikely(ret < 0)) {
-		pr_err("%s, failed to read poc-wr-enter-seq\n", __func__);
+		panel_err("failed to read poc-wr-enter-seq\n");
 		goto out_poc_write;
 	}
 
 	for (i = 0; i < size;) {
 		if (atomic_read(&poc_dev->cancel)) {
-			pr_err("%s, stopped by user at %d bytes\n",
-					__func__, i);
+			panel_err("stopped by user at %d bytes\n", i);
 			goto cancel_poc_write;
 		}
 		poc_addr = addr + i;
@@ -668,7 +534,7 @@ static int _dsi_poc_write_data(struct panel_device *panel, u8 *data, u32 addr, u
 			(i == 0 || (poc_addr & 0xFF) == 0)) {
 			ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_WRITE_STT_SEQ);
 			if (unlikely(ret < 0)) {
-				pr_err("%s, failed to write poc-wr-stt seq\n", __func__);
+				panel_err("failed to write poc-wr-stt seq\n");
 				goto out_poc_write;
 			}
 		}
@@ -681,17 +547,17 @@ static int _dsi_poc_write_data(struct panel_device *panel, u8 *data, u32 addr, u
 
 		ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_WRITE_DAT_SEQ);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to write poc-wr-img seq\n", __func__);
+			panel_err("failed to write poc-wr-img seq\n");
 			goto out_poc_write;
 		}
 
 		if ((i % 4096) == 0)
-			pr_info("%s addr %06X %02X\n", __func__, poc_addr, data[i]);
+			panel_info("addr %06X %02X\n", poc_addr, data[i]);
 		if (write_end_seq_exist &&
 			((poc_addr & 0xFF) == 0xFF || i == (size - 1))) {
 			ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_WRITE_END_SEQ);
 			if (unlikely(ret < 0)) {
-				pr_err("%s, failed to write poc-wr-exit seq\n", __func__);
+				panel_err("failed to write poc-wr-exit seq\n");
 				goto out_poc_write;
 			}
 		}
@@ -700,12 +566,11 @@ static int _dsi_poc_write_data(struct panel_device *panel, u8 *data, u32 addr, u
 
 	ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_WRITE_EXIT_SEQ);
 	if (unlikely(ret < 0)) {
-		pr_err("%s, failed to write poc-wr-exit seq\n", __func__);
+		panel_err("failed to write poc-wr-exit seq\n");
 		goto out_poc_write;
 	}
 
-	pr_info("%s poc write addr 0x%06X, %d(0x%X) bytes\n",
-			__func__, addr, size, size);
+	panel_info("poc write addr 0x%06X, %d(0x%X) bytes\n", addr, size, size);
 	mutex_unlock(&panel->op_lock);
 	if (poc_info->wdata)
 		devm_kfree(panel->dev, poc_info->wdata);
@@ -715,7 +580,7 @@ static int _dsi_poc_write_data(struct panel_device *panel, u8 *data, u32 addr, u
 cancel_poc_write:
 	ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_WRITE_EXIT_SEQ);
 	if (unlikely(ret < 0))
-		pr_err("%s, failed to read poc-wr-exit seq\n", __func__);
+		panel_err("failed to read poc-wr-exit seq\n");
 	ret = -EIO;
 	atomic_set(&poc_dev->cancel, 0);
 
@@ -733,6 +598,7 @@ int poc_write_data(struct panel_device *panel, u8 *data, u32 addr, u32 size)
 #ifdef CONFIG_SUPPORT_POC_SPI
 	struct panel_poc_device *poc_dev = &panel->poc_dev;
 	struct panel_poc_info *poc_info = &poc_dev->poc_info;
+
 	if (poc_info->conn_src == POC_CONN_SRC_SPI)
 		return _spi_poc_write_data(panel, data, addr, size);
 #endif
@@ -745,37 +611,16 @@ int poc_memory_initialize(struct panel_device *panel)
 #ifdef CONFIG_SUPPORT_POC_SPI
 	struct panel_poc_device *poc_dev = &panel->poc_dev;
 	struct panel_poc_info *poc_info = &poc_dev->poc_info;
-	int retry = 5;
+	struct panel_spi_dev *spi_dev = &panel->panel_spi_dev;
 
 	if (poc_info->conn_src != POC_CONN_SRC_SPI)
 		return ret;
 
-	if(!panel_poc_seq_exist(poc_dev, POC_SPI_INIT_SEQ)) {
-		pr_err("%s, failed to find poc-spi-init-seq\n", __func__);
-		return 0;
+	ret = spi_dev->ops->init(spi_dev);
+	if (ret != 0) {
+		panel_err("failed to initialize memory %d\n", ret);
+		return -EIO;
 	}
-
-	for(; retry > 0; retry--) {
-		ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_SPI_INIT_SEQ);
-		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to set poc-spi-init-seq\n", __func__);
-			goto out_poc_mem_unlock;
-		}
-		ret = _spi_poc_get_status(panel);
-		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to get poc-spi-init-seq\n", __func__);
-			goto out_poc_mem_unlock;
-		}
-
-		if (_spi_poc_status_is_init(poc_info, ret)) {
-			pr_info("%s done 0x%04X %d\n", __func__, ret, retry);
-			return 0;
-		}
-	}
-	pr_err("%s, failed to check initialized status 0x%04X\n", __func__, ret);
-	ret = -EIO;
-
-out_poc_mem_unlock:
 #endif
 	return ret;
 }
@@ -786,40 +631,19 @@ int poc_memory_uninitialize(struct panel_device *panel)
 #ifdef CONFIG_SUPPORT_POC_SPI
 	struct panel_poc_device *poc_dev = &panel->poc_dev;
 	struct panel_poc_info *poc_info = &poc_dev->poc_info;
-	int retry = 5;
+	struct panel_spi_dev *spi_dev = &panel->panel_spi_dev;
 
 	if (poc_info->conn_src != POC_CONN_SRC_SPI)
 		return ret;
 
-	if(!panel_poc_seq_exist(poc_dev, POC_SPI_EXIT_SEQ)) {
-		pr_err("%s, failed to find poc-spi-exit-seq\n", __func__);
-		return 0;
+	ret = spi_dev->ops->exit(spi_dev);
+	if (ret != 0) {
+		panel_err("failed to uninitialize memory %d\n", ret);
+		return -EIO;
 	}
-
-	for(; retry > 0; retry--) {
-		ret = panel_do_poc_seqtbl_by_index_nolock(poc_dev, POC_SPI_EXIT_SEQ);
-		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to set poc-spi-exit-seq %d\n", __func__, ret);
-			goto out_poc_mem_unlock;
-		}
-		ret = _spi_poc_get_status(panel);
-		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to get poc-spi-exit-seq %d\n", __func__, ret);
-			goto out_poc_mem_unlock;
-		}
-
-		if (_spi_poc_status_is_uninit(poc_info, ret)) {
-			pr_info("%s done 0x%04X %d\n", __func__, ret, retry);
-			return 0;
-		}
-	}
-	pr_err("%s, failed to check initialized status 0x%04X\n", __func__, ret);
-	ret = -EIO;
-
-out_poc_mem_unlock:
-
 #endif
 	return ret;
+
 }
 
 static int poc_get_octa_poc(struct panel_device *panel)
@@ -832,12 +656,12 @@ static int poc_get_octa_poc(struct panel_device *panel)
 
 	ret = resource_copy_by_name(panel_data, octa_id, "octa_id");
 	if (unlikely(ret < 0)) {
-		pr_err("%s failed to copy resource(octa_id) (ret %d)\n", __func__, ret);
+		panel_err("failed to copy resource(octa_id) (ret %d)\n", ret);
 		return ret;
 	}
 	poc_info->poc = octa_id[1] & 0x0F;
 
-	pr_info("%s poc %d\n", __func__, poc_info->poc);
+	panel_info("poc %d\n", poc_info->poc);
 
 	return 0;
 }
@@ -850,7 +674,7 @@ static int poc_get_poc_ctrl(struct panel_device *panel)
 	int ret;
 
 	if (sizeof(poc_info->poc_ctrl) != PANEL_POC_CTRL_LEN) {
-		pr_err("%s invalid poc control length\n", __func__);
+		panel_err("invalid poc control length\n");
 		return -EINVAL;
 	}
 
@@ -860,18 +684,18 @@ static int poc_get_poc_ctrl(struct panel_device *panel)
 	panel_set_key(panel, 3, false);
 	mutex_unlock(&panel->op_lock);
 	if (unlikely(ret < 0)) {
-		pr_err("%s failed to update resource(poc_ctrl)\n", __func__);
+		panel_err("failed to update resource(poc_ctrl)\n");
 		return ret;
 	}
 
 	ret = resource_copy_by_name(panel_data, poc_info->poc_ctrl, "poc_ctrl");
 	if (unlikely(ret < 0)) {
-		pr_err("%s failed to copy resource(poc_ctrl)\n", __func__);
+		panel_err("failed to copy resource(poc_ctrl)\n");
 		return ret;
 	}
 
-	pr_info("%s poc_ctrl 0x%02X 0x%02X 0x%02X 0x%02X\n",
-			__func__, poc_info->poc_ctrl[0], poc_info->poc_ctrl[1],
+	panel_info("poc_ctrl 0x%02X 0x%02X 0x%02X 0x%02X\n",
+			poc_info->poc_ctrl[0], poc_info->poc_ctrl[1],
 			poc_info->poc_ctrl[2], poc_info->poc_ctrl[3]);
 
 	return 0;
@@ -885,16 +709,16 @@ static int poc_data_backup(struct panel_device *panel, u8 *buf, int size, char *
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	pr_info("%s size %d\n", __func__, size);
+	panel_info("size %d\n", size);
 
 	fp = filp_open(filename, O_CREAT | O_TRUNC | O_WRONLY | O_SYNC, 0660);
 	if (IS_ERR(fp)) {
-		pr_err("%s, fail to open log file\n", __func__);
+		panel_err("fail to open log file\n");
 		goto open_err;
 	}
 
 	vfs_write(fp, (u8 __user *)buf, size, &fp->f_pos);
-	pr_info("%s write %d bytes done!!\n", __func__, size);
+	panel_info("write %d bytes done!!\n", size);
 
 	filp_close(fp, current->files);
 	set_fs(old_fs);
@@ -916,8 +740,7 @@ static int read_poc_partition_magicnum(struct panel_poc_device *poc_dev, int ind
 		return -EAGAIN;
 
 	if (unlikely(index >= poc_dev->nr_partition)) {
-		panel_err("POC:ERR:%s: invalid partition index %d\n",
-				__func__, index);
+		panel_err("invalid partition index %d\n", index);
 		return -EINVAL;
 	}
 
@@ -927,7 +750,7 @@ static int read_poc_partition_magicnum(struct panel_poc_device *poc_dev, int ind
 				poc_dev->partition[index].magicnum_size);
 
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to read poc data\n", __func__);
+			panel_err("failed to read poc data\n");
 			return ret;
 		}
 
@@ -936,6 +759,10 @@ static int read_poc_partition_magicnum(struct panel_poc_device *poc_dev, int ind
 			(poc_dev->partition[index].magicnum ==
 			 poc_dev->partition[index].magicnum_by_read) ?
 			PARTITION_WRITE_CHECK_OK : PARTITION_WRITE_CHECK_NOK;
+		poc_dev->partition[index].cache[PARTITION_REGION_MAGIC] = true;
+	} else {
+		panel_info("partition[%d] has no magicnum. write_check set to true\n", index);
+		poc_dev->partition[index].write_check = PARTITION_WRITE_CHECK_OK;
 		poc_dev->partition[index].cache[PARTITION_REGION_MAGIC] = true;
 	}
 
@@ -951,8 +778,7 @@ static int read_poc_partition_chksum(struct panel_poc_device *poc_dev, int index
 		return -EAGAIN;
 
 	if (unlikely(index >= poc_dev->nr_partition)) {
-		panel_err("POC:ERR:%s: invalid partition index %d\n",
-				__func__, index);
+		panel_err("invalid partition index %d\n", index);
 		return -EINVAL;
 	}
 
@@ -963,7 +789,7 @@ static int read_poc_partition_chksum(struct panel_poc_device *poc_dev, int index
 				poc_dev->partition[index].checksum_size);
 
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to read poc data\n", __func__);
+			panel_err("failed to read poc data\n");
 			return ret;
 		}
 
@@ -979,34 +805,37 @@ static int read_poc_partition_data(struct panel_poc_device *poc_dev, int index)
 {
 	struct panel_device *panel = to_panel_device(poc_dev);
 	u16 chksum = 0;
-	int i, ret;
+	int i, k, ret;
 
 	if (!IS_PANEL_ACTIVE(panel))
 		return -EAGAIN;
 
 	if (unlikely(index >= poc_dev->nr_partition)) {
-		panel_err("POC:ERR:%s: invalid partition index %d\n",
-				__func__, index);
+		panel_err("invalid partition index %d\n", index);
 		return -EINVAL;
 	}
 
-	if (poc_dev->partition[index].data_size != 0) {
-		ret = poc_read_data(panel,
-				&poc_rd_img[poc_dev->partition[index].data_addr],
-				poc_dev->partition[index].data_addr,
-				poc_dev->partition[index].data_size);
 
-		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to read poc data\n", __func__);
-			return ret;
+	for (k = 0; k < MAX_POC_PARTITION_DATA; k++) {
+		if (poc_dev->partition[index].data[k].data_size != 0) {
+			ret = poc_read_data(panel,
+					&poc_rd_img[poc_dev->partition[index].data[k].data_addr],
+					poc_dev->partition[index].data[k].data_addr,
+					poc_dev->partition[index].data[k].data_size);
+
+			if (unlikely(ret < 0)) {
+				panel_err("failed to read poc data\n");
+				return ret;
+			}
+
+			panel_info("partition %d data %d addr 0x%06x size %d\n", index, k,
+				poc_dev->partition[index].data[k].data_addr, poc_dev->partition[index].data[k].data_size);
+			for (i = 0; i < poc_dev->partition[index].data[k].data_size; i++)
+				chksum += poc_rd_img[poc_dev->partition[index].data[k].data_addr + i];
 		}
-
-		for (i = 0; i < poc_dev->partition[index].data_size; i++)
-			chksum += poc_rd_img[poc_dev->partition[index].data_addr + i];
-
-		poc_dev->partition[index].chksum_by_calc = chksum;
-		poc_dev->partition[index].cache[PARTITION_REGION_DATA] = true;
 	}
+	poc_dev->partition[index].chksum_by_calc = chksum;
+	poc_dev->partition[index].cache[PARTITION_REGION_DATA] = true;
 
 	return 0;
 }
@@ -1016,14 +845,12 @@ int read_poc_partition_region(struct panel_poc_device *poc_dev, int index, int r
 	int ret = 0;
 
 	if (unlikely(index >= poc_dev->nr_partition)) {
-		panel_err("POC:ERR:%s: invalid partition index %d\n",
-				__func__, index);
+		panel_err("invalid partition index %d\n", index);
 		return -EINVAL;
 	}
 
 	if (unlikely(region >= MAX_PARTITION_REGION)) {
-		panel_err("POC:ERR:%s: invalid partition region %d\n",
-				__func__, region);
+		panel_err("invalid partition region %d\n", region);
 		return -EINVAL;
 	}
 
@@ -1036,42 +863,14 @@ int read_poc_partition_region(struct panel_poc_device *poc_dev, int index, int r
 			ret = read_poc_partition_data(poc_dev, index);
 
 		if (unlikely(ret < 0)) {
-			pr_err("%s failed to read data (partition:%d, region:%d, ret:%d)\n",
-					__func__, index, region, ret);
+			panel_err("failed to read data (partition:%d, region:%d, ret:%d)\n",
+					index, region, ret);
 			return ret;
 		}
-		poc_dev->partition[index].cache[region] == true;
 	}
 
 	return 0;
 }
-
-int get_poc_partition_region_size(struct panel_poc_device *poc_dev, int index, int region)
-{
-	u32 size = 0;
-
-	if (unlikely(index >= poc_dev->nr_partition)) {
-		panel_err("POC:ERR:%s: invalid partition index %d\n",
-				__func__, index);
-		return -EINVAL;
-	}
-
-	if (unlikely(region >= MAX_PARTITION_REGION)) {
-		panel_err("POC:ERR:%s: invalid partition region %d\n",
-				__func__, region);
-		return -EINVAL;
-	}
-
-	if (region == PARTITION_REGION_MAGIC)
-		size = poc_dev->partition[index].magicnum_size;
-	else if (region == PARTITION_REGION_CHKSUM)
-		size = poc_dev->partition[index].checksum_size;
-	else if (region == PARTITION_REGION_DATA)
-		size = poc_dev->partition[index].data_size;
-
-	return size;
-}
-
 
 int read_poc_partition(struct panel_poc_device *poc_dev, int index)
 {
@@ -1082,8 +881,7 @@ int read_poc_partition(struct panel_poc_device *poc_dev, int index)
 		return -EAGAIN;
 
 	if (unlikely(index >= poc_dev->nr_partition)) {
-		panel_err("POC:ERR:%s: invalid partition index %d\n",
-				__func__, index);
+		panel_err("invalid partition index %d\n", index);
 		return -EINVAL;
 	}
 
@@ -1098,8 +896,8 @@ int read_poc_partition(struct panel_poc_device *poc_dev, int index)
 	for (region = 0; region < MAX_PARTITION_REGION; region++) {
 		ret = read_poc_partition_region(poc_dev, index, region, true);
 		if (unlikely(ret < 0)) {
-			pr_err("%s failed to read data (partition:%d, region:%d, ret:%d)\n",
-					__func__, index, region, ret);
+			panel_err("failed to read data (partition:%d, region:%d, ret:%d)\n",
+					index, region, ret);
 			goto err_read;
 		}
 	}
@@ -1111,9 +909,8 @@ int read_poc_partition(struct panel_poc_device *poc_dev, int index)
 		(poc_dev->partition[index].chksum_by_calc ==
 		 poc_dev->partition[index].chksum_by_read);
 
-	pr_info("%s read partition[%d] chksum:%s(%04X,%04X), magic:%s(%X,%X)\n",
-			__func__, index,
-			poc_dev->partition[index].chksum_ok ? "OK" : "NOK",
+	panel_info("read partition[%d] chksum:%s(%04X,%04X), magic:%s(%X,%X)\n",
+			index, poc_dev->partition[index].chksum_ok ? "OK" : "NOK",
 			poc_dev->partition[index].chksum_by_calc,
 			poc_dev->partition[index].chksum_by_read,
 			str_partition_write_check[poc_dev->partition[index].write_check],
@@ -1139,8 +936,7 @@ int get_poc_partition_addr(struct panel_poc_device *poc_dev, int index)
 int get_poc_partition_size(struct panel_poc_device *poc_dev, int index)
 {
 	if (unlikely(index >= poc_dev->nr_partition)) {
-		panel_err("POC:ERR:%s: invalid partition index %d\n",
-				__func__, index);
+		panel_err("invalid partition index %d\n", index);
 		return -EINVAL;
 	}
 
@@ -1154,8 +950,7 @@ int check_poc_partition_exists(struct panel_poc_device *poc_dev, int index)
 	ret = read_poc_partition_region(poc_dev,
 			index, PARTITION_REGION_MAGIC, false);
 	if (unlikely(ret < 0)) {
-		pr_err("%s failed to read magic (partition:%d, ret:%d)\n",
-				__func__, index, ret);
+		panel_err("failed to read magic (partition:%d, ret:%d)\n", index, ret);
 		return ret;
 	}
 
@@ -1170,16 +965,14 @@ int get_poc_partition_chksum(struct panel_poc_device *poc_dev, int index,
 	ret = read_poc_partition_region(poc_dev,
 			index, PARTITION_REGION_DATA, false);
 	if (unlikely(ret < 0)) {
-		pr_err("%s failed to read data (partition:%d, ret:%d)\n",
-				__func__, index, ret);
+		panel_err("failed to read data (partition:%d, ret:%d)\n", index, ret);
 		return ret;
 	}
 
 	ret = read_poc_partition_region(poc_dev,
 			index, PARTITION_REGION_CHKSUM, false);
 	if (unlikely(ret < 0)) {
-		pr_err("%s failed to read chksum (partition:%d, ret:%d)\n",
-				__func__, index, ret);
+		panel_err("failed to read chksum (partition:%d, ret:%d)\n", index, ret);
 		return ret;
 	}
 
@@ -1200,8 +993,7 @@ int check_poc_partition_chksum(struct panel_poc_device *poc_dev, int index)
 	ret = get_poc_partition_chksum(poc_dev, index,
 			&chksum_ok, &chksum_by_calc, &chksum_by_read);
 	if (unlikely(ret < 0)) {
-		pr_err("%s failed to get chksum (partition:%d, ret:%d)\n",
-				__func__, index, ret);
+		panel_err("failed to get chksum (partition:%d, ret:%d)\n", index, ret);
 		return ret;
 	}
 
@@ -1209,26 +1001,30 @@ int check_poc_partition_chksum(struct panel_poc_device *poc_dev, int index)
 }
 
 int cmp_poc_partition_data(struct panel_poc_device *poc_dev,
-		int index, u8 *buf, u32 size)
+		int partition_index, int data_area_index, u8 *buf, u32 size)
 {
-	int ret;
+	int ret = 0;
 
-	if (unlikely(index >= poc_dev->nr_partition)) {
-		panel_err("POC:ERR:%s: invalid partition index %d\n",
-				__func__, index);
+	if (unlikely(partition_index >= poc_dev->nr_partition)) {
+		panel_err("invalid partition index %d\n", partition_index);
+		return -EINVAL;
+	}
+
+	if (unlikely(data_area_index >= MAX_POC_PARTITION_DATA)) {
+		panel_err("invalid partition data area index %d\n", data_area_index);
 		return -EINVAL;
 	}
 
 	ret = read_poc_partition_region(poc_dev,
-			index, PARTITION_REGION_DATA, false);
+			partition_index, PARTITION_REGION_DATA, false);
 	if (unlikely(ret < 0)) {
-		pr_err("%s failed to read data (partition:%d, ret:%d)\n",
-				__func__, index, ret);
+		panel_err("failed to read data (partition:%d, data_area %d, ret:%d)\n",
+			partition_index, data_area_index, ret);
 		return ret;
 	}
 
-	return (size != poc_dev->partition[index].data_size) ||
-			memcmp(&poc_rd_img[poc_dev->partition[index].data_addr],
+	return (size != poc_dev->partition[partition_index].data[data_area_index].data_size) ||
+			memcmp(&poc_rd_img[poc_dev->partition[partition_index].data[data_area_index].data_addr],
 					buf, size);
 }
 
@@ -1236,27 +1032,23 @@ int copy_poc_partition(struct panel_poc_device *poc_dev, u8 *dst,
 		 int index, int offset, int size)
 {
 	if (unlikely(index >= poc_dev->nr_partition)) {
-		panel_err("POC:ERR:%s: invalid partition index %d\n",
-				__func__, index);
+		panel_err("invalid partition index %d\n", index);
 		return -EINVAL;
 	}
 
 	if (unlikely(offset + size > poc_dev->partition[index].size)) {
-		panel_err("POC:ERR:%s: invalid offset %d size %d\n",
-				__func__, offset, size);
+		panel_err("invalid offset %d size %d\n", offset, size);
 		return -EINVAL;
 	}
 
 	if (!poc_dev->partition[index].preload_done) {
-		panel_err("POC:WARN:%s: partition(%d) is not loaded\n",
-				__func__, index);
+		panel_err("partition(%d) is not loaded\n", index);
 		return -EINVAL;
 	}
 
 	if (!poc_dev->partition[index].chksum_ok) {
-		panel_err("POC:WARN:%s: partition(%d) checksum error(calc:%04X read:%04X)\n",
-				__func__, index,
-				poc_dev->partition[index].chksum_by_calc,
+		panel_err("partition(%d) checksum error(calc:%04X read:%04X)\n",
+				index, poc_dev->partition[index].chksum_by_calc,
 				poc_dev->partition[index].chksum_by_read);
 	}
 
@@ -1275,11 +1067,11 @@ int set_panel_poc(struct panel_poc_device *poc_dev, u32 cmd, void *arg)
 	int partition_size, partition_addr;
 
 	if (cmd >= MAX_POC_OP) {
-		panel_err("%s invalid poc_op %d\n", __func__, cmd);
+		panel_err("invalid poc_op %d\n", cmd);
 		return -EINVAL;
 	}
 
-	panel_info("%s %s +\n", __func__, poc_op[cmd]);
+	panel_info("%s +\n", poc_op[cmd]);
 	ktime_get_ts(&last_ts);
 
 	switch (cmd) {
@@ -1289,7 +1081,7 @@ int set_panel_poc(struct panel_poc_device *poc_dev, u32 cmd, void *arg)
 		ret = poc_write_data(panel, &poc_info->wbuf[poc_info->wpos],
 				poc_info->wpos, poc_info->wsize);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to write poc-write-seq\n", __func__);
+			panel_err("failed to write poc-write-seq\n");
 			return ret;
 		}
 		break;
@@ -1297,37 +1089,37 @@ int set_panel_poc(struct panel_poc_device *poc_dev, u32 cmd, void *arg)
 		ret = poc_read_data(panel, &poc_info->rbuf[poc_info->rpos],
 				poc_info->rpos, poc_info->rsize);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to write poc-read-seq\n", __func__);
+			panel_err("failed to write poc-read-seq\n");
 			return ret;
 		}
 		break;
 	case POC_OP_CHECKSUM:
 		ret = poc_get_poc_chksum(panel);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to get poc checksum\n", __func__);
+			panel_err("failed to get poc checksum\n");
 			return ret;
 		}
 		ret = poc_get_poc_ctrl(panel);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to get poc ctrl\n", __func__);
+			panel_err("failed to get poc ctrl\n");
 			return ret;
 		}
 		break;
 	case POC_OP_CHECKPOC:
 		ret = poc_get_octa_poc(panel);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to get_octa_poc\n", __func__);
+			panel_err("failed to get_octa_poc\n");
 			return ret;
 		}
 		break;
 	case POC_OP_SECTOR_ERASE:
 		ret = sscanf((char *)arg, "%*d %d %d", &addr, &len);
 		if (unlikely(ret < 2)) {
-			pr_err("%s, failed to get poc erase params\n", __func__);
+			panel_err("failed to get poc erase params\n");
 			return -EINVAL;
 		}
 		if (unlikely(addr < 0) || unlikely((addr % SZ_4K) > 0) || unlikely(len < 0)) {
-			pr_err("%s, invalid poc erase params\n", __func__);
+			panel_err("invalid poc erase params\n");
 			return -EINVAL;
 		}
 		partition_addr = get_poc_partition_addr(poc_dev, POC_IMG_PARTITION);
@@ -1345,35 +1137,39 @@ int set_panel_poc(struct panel_poc_device *poc_dev, u32 cmd, void *arg)
 
 		ret = poc_memory_initialize(panel);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to initialize memory\n", __func__);
+			panel_err("failed to initialize memory\n");
 			return ret;
 		}
+#ifdef CONFIG_DISPLAY_USE_INFO
 		poc_info->erase_trycount++;
+#endif
 		ret = poc_erase(panel, addr, len);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to write poc-erase-seq\n", __func__);
+			panel_err("failed to write poc-erase-seq\n");
+#ifdef CONFIG_DISPLAY_USE_INFO
 			poc_info->erase_failcount++;
+#endif
 			poc_info->erased = false;
 		} else {
 			poc_info->erased = true;
 		}
 		ret = poc_memory_uninitialize(panel);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to uninitialize memory\n", __func__);
+			panel_err("failed to uninitialize memory\n");
 			return ret;
 		}
 		break;
 	case POC_OP_IMG_READ:
 		ret = read_poc_partition(poc_dev, POC_IMG_PARTITION);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to read img partition\n", __func__);
+			panel_err("failed to read img partition\n");
 			return ret;
 		}
 		ret = poc_data_backup(panel,
 				poc_rd_img + poc_dev->partition[POC_IMG_PARTITION].addr,
 				poc_dev->partition[POC_IMG_PARTITION].size, POC_IMG_PATH);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to backup poc img\n", __func__);
+			panel_err("failed to backup poc img\n");
 			return ret;
 		}
 		break;
@@ -1383,15 +1179,13 @@ int set_panel_poc(struct panel_poc_device *poc_dev, u32 cmd, void *arg)
 
 		index = POC_DIM_PARTITION + *(int *)arg;
 		if (index < POC_DIM_PARTITION || index > POC_DIM_PARTITION_END) {
-			pr_err("%s, invalid index of dim partition\n",
-					__func__, index);
+			panel_err("invalid index of dim partition:%d\n", index);
 			return -EINVAL;
 		}
 
 		ret = read_poc_partition(poc_dev, index);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to read partition:%d\n",
-					__func__, index);
+			panel_err("failed to read partition:%d\n", index);
 			return ret;
 		}
 		break;
@@ -1405,22 +1199,20 @@ int set_panel_poc(struct panel_poc_device *poc_dev, u32 cmd, void *arg)
 
 		index = POC_MTP_PARTITION + *(int *)arg;
 		if (index < POC_MTP_PARTITION || index > POC_MTP_PARTITION_END) {
-			pr_err("%s, invalid index of mtp partition\n",
-					__func__, index);
+			panel_err("invalid index of mtp partition:%d\n", index);
 			return -EINVAL;
 		}
 
 		ret = read_poc_partition(poc_dev, index);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to read partition:%d\n",
-					__func__, index);
+			panel_err("failed to read partition:%d\n", index);
 			return ret;
 		}
 		break;
 	case POC_OP_MCD_READ:
 		ret = read_poc_partition(poc_dev, POC_MCD_PARTITION);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to read MCD partition\n", __func__);
+			panel_err("failed to read MCD partition\n");
 			return ret;
 		}
 		break;
@@ -1430,15 +1222,13 @@ int set_panel_poc(struct panel_poc_device *poc_dev, u32 cmd, void *arg)
 
 		index = POC_DIM_PARTITION + *(int *)arg;
 		if (index < POC_DIM_PARTITION || index > POC_DIM_PARTITION_END) {
-			pr_err("%s, invalid index of mtp partition\n",
-					__func__, index);
+			panel_err("invalid index of mtp partition:%d\n", index);
 			return -EINVAL;
 		}
 
 		ret = read_poc_partition(poc_dev, index);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to read partition:%d\n",
-					__func__, index);
+			panel_err("failed to read partition:%d\n", index);
 			return ret;
 		}
 
@@ -1446,7 +1236,7 @@ int set_panel_poc(struct panel_poc_device *poc_dev, u32 cmd, void *arg)
 				poc_rd_img + poc_dev->partition[index].addr,
 				poc_dev->partition[index].size, POC_DATA_PATH);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to backup gamma flash\n", __func__);
+			panel_err("failed to backup gamma flash\n");
 			return ret;
 		}
 		break;
@@ -1454,50 +1244,66 @@ int set_panel_poc(struct panel_poc_device *poc_dev, u32 cmd, void *arg)
 	case POC_OP_SET_CONN_SRC:
 		ret = sscanf((char *)arg, "%*d %d", &addr);
 		if (unlikely(ret < 1)) {
-			pr_err("%s, failed to get poc set conn params\n", __func__);
+			panel_err("failed to get poc set conn params\n");
 			return -EINVAL;
 		}
 		if (unlikely(addr < 0) || addr >= MAX_POC_CONN_SRC) {
-			pr_err("%s, invalid poc set conn params\n", __func__);
+			panel_err("invalid poc set conn params\n");
 			return -EINVAL;
 		}
 		poc_info->conn_src = addr;
 		break;
+#if 0
 	case POC_OP_READ_SPI_STATUS_REG:
 		ret = _spi_poc_get_status(panel);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to get status reg\n", __func__);
+			panel_err("failed to get status reg\n");
 			return ret;
 		}
-		panel_info("%s spi_status_reg 0x%04X\n", __func__, ret);
+		panel_info("spi_status_reg 0x%04X\n", ret);
 		break;
+#endif
 #endif
 	case POC_OP_INITIALIZE:
 		ret = poc_memory_initialize(panel);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to initialize memory\n", __func__);
+			panel_err("failed to initialize memory\n");
 			return ret;
 		}
 		break;
 	case POC_OP_UNINITIALIZE:
 		ret = poc_memory_uninitialize(panel);
 		if (unlikely(ret < 0)) {
-			pr_err("%s, failed to uninitialize memory\n", __func__);
+			panel_err("failed to uninitialize memory\n");
+			return ret;
+		}
+		break;
+	case POC_OP_GM2_READ:
+		if (arg == NULL)
+			return -EINVAL;
+		index = POC_GM2_PARTITION + *(int *)arg;
+		if (index < POC_GM2_PARTITION || index > POC_GM2_PARTITION_END) {
+			panel_err("invalid index of dim partition:%d\n", index);
+			return -EINVAL;
+		}
+		ret = read_poc_partition(poc_dev, index);
+		if (unlikely(ret < 0)) {
+			panel_err("failed to read partition:%d\n", index);
 			return ret;
 		}
 		break;
 	case POC_OP_NONE:
-		panel_info("%s none operation\n", __func__);
+		panel_info("none operation\n");
 		break;
 	default:
-		panel_err("%s invalid poc op\n", __func__);
+		panel_err("invalid poc op\n");
 		break;
 	}
 
 	ktime_get_ts(&cur_ts);
 	delta_ts = timespec_sub(cur_ts, last_ts);
 	elapsed_msec = timespec_to_ns(&delta_ts) / 1000000;
-	panel_info("%s %s (elapsed %lld.%03lld sec) -\n", __func__, poc_op[cmd],
+	panel_info("%s (elapsed %lld.%03lld sec) -\n", poc_op[cmd],
 			elapsed_msec / 1000, elapsed_msec % 1000);
 
 	return 0;
@@ -1513,7 +1319,7 @@ static long panel_poc_ioctl(struct file *file, unsigned int cmd,
 	int ret;
 
 	if (unlikely(!poc_dev->opened)) {
-		panel_err("POC:ERR:%s: poc device not opened\n", __func__);
+		panel_err("poc device not opened\n");
 		return -EIO;
 	}
 
@@ -1536,7 +1342,7 @@ static long panel_poc_ioctl(struct file *file, unsigned int cmd,
 	case IOC_GET_POC_CHKSUM:
 		ret = set_panel_poc(poc_dev, POC_OP_CHECKSUM, NULL);
 		if (ret) {
-			panel_err("%s error set_panel_poc\n", __func__);
+			panel_err("error set_panel_poc\n");
 			ret = -EFAULT;
 			break;
 		}
@@ -1549,7 +1355,7 @@ static long panel_poc_ioctl(struct file *file, unsigned int cmd,
 	case IOC_GET_POC_CSDATA:
 		ret = set_panel_poc(poc_dev, POC_OP_CHECKSUM, NULL);
 		if (ret) {
-			panel_err("%s error set_panel_poc\n", __func__);
+			panel_err("error set_panel_poc\n");
 			ret = -EFAULT;
 			break;
 		}
@@ -1569,7 +1375,7 @@ static long panel_poc_ioctl(struct file *file, unsigned int cmd,
 	case IOC_GET_POC_FLASHED:
 		ret = set_panel_poc(poc_dev, POC_OP_CHECKPOC, NULL);
 		if (ret) {
-			panel_err("%s error set_panel_poc\n", __func__);
+			panel_err("error set_panel_poc\n");
 			ret = -EFAULT;
 			break;
 		}
@@ -1582,7 +1388,7 @@ static long panel_poc_ioctl(struct file *file, unsigned int cmd,
 	case IOC_SET_POC_ERASE:
 		ret = set_panel_poc(poc_dev, POC_OP_ERASE, NULL);
 		if (ret) {
-			panel_err("%s error set_panel_poc\n", __func__);
+			panel_err("error set_panel_poc\n");
 			ret = -EFAULT;
 			break;
 		}
@@ -1604,10 +1410,10 @@ static int panel_poc_open(struct inode *inode, struct file *file)
 	struct panel_device *panel = to_panel_device(poc_dev);
 	int ret;
 
-	panel_info("%s was called\n", __func__);
+	panel_info("was called\n");
 
 	if (poc_dev->opened) {
-		panel_err("POC:ERR:%s: already opend\n", __func__);
+		panel_err("already opend\n");
 		return -EBUSY;
 	}
 
@@ -1618,7 +1424,6 @@ static int panel_poc_open(struct inode *inode, struct file *file)
 	}
 
 	mutex_lock(&panel->io_lock);
-	mutex_lock(&panel->op_lock);
 
 	ret = set_panel_poc(poc_dev, POC_OP_INITIALIZE, NULL);
 	if (ret < 0)
@@ -1639,14 +1444,12 @@ static int panel_poc_open(struct inode *inode, struct file *file)
 	file->private_data = poc_dev;
 	poc_dev->opened = 1;
 	atomic_set(&poc_dev->cancel, 0);
-	mutex_unlock(&panel->op_lock);
 	mutex_unlock(&panel->io_lock);
 	panel_wake_unlock(panel);
 
 	return 0;
 err_open:
-	panel_err("POC:ERR:%s: failed to initialize %d\n", __func__, ret);
-	mutex_unlock(&panel->op_lock);
+	panel_err("failed to initialize %d\n", ret);
 	mutex_unlock(&panel->io_lock);
 	panel_wake_unlock(panel);
 	return ret;
@@ -1659,12 +1462,11 @@ static int panel_poc_release(struct inode *inode, struct file *file)
 	struct panel_poc_info *poc_info = &poc_dev->poc_info;
 	struct panel_device *panel = to_panel_device(poc_dev);
 
-	panel_info("%s was called\n", __func__);
+	panel_info("was called\n");
 
 	panel_wake_lock(panel);
 
 	mutex_lock(&panel->io_lock);
-	mutex_lock(&panel->op_lock);
 
 	poc_info->state = 0;
 	memset(poc_info->poc_chksum, 0, sizeof(poc_info->poc_chksum));
@@ -1683,8 +1485,8 @@ static int panel_poc_release(struct inode *inode, struct file *file)
 
 	ret = set_panel_poc(poc_dev, POC_OP_UNINITIALIZE, NULL);
 	if (ret < 0)
-		panel_err("POC:ERR:%s: failed to uninitialize %d\n", __func__, ret);
-	mutex_unlock(&panel->op_lock);
+		panel_err("failed to uninitialize %d\n", ret);
+
 	mutex_unlock(&panel->io_lock);
 	panel_wake_unlock(panel);
 	return ret;
@@ -1699,17 +1501,17 @@ static ssize_t panel_poc_read(struct file *file, char __user *buf, size_t count,
 	ssize_t res;
 	int partition_addr, partition_size;
 
-	panel_info("%s : size : %d, ppos %d\n", __func__, (int)count, (int)*ppos);
+	panel_info("size:%d ppos:%d\n", (int)count, (int)*ppos);
 	poc_info->read_trycount++;
 
 	if (unlikely(!poc_dev->opened)) {
-		panel_err("POC:ERR:%s: poc device not opened\n", __func__);
+		panel_err("poc device not opened\n");
 		poc_info->read_failcount++;
 		return -EIO;
 	}
 
 	if (unlikely(!buf)) {
-		panel_err("POC:ERR:%s: invalid read buffer\n", __func__);
+		panel_err("invalid read buffer\n");
 		poc_info->read_failcount++;
 		return -EINVAL;
 	}
@@ -1727,8 +1529,7 @@ static ssize_t panel_poc_read(struct file *file, char __user *buf, size_t count,
 	}
 
 	if (unlikely(*ppos < 0 || *ppos >= partition_size)) {
-		panel_err("POC:ERR:%s: invalid read pos %d\n",
-				__func__, (int)*ppos);
+		panel_err("invalid read pos %d\n", (int)*ppos);
 		poc_info->read_failcount++;
 		return -EINVAL;
 	}
@@ -1745,8 +1546,8 @@ static ssize_t panel_poc_read(struct file *file, char __user *buf, size_t count,
 	poc_info->rbuf = poc_rd_img;
 	poc_info->rpos = partition_addr + *ppos;
 	if (count > partition_size - *ppos) {
-		panel_warn("POC:WARN:%s: adjust count %d -> %d\n",
-				__func__, (int)count, (int)(partition_size - *ppos));
+		panel_warn("adjust count %d -> %d\n",
+				(int)count, (int)(partition_size - *ppos));
 		count = partition_size - *ppos;
 	}
 	poc_info->rsize = (u32)count;
@@ -1760,7 +1561,7 @@ static ssize_t panel_poc_read(struct file *file, char __user *buf, size_t count,
 	if (res < 0)
 		goto err_read;
 
-	panel_info("%s read %ld bytes (count %ld)\n", __func__, res, count);
+	panel_info("read %ld bytes (count %ld)\n", res, count);
 	mutex_unlock(&panel->io_lock);
 	panel_wake_unlock(panel);
 	return res;
@@ -1781,17 +1582,17 @@ static ssize_t panel_poc_write(struct file *file, const char __user *buf,
 	ssize_t res;
 	int partition_addr, partition_size;
 
-	panel_info("%s : size : %d, ppos %d\n", __func__, (int)count, (int)*ppos);
+	panel_info("size:%d, ppos:%d\n", (int)count, (int)*ppos);
 	poc_info->write_trycount++;
 
 	if (unlikely(!poc_dev->opened)) {
-		panel_err("POC:ERR:%s: poc device not opened\n", __func__);
+		panel_err("poc device not opened\n");
 		poc_info->write_failcount++;
 		return -EIO;
 	}
 
 	if (unlikely(!buf)) {
-		panel_err("POC:ERR:%s: invalid write buffer\n", __func__);
+		panel_err("invalid write buffer\n");
 		poc_info->write_failcount++;
 		return -EINVAL;
 	}
@@ -1809,8 +1610,8 @@ static ssize_t panel_poc_write(struct file *file, const char __user *buf,
 	}
 
 	if (unlikely(*ppos < 0 || *ppos >= partition_size)) {
-		panel_err("POC:ERR:%s: invalid write size pos %d, size %d\n",
-				__func__, (int)*ppos, (int)count);
+		panel_err("invalid write size pos %d, size %d\n",
+				(int)*ppos, (int)count);
 		poc_info->write_failcount++;
 		return -EINVAL;
 	}
@@ -1827,8 +1628,8 @@ static ssize_t panel_poc_write(struct file *file, const char __user *buf,
 	poc_info->wbuf = poc_wr_img;
 	poc_info->wpos = partition_addr + *ppos;
 	if (count > partition_size - *ppos) {
-		panel_warn("POC:WARN:%s: adjust count %d -> %d\n",
-				__func__, (int)count, (int)(partition_size - *ppos));
+		panel_warn("adjust count %d -> %d\n",
+				(int)count, (int)(partition_size - *ppos));
 		count = partition_size - *ppos;
 	}
 	poc_info->wsize = (u32)count;
@@ -1838,7 +1639,7 @@ static ssize_t panel_poc_write(struct file *file, const char __user *buf,
 	if (res < 0)
 		goto err_write;
 
-	panel_info("%s write %ld bytes (count %ld)\n", __func__, res, count);
+	panel_info("write %ld bytes (count %ld)\n", res, count);
 
 	res = set_panel_poc(poc_dev, POC_OP_WRITE, NULL);
 	if (res < 0)
@@ -1859,7 +1660,7 @@ loff_t panel_poc_llseek(struct file *file, loff_t offset, int whence)
 {
 	struct inode *inode = file->f_mapping->host;
 
-	pr_info("s_maxbytes %d, i_size_read %d\n",
+	panel_info("s_maxbytes %d, i_size_read %d\n",
 			(int)inode->i_sb->s_maxbytes, (int)i_size_read(inode));
 
 	return generic_file_llseek_size(file, offset, whence,
@@ -1897,7 +1698,7 @@ static int poc_get_efs_count(char *filename, int *value)
 	u8 buf[128];
 
 	if (!filename || !value) {
-		pr_err("%s invalid parameter\n", __func__);
+		panel_err("invalid parameter\n");
 		return -EINVAL;
 	}
 
@@ -1908,10 +1709,9 @@ static int poc_get_efs_count(char *filename, int *value)
 	if (IS_ERR(filp)) {
 		ret = PTR_ERR(filp);
 		if (ret == -ENOENT)
-			pr_err("%s file(%s) not exist\n", __func__, filename);
+			panel_err("file(%s) not exist\n", filename);
 		else
-			pr_info("%s file(%s) open error(ret %d)\n",
-					__func__, filename, ret);
+			panel_info("file(%s) open error(ret %d)\n", filename, ret);
 		set_fs(old_fs);
 		return -EPOCEFS_NOENT;
 	}
@@ -1920,8 +1720,7 @@ static int poc_get_efs_count(char *filename, int *value)
 		fsize = filp->f_path.dentry->d_inode->i_size;
 
 	if (fsize == 0 || fsize > ARRAY_SIZE(buf)) {
-		pr_err("%s invalid file(%s) size %d\n",
-				__func__, filename, fsize);
+		panel_err("invalid file(%s) size %d\n", filename, fsize);
 		ret = -EPOCEFS_EMPTY;
 		goto exit;
 	}
@@ -1929,20 +1728,19 @@ static int poc_get_efs_count(char *filename, int *value)
 	memset(buf, 0, sizeof(buf));
 	nread = vfs_read(filp, (char __user *)buf, fsize, &filp->f_pos);
 	if (nread != fsize) {
-		pr_err("%s failed to read (ret %d)\n", __func__, nread);
+		panel_err("failed to read (ret %d)\n", nread);
 		ret = -EPOCEFS_READ;
 		goto exit;
 	}
 
 	rc = sscanf(buf, "%d", &count);
 	if (rc != 1) {
-		pr_err("%s failed to sscanf %d\n", __func__, rc);
+		panel_err("failed to sscanf %d\n", rc);
 		ret = -EINVAL;
 		goto exit;
 	}
 
-	pr_info("%s %s(size %d) : %d\n",
-			__func__, filename, fsize, count);
+	panel_info("%s(size %d) : %d\n", filename, fsize, count);
 
 	*value = count;
 
@@ -1963,7 +1761,7 @@ static int poc_get_efs_image_index_org(char *filename, int *value)
 	u8 buf[128];
 
 	if (!filename || !value) {
-		pr_err("%s invalid parameter\n", __func__);
+		panel_err("invalid parameter\n");
 		return -EINVAL;
 	}
 
@@ -1974,10 +1772,9 @@ static int poc_get_efs_image_index_org(char *filename, int *value)
 	if (IS_ERR(filp)) {
 		ret = PTR_ERR(filp);
 		if (ret == -ENOENT)
-			pr_err("%s file(%s) not exist\n", __func__, filename);
+			panel_err("file(%s) not exist\n", filename);
 		else
-			pr_info("%s file(%s) open error(ret %d)\n",
-					__func__, filename, ret);
+			panel_info("file(%s) open error(ret %d)\n", filename, ret);
 		set_fs(old_fs);
 		return -EPOCEFS_NOENT;
 	}
@@ -1986,8 +1783,7 @@ static int poc_get_efs_image_index_org(char *filename, int *value)
 		fsize = filp->f_path.dentry->d_inode->i_size;
 
 	if (fsize == 0 || fsize > ARRAY_SIZE(buf)) {
-		pr_err("%s invalid file(%s) size %d\n",
-				__func__, filename, fsize);
+		panel_err("invalid file(%s) size %d\n", filename, fsize);
 		ret = -EPOCEFS_EMPTY;
 		goto exit;
 	}
@@ -1995,20 +1791,20 @@ static int poc_get_efs_image_index_org(char *filename, int *value)
 	memset(buf, 0, sizeof(buf));
 	nread = vfs_read(filp, (char __user *)buf, fsize, &filp->f_pos);
 	if (nread != fsize) {
-		pr_err("%s failed to read (ret %d)\n", __func__, nread);
+		panel_err("failed to read (ret %d)\n", nread);
 		ret = -EPOCEFS_READ;
 		goto exit;
 	}
 
 	rc = sscanf(buf, "%c %d %d", &binary, &image_index, &chksum);
 	if (rc != 3) {
-		pr_err("%s failed to sscanf %d\n", __func__, rc);
+		panel_err("failed to sscanf %d\n", rc);
 		ret = -EINVAL;
 		goto exit;
 	}
 
-	pr_info("%s %s(size %d) : %c %d %d\n",
-			__func__, filename, fsize, binary, image_index, chksum);
+	panel_info("%s(size %d) : %c %d %d\n",
+			filename, fsize, binary, image_index, chksum);
 
 	*value = image_index;
 
@@ -2028,7 +1824,7 @@ static int poc_get_efs_image_index(char *filename, int *value)
 	u8 buf[128];
 
 	if (!filename || !value) {
-		pr_err("%s invalid parameter\n", __func__);
+		panel_err("invalid parameter\n");
 		return -EINVAL;
 	}
 
@@ -2039,10 +1835,9 @@ static int poc_get_efs_image_index(char *filename, int *value)
 	if (IS_ERR(filp)) {
 		ret = PTR_ERR(filp);
 		if (ret == -ENOENT)
-			pr_err("%s file(%s) not exist\n", __func__, filename);
+			panel_err("file(%s) not exist\n", filename);
 		else
-			pr_info("%s file(%s) open error(ret %d)\n",
-					__func__, filename, ret);
+			panel_info("file(%s) open error(ret %d)\n", filename, ret);
 		set_fs(old_fs);
 		return -EPOCEFS_NOENT;
 	}
@@ -2051,8 +1846,7 @@ static int poc_get_efs_image_index(char *filename, int *value)
 		fsize = filp->f_path.dentry->d_inode->i_size;
 
 	if (fsize == 0 || fsize > ARRAY_SIZE(buf)) {
-		pr_err("%s invalid file(%s) size %d\n",
-				__func__, filename, fsize);
+		panel_err("invalid file(%s) size %d\n", filename, fsize);
 		ret = -EPOCEFS_EMPTY;
 		goto exit;
 	}
@@ -2060,20 +1854,20 @@ static int poc_get_efs_image_index(char *filename, int *value)
 	memset(buf, 0, sizeof(buf));
 	nread = vfs_read(filp, (char __user *)buf, fsize, &filp->f_pos);
 	if (nread != fsize) {
-		pr_err("%s failed to read (ret %d)\n", __func__, nread);
+		panel_err("failed to read (ret %d)\n", nread);
 		ret = -EPOCEFS_READ;
 		goto exit;
 	}
 
 	rc = sscanf(buf, "%d,%d", &image_index, &seek);
 	if (rc != 2) {
-		pr_err("%s failed to sscanf %d\n", __func__, rc);
+		panel_err("failed to sscanf %d\n", rc);
 		ret = -EINVAL;
 		goto exit;
 	}
 
-	pr_info("%s %s(size %d) : %d %d\n",
-			__func__, filename, fsize, image_index, seek);
+	panel_info("%s(size %d) : %d %d\n",
+			filename, fsize, image_index, seek);
 
 	*value = image_index;
 
@@ -2144,7 +1938,7 @@ static int poc_notifier_callback(struct notifier_block *self,
 	struct dpui_info *dpui = data;
 
 	if (dpui == NULL) {
-		panel_err("%s: dpui is null\n", __func__);
+		panel_err("dpui is null\n");
 		return 0;
 	}
 
@@ -2163,7 +1957,7 @@ int panel_poc_probe(struct panel_device *panel, struct panel_poc_data *poc_data)
 	static bool initialized;
 
 	if (!poc_data) {
-		panel_warn("%s poc_data is null\n", __func__);
+		panel_warn("poc_data is null\n");
 		return -EINVAL;
 	}
 
@@ -2176,20 +1970,14 @@ int panel_poc_probe(struct panel_device *panel, struct panel_poc_data *poc_data)
 
 		ret = misc_register(&poc_dev->dev);
 		if (ret) {
-			panel_err("PANEL:ERR:%s: failed to register panel misc driver (ret %d)\n",
-					__func__, ret);
+			panel_err("failed to register panel misc driver (ret %d)\n", ret);
 			goto exit_probe;
 		}
 #endif
 	}
 	poc_info->version = poc_data->version;
 #ifdef CONFIG_SUPPORT_POC_SPI
-	poc_info->spi_wdata_len = poc_data->spi_wdata_len;
 	poc_info->conn_src = poc_data->conn_src;
-	poc_info->state_mask = 	poc_data->state_mask;
-	poc_info->state_init = poc_data->state_init;
-	poc_info->state_uninit = poc_data->state_uninit;
-	poc_info->busy_mask = poc_data->busy_mask;
 #endif
 	poc_info->wdata_len = poc_data->wdata_len;
 	poc_dev->seqtbl = poc_data->seqtbl;
@@ -2212,7 +2000,7 @@ int panel_poc_probe(struct panel_device *panel, struct panel_poc_data *poc_data)
 	for (i = 0; i < poc_dev->nr_partition; i++) {
 		poc_dev->partition[i].preload_done = false;
 		poc_dev->partition[i].chksum_ok = false;
-		panel_info("%s %s addr:0x%x size:%d\n", __func__, poc_dev->partition[i].name,
+		panel_info("%s addr:0x%x size:%d\n", poc_dev->partition[i].name,
 				poc_dev->partition[i].addr, poc_dev->partition[i].size);
 		if (poc_info->total_size <
 				poc_dev->partition[i].addr + poc_dev->partition[i].size)
@@ -2238,7 +2026,7 @@ int panel_poc_probe(struct panel_device *panel, struct panel_poc_data *poc_data)
 		poc_dev->poc_notif.notifier_call = poc_notifier_callback;
 		ret = dpui_logging_register(&poc_dev->poc_notif, DPUI_TYPE_PANEL);
 		if (ret) {
-			panel_err("ERR:PANEL:%s:failed to register dpui notifier callback\n", __func__);
+			panel_err("failed to register dpui notifier callback\n");
 			goto exit_probe;
 		}
 	}
@@ -2248,29 +2036,27 @@ int panel_poc_probe(struct panel_device *panel, struct panel_poc_data *poc_data)
 		if (poc_dev->partition[i].need_preload) {
 			exists = check_poc_partition_exists(poc_dev, i);
 			if (exists < 0) {
-				panel_err("ERR:PANEL:%s failed to check partition(%d)\n",
-						__func__, i);
+				panel_err("failed to check partition(%d)\n", i);
 				ret = exists;
 				goto exit_probe;
 			}
 
 			if (!exists) {
-				pr_warn("%s partition(%d) not exist\n", __func__, i);
+				panel_warn("partition(%d) not exist\n", i);
 				continue;
 			}
 
 			ret = read_poc_partition(poc_dev, i);
 			if (unlikely(ret < 0)) {
-				pr_err("%s, failed to read partition(%d)\n",
-						__func__, i);
+				panel_err("failed to read partition(%d)\n", i);
 				goto exit_probe;
 			}
 		}
 	}
 	initialized = true;
 
-	pr_info("%s total_size:%d registered successfully\n",
-			__func__, poc_info->total_size);
+	panel_info("total_size:%d registered successfully\n",
+			poc_info->total_size);
 
 exit_probe:
 	return ret;

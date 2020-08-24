@@ -3,12 +3,24 @@
 START : FUNC_BUILD_KERNEL
 ==============================================
 
-build common config=exynos9830-z3sxxx_nemesis_defconfig 
-build model config=z3sxxx 
+build common config=exynos9830-c2sxxx_nemesis_defconfig 
+build model config=c2s 
+arch/arm64/Kconfig:1339:warning: multi-line strings not supported
+drivers/soc/samsung/linkforward/Kconfig:4:warning: ignoring unsupported character ''
+drivers/soc/samsung/linkforward/Kconfig:5:warning: ignoring unsupported character ''
+drivers/soc/samsung/linkforward/Kconfig:6:warning: ignoring unsupported character ''
+drivers/soc/samsung/linkforward/Kconfig:7:warning: ignoring unsupported character ''
+drivers/soc/samsung/linkforward/Kconfig:8:warning: ignoring unsupported character ''
 #
 # configuration written to .config
 #
 scripts/kconfig/conf  --syncconfig Kconfig
+arch/arm64/Kconfig:1339:warning: multi-line strings not supported
+drivers/soc/samsung/linkforward/Kconfig:4:warning: ignoring unsupported character ''
+drivers/soc/samsung/linkforward/Kconfig:5:warning: ignoring unsupported character ''
+drivers/soc/samsung/linkforward/Kconfig:6:warning: ignoring unsupported character ''
+drivers/soc/samsung/linkforward/Kconfig:7:warning: ignoring unsupported character ''
+drivers/soc/samsung/linkforward/Kconfig:8:warning: ignoring unsupported character ''
 kperfmon_DUMMY="CONFIG_KPERFMON is off."
 kperfmon_DUMMY="olog.pb.h file is missing... retrying"
 cp: cannot stat './../../frameworks/base/proto/src/olog.proto': No such file or directory
@@ -21,13 +33,16 @@ cp: cannot stat './drivers/kperfmon/olog.pb.h': No such file or directory
 kperfmon_DUMMY=""
 kperfmon_DUMMY="olog.pb.h file is missing... again"
 kperfmon_DUMMY="perflog.h file is missing."
+drivers/sensorhub/brcm/st_vl53l5/Makefile:100: LOG_ENABLE=TRUE
+drivers/sensorhub/brcm/st_vl53l5/Makefile:132: BUILD_TYPE=RELEASE
+drivers/sensorhub/brcm/st_vl53l5/Makefile:183: LOG_ENABLE=TRUE
 cp: cannot stat './../../system/core/liblog/include/log/perflog.h': No such file or directory
 kperfmon_DUMMY=""
   CALL    scripts/checksyscalls.sh
   CHK     include/generated/compile.h
 kperfmon_DUMMY="CONFIG_KPERFMON is off."
-kperfmon_DUMMY="olog.pb.h file is missing... retrying"
   GZIP    kernel/config_data.gz
+kperfmon_DUMMY="olog.pb.h file is missing... retrying"
 cp: cannot stat './../../frameworks/base/proto/src/olog.proto': No such file or directory
 kperfmon_DUMMY=""
 cp: cannot stat './../../vendor/samsung/system/libperflog/aprotoc': No such file or directory
@@ -42,13 +57,29 @@ cp: cannot stat './../../system/core/liblog/include/log/perflog.h': No such file
 kperfmon_DUMMY=""
   AR      drivers/vision/npu/soc/built-in.a
   UPD     kernel/config_data.h
-  AR      drivers/usb/gadget/function/built-in.a
   CC      kernel/configs.o
-  AR      drivers/usb/gadget/built-in.a
+drivers/sensorhub/brcm/st_vl53l5/Makefile:100: LOG_ENABLE=TRUE
+drivers/sensorhub/brcm/st_vl53l5/Makefile:132: BUILD_TYPE=RELEASE
+drivers/sensorhub/brcm/st_vl53l5/Makefile:183: LOG_ENABLE=TRUE
+  CC      drivers/video/fbdev/exynos/panel/s6e3fab/s6e3fab.o
+  CC      drivers/video/fbdev/exynos/panel/s6e3fab/s6e3fab_profiler.o
+  CC      drivers/video/fbdev/exynos/panel/s6e3fab/s6e3fab_aod.o
+  CC      drivers/video/fbdev/exynos/panel/s6e3fa9/s6e3fa9_aod.o
+  CC      drivers/video/fbdev/exynos/panel/s6e3fa9/s6e3fa9_profiler.o
+  CC      drivers/video/fbdev/exynos/panel/s6e3fa9/s6e3fa9.o
+  CC      drivers/video/fbdev/exynos/panel/s6e3hab/s6e3hab.o
+  CC      drivers/video/fbdev/exynos/panel/s6e3hab/s6e3hab_aod.o
+  CC      drivers/video/fbdev/exynos/panel/s6e3hab/s6e3hab_profiler.o
   AR      drivers/vision/npu/built-in.a
   AR      drivers/vision/built-in.a
-  AR      drivers/usb/built-in.a
   AR      kernel/built-in.a
+  AR      drivers/video/fbdev/exynos/panel/s6e3fa9/built-in.a
+  AR      drivers/video/fbdev/exynos/panel/s6e3fab/built-in.a
+  AR      drivers/video/fbdev/exynos/panel/s6e3hab/built-in.a
+  AR      drivers/video/fbdev/exynos/panel/built-in.a
+  AR      drivers/video/fbdev/exynos/built-in.a
+  AR      drivers/video/fbdev/built-in.a
+  AR      drivers/video/built-in.a
   AR      drivers/built-in.a
   GEN     .version
   CHK     include/generated/compile.h
@@ -57,6 +88,8 @@ kperfmon_DUMMY=""
   AR      init/built-in.a
   AR      built-in.a
   MODPOST vmlinux.o
+WARNING: vmlinux: 'fpsensor_goto_suspend' exported twice. Previous export was in vmlinux
+WARNING: vmlinux: 'fpsensor_goto_suspend' exported twice. Previous export was in vmlinux
 WARNING: modpost: Found 2 section mismatch(es).
 To see full details build your kernel with:
 'make CONFIG_DEBUG_SECTION_MISMATCH=y'
@@ -65,21 +98,25 @@ To see full details build your kernel with:
   LD      vmlinux
   SORTEX  vmlinux
   SYSMAP  System.map
+  RKP_CFP : instrumenting vmlinux... 
   FIPS : Generating hmac of crypto and updating vmlinux... 
-HMAC for "crypto" module is: b'082d16e0c7c99b4622d8f7ea1ea9888ce8abf1d9bf33da81bc6d8282121bd1ee'
+HMAC for "crypto" module is: b'76ea9db988fe10e1042fb49e5eea2b7686fefc943aa1b98fde31bbd7a0abebc8'
 FIPS integrity procedure has been finished for crypto
   FIPS : Generating hmac of fmp and updating vmlinux... 
-HMAC for "fmp" module is: b'4916e18923940b0822431180badcd4780f0bd7070fcf1ab6dfa4671a7ed858b0'
+HMAC for "fmp" module is: b'158960f7ebc0fa09e7906924ce9c73abb6f004c53b2c19e88e590d0c1163ffbc'
 FIPS integrity procedure has been finished for fmp
   OBJCOPY arch/arm64/boot/Image
   Building modules, stage 2.
   MODPOST 0 modules
+WARNING: vmlinux: 'fpsensor_goto_suspend' exported twice. Previous export was in vmlinux
+WARNING: vmlinux: 'fpsensor_goto_suspend' exported twice. Previous export was in vmlinux
   GZIP    arch/arm64/boot/Image.gz
 
 =================================
 END   : FUNC_BUILD_KERNEL
 =================================
 
+mv: cannot move '/home/geiti94/Android/Kernel/TWRP_S20/arch/arm64/boot/boot.img-zImage' to '/home/geiti94/Android/Kernel/TWRP_S20/ramdisk/N976/split_img/boot.img-zImage': No such file or directory
 [3J[H[2J 
 Android Image Kitchen - RepackImg Script
 by osm0sis @ xda-developers
@@ -91,7 +128,6 @@ Packing ramdisk...
 Using compression: gzip
  
 Getting build information...
-kernel = boot.img-zImage
 dtb = boot.img-dtb
 cmdline = androidboot.hardware=exynos990 androidboot.selinux=permissive androidboot.selinux=permissive
 board = SRPSI19B001KU
@@ -111,9 +147,6 @@ Building image...
  
 Using format: AOSP
  
-Appending footer...
- 
-Using type: SEAndroid
- 
-Done!
-Total compile time was 53 seconds
+error: could not load kernel ''
+Error!
+Total compile time was 116 seconds

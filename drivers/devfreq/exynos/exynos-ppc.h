@@ -25,6 +25,7 @@ struct ppc_data {
 int exynos_devfreq_um_init(struct exynos_devfreq_data *data);
 void exynos_devfreq_um_exit(struct exynos_devfreq_data *data);
 void register_get_dev_status(struct exynos_devfreq_data *data);
+ktime_t exynos_devfreq_get_ppc_status(struct exynos_devfreq_data *data);
 #else
 #define exynos_devfreq_um_init(a) do {} while(0)
 #define exynos_devfreq_um_exit(a) do {} while(0)

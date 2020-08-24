@@ -169,7 +169,8 @@ static int is_hw_pdp_set_pdstat_reg(struct is_pdp *pdp)
 }
 
 #if defined(USE_SKIP_DUMP_LIC_OVERFLOW)
-static int get_crc_flag(u32 instance, struct is_hw_ip *hw_ip, bool *crc_flag)
+static int crc_flag;
+static int get_crc_flag(u32 instance, struct is_hw_ip *hw_ip)
 {
 	int ret = 0;
 	struct is_group *group;
@@ -203,7 +204,11 @@ static int get_crc_flag(u32 instance, struct is_hw_ip *hw_ip, bool *crc_flag)
 		return -ENODEV;
 	}
 
-	*crc_flag = csi->crc_flag;
+	if (csi->crc_flag)
+		crc_flag |= csi->crc_flag << instance;
+	else
+		crc_flag &= ~(csi->crc_flag << instance);
+
 	csi->crc_flag = false;
 
 	return ret;
@@ -224,9 +229,6 @@ static irqreturn_t is_isr_pdp_int1(int irq, void *data)
 	struct is_work_list *work_list;
 	struct paf_rdma_param *param;
 	u32 en_votf;
-#if defined(USE_SKIP_DUMP_LIC_OVERFLOW)
-	bool crc_flag;
-#endif
 
 	hw_ip = (struct is_hw_ip *)data;
 	pdp = (struct is_pdp *)hw_ip->priv_info;
@@ -323,7 +325,7 @@ static irqreturn_t is_isr_pdp_int1(int irq, void *data)
 			wq_func_schedule(pdp, &pdp->work_stat[WORK_PDP_STAT1]);
 #if defined(USE_SKIP_DUMP_LIC_OVERFLOW)
 		/* clear crc flag */
-		get_crc_flag(instance, hw_ip, &crc_flag);
+		get_crc_flag(instance, hw_ip);
 #endif
 		atomic_set(&hw_ip->status.Vvalid, V_BLANK);
 		wake_up(&hw_ip->status.wait_queue);
@@ -373,7 +375,7 @@ static irqreturn_t is_isr_pdp_int1(int irq, void *data)
 			print_all_hw_frame_count(hw_ip->hardware);
 			is_hardware_sfr_dump(hw_ip->hardware, DEV_HW_END, false);
 #if defined(USE_SKIP_DUMP_LIC_OVERFLOW)
-			if (!get_crc_flag(instance, hw_ip, &crc_flag) && crc_flag == true) {
+			if (!get_crc_flag(instance, hw_ip) && crc_flag) {
 				set_bit(IS_SENSOR_ESD_RECOVERY,
 					&hw_ip->group[instance]->device->sensor->state);
 				warn("skip to s2d dump");
@@ -740,9 +742,9 @@ static int is_hw_pdp_init_config(struct is_hw_ip *hw_ip, u32 instance, struct is
 	struct is_device_csi *csi;
 	struct paf_rdma_param *param;
 	u32 csi_ch, en_val, i;
-	struct is_crop img_full_size;
-	struct is_crop img_crop_size;
-	struct is_crop img_comp_size;
+	struct is_crop img_full_size = {0, 0, 0, 0};
+	struct is_crop img_crop_size = {0, 0, 0, 0};
+	struct is_crop img_comp_size = {0, 0, 0, 0};
 	u32 img_hwformat, img_pixelsize;
 	u32 pd_width, pd_height, pd_hwformat;
 	u32 path;
@@ -1238,6 +1240,7 @@ static int is_hw_pdp_close(struct is_hw_ip *hw_ip, u32 instance)
 
 		if (!valid_hw_slot_id(hw_slot)) {
 			merr_hw("invalid slot (%d,%d)", instance, hw_id, hw_slot);
+			mutex_unlock(&cmn_reg_lock);
 			return -EINVAL;
 		}
 
@@ -1401,6 +1404,7 @@ static int is_hw_pdp_enable(struct is_hw_ip *hw_ip, u32 instance, ulong hw_map)
 
 		if (!valid_hw_slot_id(hw_slot)) {
 			merr_hw("invalid slot (%d,%d)", instance, hw_id, hw_slot);
+			mutex_unlock(&cmn_reg_lock);
 			return -EINVAL;
 		}
 
@@ -1422,7 +1426,7 @@ static int is_hw_pdp_enable(struct is_hw_ip *hw_ip, u32 instance, ulong hw_map)
 		}
 
 		pdp_hw_s_init(pdp->cmn_base);
-		pdp_hw_s_global(pdp->cmn_base, pdp->id, path, lic_lut);
+		pdp_hw_s_global(pdp->cmn_base, pdp->id, pdp->lic_mode_def, lic_lut);
 
 		/*
 		 * Due to limitation, mapping between LIC and core need to do sequencially.
@@ -1539,9 +1543,9 @@ static int is_hw_pdp_shot(struct is_hw_ip *hw_ip, struct is_frame *frame,
 	u32 lindex = 0, hindex = 0, instance;
 	u32 num_buffers;
 	u32 en_votf;
-	struct is_crop img_full_size;
-	struct is_crop img_crop_size;
-	struct is_crop img_comp_size;
+	struct is_crop img_full_size = {0, 0, 0, 0};
+	struct is_crop img_crop_size = {0, 0, 0, 0};
+	struct is_crop img_comp_size = {0, 0, 0, 0};
 	u32 img_hwformat, img_pixelsize;
 
 	FIMC_BUG(!hw_ip);
@@ -1572,8 +1576,7 @@ static int is_hw_pdp_shot(struct is_hw_ip *hw_ip, struct is_frame *frame,
 	}
 
 	/* multi-buffer */
-	if (num_buffers)
-		hw_ip->num_buffers = num_buffers;
+	hw_ip->num_buffers = num_buffers;
 
 	ret = is_hw_pdp_update_param(hw_ip,
 		region,
@@ -2059,6 +2062,12 @@ static int __init pdp_probe(struct platform_device *pdev)
 	/* LIC LUT */
 	lic_lut_np = of_parse_phandle(dev->of_node, "lic_lut", 0);
 	if (lic_lut_np) {
+		ret = of_property_read_u32(lic_lut_np, "lic_mode_default", &pdp->lic_mode_def);
+		if (ret) {
+			dev_warn(dev, "lic_mode_default read is fail(%d)", ret);
+			pdp->lic_mode_def = 0;
+		}
+
 		num_scen = of_get_child_count(lic_lut_np);
 
 		pdp->lic_lut = devm_kcalloc(&pdev->dev, num_scen, sizeof(struct pdp_lic_lut), GFP_KERNEL);
@@ -2231,7 +2240,6 @@ static int __init pdp_probe(struct platform_device *pdev)
 	atomic_set(&hw_ip->fcount, 0);
 	hw_ip->is_leader = leader;
 	atomic_set(&hw_ip->status.Vvalid, V_BLANK);
-	atomic_set(&hw_ip->status.otf_start, 0);
 	atomic_set(&hw_ip->rsccount, 0);
 	atomic_set(&hw_ip->run_rsccount, 0);
 	init_waitqueue_head(&hw_ip->status.wait_queue);

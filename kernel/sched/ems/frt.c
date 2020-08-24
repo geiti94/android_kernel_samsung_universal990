@@ -1027,18 +1027,21 @@ static int find_victim_rt_rq(struct task_struct *task)
 	bool victim_rt = true;
 	unsigned int victim_cpu_cap, min_cpu_cap;
 	unsigned long victim_rtweight, min_rtweight;
+	struct cpumask candidate_cpus;
 	struct frt_dom *dom, *prefer_dom;
 	bool reverse = false;
 
 	min_cpu_cap = arch_scale_cpu_capacity(NULL, task_cpu(task));
 	min_rtweight = task->rt.avg.util_avg * weight_from_rtprio(task->prio);
 
+	cpumask_and(&candidate_cpus, &task->cpus_allowed, get_available_cpus());
+
 	cpu = find_prefer_cpu(task, &reverse);
 	prefer_dom = dom = per_cpu(frt_rqs, cpu);
 	if (unlikely(!dom))
 		return best_cpu;
 	do {
-		for_each_cpu_and(cpu, &dom->cpus, &task->cpus_allowed) {
+		for_each_cpu_and(cpu, &dom->cpus, &candidate_cpus) {
 			struct task_struct *victim = cpu_rq(cpu)->curr;
 
 			if (victim->nr_cpus_allowed < 2)
@@ -1232,6 +1235,7 @@ static int find_recessive_cpu(struct task_struct *task)
 	/* update the per-cpu local_cpu_mask (lowest_mask) */
 	cpupri_find(&task_rq(task)->rd->cpupri, task, lowest_mask);
 	cpumask_and(&candidate_cpus, lowest_mask, cpu_active_mask);
+	cpumask_and(&candidate_cpus, &candidate_cpus, get_available_cpus());
 	cpumask_and(&candidate_cpus, &candidate_cpus, emstune_cpus_allowed(task));
 
 	cpu = find_prefer_cpu(task, &reverse);

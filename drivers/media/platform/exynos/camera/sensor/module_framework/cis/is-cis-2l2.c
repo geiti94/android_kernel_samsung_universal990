@@ -254,9 +254,9 @@ int sensor_2l2_cis_check_rev(struct is_cis *cis)
 		is_sensor_write16(client, 0x70A2, 0x0001);
 		is_sensor_write16(client, 0x7002, 0x0001);
 		is_sensor_write16(client, 0x6014, 0x0001);
-		mdelay(3);
+		usleep_range(3000, 3100);
 		is_sensor_write16(client, 0x7002, 0x0000);
-		mdelay(1);
+		usleep_range(1000, 1100);
 		is_sensor_write16(client, 0x0000, 0x20C1);
 		is_sensor_write16(client, 0x0002, 0xC101);
 		break;
@@ -668,7 +668,7 @@ int sensor_2l2_cis_retention_crc_check(struct v4l2_subdev *subdev)
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
 	/* retention mode CRC check */
-	mdelay(4);
+	usleep_range(4000, 4100);
 
 	is_sensor_write16(cis->client, 0x602C, 0x2000);
 	is_sensor_write16(cis->client, 0x602E, 0xBBD4);
@@ -929,7 +929,7 @@ int sensor_2l2_cis_stream_on(struct v4l2_subdev *subdev)
 	 * then 8 ms waiting is needed before the StreamOn of a sensor (S5K2L2).
 	 */
 	if (test_bit(IS_SENSOR_PREPROCESSOR_AVAILABLE, &sensor_peri->peri_state)) {
-		mdelay(8);
+		usleep_range(8000, 8100);
 	}
 
 	/* Sensor stream on */

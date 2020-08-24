@@ -86,6 +86,17 @@ struct vb_container {
 	struct vb_format		*format;
 };
 
+struct vb_profiler_node {
+	const char	*label;
+	int					duration;
+	struct vb_profiler_node	*child;
+};
+
+struct vb_profiler {
+	int	level;
+	struct vb_profiler_node	*node;
+};
+
 struct vb_container_list {
 	u32				direction;
 	u32				id;
@@ -94,6 +105,7 @@ struct vb_container_list {
 	struct timeval			timestamp[6];
 	u32				count;
 	struct vb_container		*containers;
+	struct vb_profiler		*profiler;
 };
 
 enum vb_bundle_state {

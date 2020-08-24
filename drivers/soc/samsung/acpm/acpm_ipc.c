@@ -283,7 +283,7 @@ static bool check_response(struct acpm_ipc_ch *channel, struct ipc_config *cfg)
 	unsigned int rear;
 	struct list_head *cb_list = &channel->list;
 	struct callback_info *cb;
-	unsigned int data;
+	unsigned int tmp_seq_num;
 	bool ret = true;
 	unsigned int i;
 
@@ -295,10 +295,10 @@ static bool check_response(struct acpm_ipc_ch *channel, struct ipc_config *cfg)
 	i = rear;
 
 	while (i != front) {
-		data = __raw_readl(channel->rx_ch.base + channel->rx_ch.size * i);
-		data = (data >> ACPM_IPC_PROTOCOL_SEQ_NUM) & 0x3f;
+		tmp_seq_num = __raw_readl(channel->rx_ch.base + channel->rx_ch.size * i);
+		tmp_seq_num = (tmp_seq_num >> ACPM_IPC_PROTOCOL_SEQ_NUM) & 0x3f;
 
-		if (data == ((cfg->cmd[0] >> ACPM_IPC_PROTOCOL_SEQ_NUM) & 0x3f)) {
+		if (tmp_seq_num == ((cfg->cmd[0] >> ACPM_IPC_PROTOCOL_SEQ_NUM) & 0x3f)) {
 			memcpy_align_4(cfg->cmd, channel->rx_ch.base + channel->rx_ch.size * i,
 					channel->rx_ch.size);
 			memcpy_align_4(channel->cmd, channel->rx_ch.base + channel->rx_ch.size * i,
@@ -331,6 +331,7 @@ static bool check_response(struct acpm_ipc_ch *channel, struct ipc_config *cfg)
 				}
 			}
 			ret = false;
+			channel->seq_num_flag[tmp_seq_num] = 0;
 			break;
 		}
 		i++;
@@ -509,6 +510,8 @@ int __acpm_ipc_send_data(unsigned int channel_id, struct ipc_config *cfg, bool w
 	int ret;
 	u64 timeout, now;
 	u32 retry_cnt = 0;
+	u32 tmp_seq_num;
+	u32 seq_cnt = 0;
 
 	if (channel_id >= acpm_ipc->num_channels && !cfg)
 		return -EIO;
@@ -540,9 +543,29 @@ int __acpm_ipc_send_data(unsigned int channel_id, struct ipc_config *cfg, bool w
 		return -EIO;
 	}
 
-	if (++channel->seq_num == 64)
-		channel->seq_num = 1;
+	tmp_seq_num = channel->seq_num;
+	do {
+		if (unlikely(tmp_seq_num != channel->seq_num)) {
+			pr_warn("ACPM IPC] [ACPM_IPC] channel:%d, cmd:0x%x, 0x%x, 0x%x, 0x%x",
+					channel->id, cfg->cmd[0], cfg->cmd[1],
+					cfg->cmd[2], cfg->cmd[3]);
+			WARN(1, "[ACPM IPC] duplicate assignment: sequence number:%d, tmp_seq_num:%d, flag:0x%x",
+					channel->seq_num, tmp_seq_num, channel->seq_num_flag[tmp_seq_num]);
+		}
 
+		if (++tmp_seq_num == SEQUENCE_NUM_MAX)
+			tmp_seq_num = 1;
+
+		if (unlikely(seq_cnt++ == SEQUENCE_NUM_MAX)) {
+			pr_err("[ACPM IPC] sequence number full! error!!!\n");
+			BUG();
+		}
+	} while (channel->seq_num_flag[tmp_seq_num]);
+
+	channel->seq_num = tmp_seq_num;
+	channel->seq_num_flag[channel->seq_num] = cfg->cmd[0] | (0x1 << 31);
+
+	cfg->cmd[0] &= ~(0x3f << ACPM_IPC_PROTOCOL_SEQ_NUM);
 	cfg->cmd[0] |= (channel->seq_num & 0x3f) << ACPM_IPC_PROTOCOL_SEQ_NUM;
 
 	memcpy_align_4(channel->tx_ch.base + channel->tx_ch.size * front, cfg->cmd,

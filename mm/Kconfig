@@ -849,6 +849,14 @@ config HUGEPAGE_POOL_ALLOW_ALL
 	help
 	  allow 2MB page for all to debug hugepage pool
 
+config MEMCG_HEIMDALL
+	bool "memcg optimization for heimdall"
+	depends on MEMCG
+	default y
+	help
+	  Enable this will change the memcg-related logics in the way Heimdall
+	  prefers.
+
 config GUP_BENCHMARK
 	bool "Enable infrastructure for get_user_pages_fast() benchmarking"
 	default n
@@ -874,6 +882,29 @@ config PAGE_STEAL
 	help
 	  Used by HPA and memory-hotplug for faster page reclamation than page
 	  migration and alloc_contig_range.
+
+config ARCH_SUPPORTS_SPECULATIVE_PAGE_FAULT
+	bool "Arch supports speculative page fault"
+	default y
+
+config SPECULATIVE_PAGE_FAULT
+       bool "Speculative page faults"
+       default y
+       depends on ARCH_SUPPORTS_SPECULATIVE_PAGE_FAULT
+       depends on MMU && SMP
+       help
+         Try to handle user space page faults without holding the mmap_sem.
+
+	 This should allow better concurrency for massively threaded process
+	 since the page fault handler will not wait for other threads memory
+	 layout change to be done, assuming that this change is done in another
+	 part of the process's memory space. This type of page fault is named
+	 speculative page fault.
+
+	 If the speculative page fault fails because of a concurrency is
+	 detected or because underlying PMD or PTE tables are not yet
+	 allocating, it is failing its processing and a classic page fault
+	 is then tried.
 endmenu
 
 config LARGE_DIRTY_BUFFER

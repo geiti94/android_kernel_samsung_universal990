@@ -157,13 +157,21 @@ static DEFINE_PANEL_MDELAY(davinci_poc_wait_er_64k_done, DAVINCI_ER_64K_DONE_MDE
 
 #ifdef CONFIG_SUPPORT_POC_SPI
 static u8 DAVINCI_POC_SPI_SET_STATUS1_INIT[] = { 0x01, 0x00 };
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 DAVINCI_POC_SPI_SET_STATUS2_INIT[] = { 0x31, 0x00 };
+#endif
 static u8 DAVINCI_POC_SPI_SET_STATUS1_EXIT[] = { 0x01, 0xFC };
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 DAVINCI_POC_SPI_SET_STATUS2_EXIT[] = { 0x31, 0x02 };
+#endif
 static DEFINE_STATIC_PACKET(davinci_poc_spi_set_status1_init, SPI_PKT_TYPE_WR, DAVINCI_POC_SPI_SET_STATUS1_INIT, 0);
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_STATIC_PACKET(davinci_poc_spi_set_status2_init, SPI_PKT_TYPE_WR, DAVINCI_POC_SPI_SET_STATUS2_INIT, 0);
+#endif
 static DEFINE_STATIC_PACKET(davinci_poc_spi_set_status1_exit, SPI_PKT_TYPE_WR, DAVINCI_POC_SPI_SET_STATUS1_EXIT, 0);
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_STATIC_PACKET(davinci_poc_spi_set_status2_exit, SPI_PKT_TYPE_WR, DAVINCI_POC_SPI_SET_STATUS2_EXIT, 0);
+#endif
 
 static u8 DAVINCI_POC_SPI_STATUS1[] = { 0x05 };
 static u8 DAVINCI_POC_SPI_STATUS2[] = { 0x35 };
@@ -193,7 +201,6 @@ static DEFINE_VARIABLE_PACKET(davinci_poc_spi_rd_addr, SPI_PKT_TYPE_SETPARAM, DA
 static DEFINE_PANEL_UDELAY_NO_SLEEP(davinci_poc_spi_wait_write, DAVINCI_SPI_WR_DONE_UDELAY);
 static DEFINE_PANEL_MDELAY(davinci_poc_spi_wait_erase, DAVINCI_SPI_ER_DONE_MDELAY);
 static DEFINE_PANEL_MDELAY(davinci_poc_spi_wait_status, DAVINCI_SPI_STATUS_WR_DONE_MDELAY);
-
 #endif
 
 static void *davinci_poc_erase_enter_cmdtbl[] = {
@@ -423,8 +430,7 @@ static struct poc_partition davinci_poc_partition[] = {
 		.name = "dimming",
 		.addr = DAVINCI_POC_DIM_DATA_ADDR,
 		.size = DAVINCI_POC_DIM_TOTAL_SIZE,
-		.data_addr = DAVINCI_POC_DIM_DATA_ADDR,
-		.data_size = DAVINCI_POC_DIM_DATA_SIZE,
+		.data = { { .data_addr = DAVINCI_POC_DIM_DATA_ADDR, .data_size = DAVINCI_POC_DIM_DATA_SIZE } },
 		.checksum_addr = DAVINCI_POC_DIM_CHECKSUM_ADDR,
 		.checksum_size = DAVINCI_POC_DIM_CHECKSUM_SIZE,
 		.magicnum_addr = DAVINCI_POC_DIM_MAGICNUM_ADDR,
@@ -436,8 +442,7 @@ static struct poc_partition davinci_poc_partition[] = {
 		.name = "mtp",
 		.addr = DAVINCI_POC_MTP_DATA_ADDR,
 		.size = DAVINCI_POC_MTP_TOTAL_SIZE,
-		.data_addr = DAVINCI_POC_MTP_DATA_ADDR,
-		.data_size = DAVINCI_POC_MTP_DATA_SIZE,
+		.data = { { .data_addr = DAVINCI_POC_MTP_DATA_ADDR, .data_size = DAVINCI_POC_MTP_DATA_SIZE } },
 		.checksum_addr = DAVINCI_POC_MTP_CHECKSUM_ADDR,
 		.checksum_size = DAVINCI_POC_MTP_CHECKSUM_SIZE,
 		.magicnum_addr = 0,

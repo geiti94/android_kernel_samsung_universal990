@@ -15,14 +15,58 @@
 #include <linux/string.h>
 
 #include "maskgen.h"
+#include "../panel_debug.h"
 
-inline bool append_enc_data(struct mprint_props *p, unsigned char type, int size) {
+#ifdef PANEL_PR_TAG
+#undef PANEL_PR_TAG
+#define PANEL_PR_TAG	"prof"
+#endif
+
+static const char *mprint_config_names[] = {
+	"debug",
+	"scale",
+	"color",
+	"skip_y",
+	"spacing_x",
+	"padding_x",
+	"padding_y",
+	"resol_x",
+	"resol_y",
+	"max_len",
+};
+
+const char *get_mprint_config_name(int i)
+{
+	if (i < 0 || i >= ARRAY_SIZE(mprint_config_names))
+		return NULL;
+
+	return mprint_config_names[i];
+}
+
+static unsigned char MASK_CHAR_MAP[][9] = {
+	['.'] = { 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00100, 0b00000 },
+	[' '] = { 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000 },
+	['0'] = { 0b01110, 0b11011, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11011, 0b01110 },
+	['1'] = { 0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110 },
+	['2'] = { 0b01110, 0b11011, 0b10001, 0b00001, 0b00011, 0b00110, 0b01100, 0b11000, 0b11111 },
+	['3'] = { 0b01110, 0b11011, 0b10001, 0b00011, 0b00110, 0b00011, 0b10001, 0b11011, 0b01110 },
+	['4'] = { 0b00010, 0b00110, 0b01110, 0b11010, 0b10010, 0b10010, 0b11111, 0b00010, 0b00010 },
+	['5'] = { 0b11111, 0b10000, 0b10000, 0b11110, 0b11011, 0b00001, 0b00001, 0b11011, 0b01110 },
+	['6'] = { 0b01110, 0b11011, 0b10000, 0b11110, 0b11011, 0b10001, 0b10001, 0b11011, 0b01110 },
+	['7'] = { 0b11111, 0b10001, 0b10001, 0b00011, 0b00010, 0b00110, 0b00100, 0b01100, 0b01000 },
+	['8'] = { 0b01110, 0b11011, 0b10001, 0b11011, 0b01110, 0b11011, 0b10001, 0b11011, 0b01110 },
+	['9'] = { 0b01110, 0b11011, 0b10001, 0b10001, 0b11011, 0b01111, 0b00001, 0b11011, 0b01110 },
+	['H'] = { 0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001, 0b00000, 0b00000 },
+	[127] = { 0, },
+};
+
+static inline bool append_enc_data(struct mprint_props *p, unsigned char type, int size) {
 	struct mprint_packet *curr = &(p->pkts[p->pkts_pos]);
 	struct mprint_config *c = p->conf;
 
 	if (c->resol_x < p->cursor_x) {
 		if (c->debug)
-			pr_warn("%s: overflow x, skip %d\n", __func__, size);
+			panel_warn("overflow x, skip %d\n", size);
 		p->cursor_x += size;
 		return true;
 	}
@@ -31,7 +75,7 @@ inline bool append_enc_data(struct mprint_props *p, unsigned char type, int size
 
 	if (p->cursor_x > c->resol_x) {
 		if (c->debug)
-			pr_warn("%s: overflow x, skip %d, size set to %d\n", __func__,
+			panel_warn("overflow x, skip %d, size set to %d\n",
 				p->cursor_x - c->resol_x, size - (p->cursor_x - c->resol_x));
 		size = size - (p->cursor_x - c->resol_x);
 	}
@@ -45,7 +89,7 @@ inline bool append_enc_data(struct mprint_props *p, unsigned char type, int size
 
 	if (p->pkts_pos + 1 >= p->pkts_max) {
 		if (c->debug)
-			pr_warn("%s: overflow pkts, %d %d\n", __func__, p->cursor_y, p->cursor_x);
+			panel_warn("overflow pkts, %d %d\n", p->cursor_y, p->cursor_x);
 		return false;
 	}
 
@@ -63,27 +107,27 @@ int char_to_mask_img(struct mprint_props *p, char *str) {
 	unsigned char slice;
 
 
-	if (!p) {
-		pr_err("%s: invalid props\n", __func__);
+	if (!p) {
+		panel_err("invalid props\n");
 		return -EINVAL;
 	}
 
-	if (!str) {
-		pr_err("%s: invalid string\n", __func__);
+	if (!str) {
+		panel_err("invalid string\n");
 		return -EINVAL;
 	}
 
 	strsize = strlen(str);
 
 	if (strsize < 1) {
-		pr_err("%s: strlen is %d\n", __func__, strsize);
+		panel_err("strlen is %d\n", strsize);
 		return -EINVAL;
 	}
-	
+
 	c = p->conf;
 	scale = c->scale;
 	if (scale < 0) {
-		pr_warn("%s: invalid scale %d, set force to 1\n", __func__, scale);
+		panel_warn("invalid scale %d, set force to 1\n", scale);
 		scale = 1;
 	}
 
@@ -114,7 +158,7 @@ int char_to_mask_img(struct mprint_props *p, char *str) {
 					goto err_limit_exceed;
 				continue;
 			}
-			
+
 			//x padding
 			if (c->padd_x > 0) {
 				//add padding x
@@ -145,7 +189,7 @@ int char_to_mask_img(struct mprint_props *p, char *str) {
 			}
 
 			if (c->resol_x != p->cursor_x) {
-				pr_warn("%s: line %d pxl cnt mismatch! %d\n", __func__, p->cursor_y, p->cursor_x);
+				panel_warn("line %d pxl cnt mismatch! %d\n", p->cursor_y, p->cursor_x);
 			}
 			//scale_y end
 		}
@@ -163,11 +207,11 @@ int char_to_mask_img(struct mprint_props *p, char *str) {
 	p->pkts_size = p->pkts_pos + 1;
 
 	if (c->debug)
-		pr_info("%s: created data packet, %d %d\n", __func__, p->pkts_size, p->cursor_y);
+		panel_info("created data packet, %d %d\n", p->pkts_size, p->cursor_y);
 
 	for (i = 0; i < p->pkts_size; i++) {
 		if (p->data_max <= i * 2) {
-			pr_err("%s: data output limit exceeded! %d %d\n", __func__, p->pkts_size, p->data_max);
+			panel_err("data output limit exceeded! %d %d\n", p->pkts_size, p->data_max);
 			break;
 		}
 		p->data[i * 2] = ((p->pkts[i].type << 6) & 0xC0) | ((p->pkts[i].size >> 8) & 0x3F);
@@ -188,7 +232,7 @@ int char_to_mask_img(struct mprint_props *p, char *str) {
 	return p->data_size;
 
 err_limit_exceed:
-	pr_err("%s: buffer limit exceeded! %d %d\n", __func__, p->cursor_y, p->cursor_x);
+	panel_err("buffer limit exceeded! %d %d\n", p->cursor_y, p->cursor_x);
 	return -ENOMEM;
 }
 

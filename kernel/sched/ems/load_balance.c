@@ -621,6 +621,38 @@ static void set_lbt_overutil(int level, const char *mask, int ratio)
 	}
 }
 
+#define OU_RATIO_FOR_MIGOV	50
+DEFINE_PER_CPU(int , lbt_back);
+void set_lbt_overutil_with_migov(int enabled)
+{
+	int cpu;
+	unsigned long capacity;
+
+	/* MIGOV DISABLED, Restore lbt value */
+	if (!enabled) {
+		for_each_cpu(cpu, cpu_possible_mask) {
+			if (!per_cpu(lbt_back, cpu))
+				continue;
+			per_cpu(lbt_overutil, cpu)[0].ratio = per_cpu(lbt_back, cpu);
+			capacity = capacity_cpu(cpu, 0);
+			update_lbt_overutil(cpu, capacity);
+		}
+		return;
+	}
+
+	for_each_cpu(cpu, cpu_possible_mask) {
+		per_cpu(lbt_back, cpu) = per_cpu(lbt_overutil, cpu)[0].ratio;
+
+		if (cpumask_test_cpu(cpu, cpu_coregroup_mask(0)))
+			per_cpu(lbt_overutil, cpu)[0].ratio = OU_RATIO_FOR_MIGOV;
+		else
+			per_cpu(lbt_overutil, cpu)[0].ratio = DEFAULT_OU_RATIO;
+
+		capacity = capacity_cpu(cpu, 0);
+		update_lbt_overutil(cpu, capacity);
+	}
+}
+
 static void parse_lbt_overutil(struct device_node *dn)
 {
 	struct device_node *lbt, *ou;

@@ -10,14 +10,14 @@
 #include "hardware/dsp-system.h"
 #include "hardware/dsp-bus.h"
 
-int dsp_bus_mo_get(struct dsp_bus *bus, unsigned int scenario_id)
+int dsp_bus_mo_get(struct dsp_bus *bus, unsigned char *scenario_name)
 {
 	dsp_enter();
 	dsp_leave();
 	return 0;
 }
 
-int dsp_bus_mo_put(struct dsp_bus *bus, unsigned int scenario_id)
+int dsp_bus_mo_put(struct dsp_bus *bus, unsigned char *scenario_name)
 {
 	dsp_enter();
 	dsp_leave();

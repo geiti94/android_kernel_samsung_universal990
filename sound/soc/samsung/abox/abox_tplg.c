@@ -513,6 +513,9 @@ static int abox_tplg_dapm_put_mux(struct snd_kcontrol *kcontrol,
 	dev_dbg(dev, "%s(%s, %s)\n", __func__, kcontrol->id.name,
 			e->texts[value]);
 
+	if (value >= e->items)
+		return -EINVAL;
+
 	kdata->value[0] = value;
 	if (!pm_runtime_suspended(dev_abox)) {
 		ret = abox_tplg_kcontrol_put(dev, kdata);
@@ -577,8 +580,12 @@ static int abox_tplg_put_mixer(struct snd_kcontrol *kcontrol,
 
 	dev_dbg(dev, "%s(%s, %ld)\n", __func__, kcontrol->id.name, value[0]);
 
-	for (i = 0; i < kdata->count; i++)
+	for (i = 0; i < kdata->count; i++) {
+		if (value[i] < mc->min || value[i] > mc->max)
+			return -EINVAL;
+
 		kdata->value[i] = (unsigned int)value[i];
+	}
 
 	if (!pm_runtime_suspended(dev_abox)) {
 		ret = abox_tplg_kcontrol_put(dev, kdata);
@@ -628,6 +635,9 @@ static int abox_tplg_dapm_put_mixer(struct snd_kcontrol *kcontrol,
 	int ret;
 
 	dev_dbg(dev, "%s(%s, %u)\n", __func__, kcontrol->id.name, value);
+
+	if (value < mc->min || value > mc->max)
+		return -EINVAL;
 
 	kdata->value[0] = value;
 	if (!pm_runtime_suspended(dev_abox)) {
@@ -687,7 +697,10 @@ static int abox_tplg_dapm_put_pin(struct snd_kcontrol *kcontrol,
 
 	dev_dbg(dev, "%s(%s, %u)\n", __func__, kcontrol->id.name, value);
 
-	kdata->value[0] = value;
+	if (value < mc->min || value > mc->max)
+		return -EINVAL;
+
+	kdata->value[0] = !!value;
 	if (!pm_runtime_suspended(dev_abox)) {
 		ret = abox_tplg_kcontrol_put(dev, kdata);
 		if (ret < 0)

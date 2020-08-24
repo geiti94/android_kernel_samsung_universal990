@@ -2,7 +2,7 @@
  * Broadcom Dongle Host Driver (DHD), Linux-specific network interface
  * Basically selected code segments from usb-cdc.c and usb-rndis.c
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -433,7 +433,7 @@ show_firmware_path(struct dhd_info *dev, char *buf)
 static ssize_t
 store_firmware_path(struct dhd_info *dev, const char *buf, size_t count)
 {
-	if ((int)strlen(buf) > MOD_PARAM_PATHLEN) {
+	if ((int)strlen(buf) >= MOD_PARAM_PATHLEN) {
 		return -EINVAL;
 	}
 
@@ -456,7 +456,7 @@ show_nvram_path(struct dhd_info *dev, char *buf)
 static ssize_t
 store_nvram_path(struct dhd_info *dev, const char *buf, size_t count)
 {
-	if ((int)strlen(buf) > MOD_PARAM_PATHLEN) {
+	if ((int)strlen(buf) >= MOD_PARAM_PATHLEN) {
 		return -EINVAL;
 	}
 

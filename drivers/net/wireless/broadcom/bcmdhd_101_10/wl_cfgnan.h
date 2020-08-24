@@ -1,7 +1,7 @@
 /*
  * Neighbor Awareness Networking
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _wl_cfgnan_h_
@@ -129,7 +129,7 @@
 /* Disabling tranmsit followup events based on below bit */
 #define WL_NAN_EVENT_SUPPRESS_FOLLOWUP_RECEIVE_BIT	0
 
-#define C2S(x)  case x: return #x;
+#define C2S(x)  case x: id2str = #x
 #define NAN_BLOOM_LENGTH_DEFAULT	240u
 #define NAN_SRF_MAX_MAC			(NAN_BLOOM_LENGTH_DEFAULT / ETHER_ADDR_LEN)
 #define NAN_MAX_PMK_LEN			32u
@@ -159,10 +159,12 @@
 #define NAN_SVC_INST_SIZE			32u
 #define NAN_START_STOP_TIMEOUT			5000u
 #define NAN_MAX_NDP_PEER			8u
-#define NAN_DISABLE_CMD_DELAY			2000u
+#define NAN_DISABLE_CMD_DELAY			530u
+#define NAN_WAKELOCK_TIMEOUT			(NAN_DISABLE_CMD_DELAY + 100u)
 
 #define NAN_NMI_RAND_PVT_CMD_VENDOR		(1 << 31)
 #define NAN_NMI_RAND_CLUSTER_MERGE_ENAB		(1 << 30)
+#define NAN_NMI_RAND_AUTODAM_LWT_MODE_ENAB	(1 << 29)
 
 #ifdef WL_NAN_DEBUG
 #define NAN_MUTEX_LOCK() {WL_DBG(("Mutex Lock: Enter: %s\n", __FUNCTION__)); \
@@ -799,13 +801,12 @@ void wl_cfgnan_process_range_report(struct bcm_cfg80211 *cfg,
 int wl_cfgnan_cancel_ranging(struct net_device *ndev,
 	struct bcm_cfg80211 *cfg, uint8 *range_id, uint8 flags, uint32 *status);
 bool wl_cfgnan_ranging_allowed(struct bcm_cfg80211 *cfg);
-uint8 wl_cfgnan_cancel_rng_responders(struct net_device *ndev,
-	struct bcm_cfg80211 *cfg);
+uint8 wl_cfgnan_cancel_rng_responders(struct net_device *ndev);
 extern int wl_cfgnan_get_status(struct net_device *ndev, wl_nan_conf_status_t *nan_status);
 int wl_cfgnan_set_enable_merge(struct net_device *ndev,
 	struct bcm_cfg80211 *cfg, uint8 enable, uint32 *status);
 int wl_cfgnan_attach(struct bcm_cfg80211 *cfg);
-int wl_cfgnan_detach(struct bcm_cfg80211 *cfg);
+void wl_cfgnan_detach(struct bcm_cfg80211 *cfg);
 typedef enum {
 	NAN_ATTRIBUTE_HEADER                            = 100,
 	NAN_ATTRIBUTE_HANDLE                            = 101,

@@ -51,6 +51,9 @@ int dsim_log_level = 6;
 
 struct dsim_device *dsim_drvdata[MAX_DSIM_CNT];
 EXPORT_SYMBOL(dsim_drvdata);
+#ifdef CONFIG_EXYNOS_FPS_CHANGE_NOTIFY
+extern u64 frame_vsync_cnt;
+#endif
 
 /*
  * This global mutex lock protects to initialize or de-initialize DSIM and DPHY
@@ -374,6 +377,9 @@ int dsim_write_cmd_set(struct dsim_device *dsim, struct exynos_dsim_cmd cmd_list
 		goto err_exit;
 	}
 
+	/* force to exit pll sleep before starting command transfer */
+	dpu_pll_sleep_mask(decon);
+
 	for (i = 0; i < set.cnt; i++) {
 
 		/* packet go enable */
@@ -381,6 +387,8 @@ int dsim_write_cmd_set(struct dsim_device *dsim, struct exynos_dsim_cmd cmd_list
 
 		for (; j < cmd_cnt; j++) {
 			cmd = &cmd_list[j];
+			if (!cmd->data_len)
+				break;
 
 			switch (cmd->type) {
 			/* short packet types of packet types for command. */
@@ -394,7 +402,13 @@ int dsim_write_cmd_set(struct dsim_device *dsim, struct exynos_dsim_cmd cmd_list
 			case MIPI_DSI_COLOR_MODE_ON:
 			case MIPI_DSI_SHUTDOWN_PERIPHERAL:
 			case MIPI_DSI_TURN_ON_PERIPHERAL:
-				dsim_reg_wr_tx_header(dsim->id, cmd->type, cmd->data_buf[0],
+				if (cmd->data_len == 1)
+					dsim_reg_wr_tx_header(dsim->id,
+						cmd->type, cmd->data_buf[0],
+						0, false);
+				else
+					dsim_reg_wr_tx_header(dsim->id,
+						cmd->type, cmd->data_buf[0],
 						cmd->data_buf[1], false);
 				break;
 
@@ -434,6 +448,7 @@ int dsim_write_cmd_set(struct dsim_device *dsim, struct exynos_dsim_cmd cmd_list
 			goto err_exit;
 		}
 	}
+	dsim_reg_enable_packetgo(dsim->id, 0);
 
 err_exit:
 	mutex_unlock(&dsim->cmd_lock);
@@ -476,6 +491,9 @@ int dsim_write_data(struct dsim_device *dsim, u32 id, unsigned long d0, u32 d1, 
 		dsim_err("ID(%d): DSIM cmd wr timeout @ line count '0' 0x%lx, pl_cnt = %d\n", id, d0, dsim->pl_cnt);
 		goto err_exit;
 	}
+
+	/* force to exit pll sleep before starting command transfer */
+	dpu_pll_sleep_mask(decon);
 
 	/* Run write-fail dectector */
 	mod_timer(&dsim->cmd_timer, jiffies + MIPI_WR_TIMEOUT);
@@ -558,10 +576,7 @@ err_exit:
 	return ret;
 }
 
-
-#define SIDE_RAM_ALIGN 16
-
-int dsim_sr_write_data(struct dsim_device *dsim, const u8 *cmd, u32 size)
+int dsim_sr_write_data(struct dsim_device *dsim, const u8 *cmd, u32 size, u32 align)
 {
 	int cnt;
 	u8 c_start = 0, c_next = 0;
@@ -584,7 +599,7 @@ int dsim_sr_write_data(struct dsim_device *dsim, const u8 *cmd, u32 size)
 	/* Check available status of PH FIFO before writing command */
 	if (!dsim_check_ph_threshold(dsim, 1)) {
 		ret = -EINVAL;
-		dsim_err("ID(%d): DSIM cmd wr timeout @ don't available ph 0x%lx\n",
+		dsim_err("ID(%d): DSIM cmd wr timeout @ don't available ph 0x%x\n",
 			dsim->id, cmd[0]);
 		goto err_exit;
 	}
@@ -597,7 +612,7 @@ int dsim_sr_write_data(struct dsim_device *dsim, const u8 *cmd, u32 size)
 		goto err_exit;
 	}
 
-	dsim_info("%s : size : %d\n", __func__, size);
+	dsim_info("%s : size : %d align: %d\n", __func__, size, align);
 
 	c_start = MIPI_DCS_WRITE_SIDE_RAM_START;
 	c_next = MIPI_DCS_WRITE_SIDE_RAM_CONTINUE;
@@ -606,12 +621,12 @@ int dsim_sr_write_data(struct dsim_device *dsim, const u8 *cmd, u32 size)
 		cmdbuf[0] = (size == remained) ? c_start : c_next;
 		tx_size = min(remained, 2047);
 
-		if ((tx_size % SIDE_RAM_ALIGN) > 0) {
-			if (tx_size > SIDE_RAM_ALIGN) {
-				tx_size -= (tx_size % SIDE_RAM_ALIGN);
+		if ((tx_size % align) > 0) {
+			if (tx_size > align) {
+				tx_size -= (tx_size % align);
 			} else {
 				panel_warn("%s: byte align mismatch! data %d align %d\n",
-					__func__, tx_size, SIDE_RAM_ALIGN);
+					__func__, tx_size, align);
 			}
 		}
 
@@ -636,7 +651,7 @@ int dsim_sr_write_data(struct dsim_device *dsim, const u8 *cmd, u32 size)
 		} while (cnt--);
 
 		if (!cnt) {
-			dsim_err("ID(%d): DSIM command(%lx) fail\n", dsim->id, cmd[0]);
+			dsim_err("ID(%d): DSIM command(%x) fail\n", dsim->id, cmd[0]);
 			ret = -EINVAL;
 		}
 	} while (remained > 0);
@@ -760,7 +775,7 @@ int dsim_read_data(struct dsim_device *dsim, u32 id, u32 addr, u32 cnt, u8 *buf)
 			}
 			break;
 		default:
-			dsim_err("Packet format is invaild.\n");
+			dsim_err("Packet format is invalid.\n");
 			dsim_to_regs_param(dsim, &regs);
 			__dsim_dump(dsim->id, &regs);
 			ret = -EBUSY;
@@ -903,6 +918,8 @@ static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 	if (int_src & DSIM_INTSRC_SFR_PH_FIFO_EMPTY) {
 		del_timer(&dsim->cmd_timer);
 		complete(&dsim->ph_wr_comp);
+		/* allow to enter pll sleep after finishing command transfer */
+		dpu_pll_sleep_unmask(decon);
 		dsim_dbg("dsim%d PH_FIFO_EMPTY irq occurs\n", dsim->id);
 	}
 	if (int_src & DSIM_INTSRC_RX_DATA_DONE)
@@ -920,6 +937,9 @@ static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 	}
 	if (int_src & DSIM_INTSRC_VT_STATUS) {
 		dsim_dbg("dsim%d vt_status(vsync) irq occurs\n", dsim->id);
+#ifdef CONFIG_EXYNOS_FPS_CHANGE_NOTIFY		
+		frame_vsync_cnt++;
+#endif
 		if (decon) {
 			decon->vsync.timestamp = ktime_get();
 			wake_up_interruptible_all(&decon->vsync.wait);
@@ -1460,8 +1480,10 @@ static int dsim_set_freq_hop(struct dsim_device *dsim, struct decon_freq_hop *fr
 
 static int dsim_free_fb_resource(struct dsim_device *dsim)
 {
+#if defined(CONFIG_EXYNOS_IOVMM)
 	/* unmap */
 	iovmm_unmap_oto(dsim->dev, dsim->fb_handover.phys_addr);
+#endif
 
 	/* unreserve memory */
 	of_reserved_mem_device_release(dsim->dev);
@@ -1497,6 +1519,7 @@ static int dsim_acquire_fb_resource(struct dsim_device *dsim)
 		dsim->fb_handover.reserved = true;
 	}
 
+#if defined(CONFIG_EXYNOS_IOVMM)
 	/* phys_addr and phys_size must be aligned to page size */
 	ret = iovmm_map_oto(dsim->dev, dsim->fb_handover.phys_addr,
 			dsim->fb_handover.phys_size);
@@ -1504,6 +1527,7 @@ static int dsim_acquire_fb_resource(struct dsim_device *dsim)
 		dsim_err("failed one to one mapping: %d\n", ret);
 		BUG();
 	}
+#endif
 
 	return ret;
 }
@@ -2095,12 +2119,14 @@ static int dsim_probe(struct platform_device *pdev)
 
 	dsim_acquire_fb_resource(dsim);
 
+#if defined(CONFIG_EXYNOS_IOVMM)
 	ret = iovmm_activate(dev);
 	if (ret) {
 		dsim_err("failed to activate iovmm\n");
 		goto err_dt;
 	}
 	iovmm_set_fault_handler(dev, dpu_sysmmu_fault_handler, NULL);
+#endif
 
 	phy_init(dsim->phy);
 	if (dsim->phy_ex)

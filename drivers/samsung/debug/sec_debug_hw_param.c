@@ -22,48 +22,18 @@
 
 #include "sec_debug_internal.h"
 
-#define MAX_DDR_VENDOR 16
-#define LPDDR_BASE      0x02062c00
 #define DATA_SIZE 1024
 #define LOT_STRING_LEN 5
-
-#define _DDR_TRANING
-
-/*
- * LPDDR4 (JESD209-4) MR5 Manufacturer ID
- * 0000 0000B : Reserved
- * 0000 0001B : Samsung
- * 0000 0101B : Nanya
- * 0000 0110B : SK hynix
- * 0000 1000B : Winbond
- * 0000 1001B : ESMT
- * 1111 1111B : Micron
- * All others : Reserved
- */
-static char *lpddr4_manufacture_name[MAX_DDR_VENDOR] = {
-	"NA",
-	"SEC", /* Samsung */
-	"NA",
-	"NA",
-	"NA",
-	"NAN", /* Nanya */
-	"HYN", /* SK hynix */
-	"NA",
-	"WIN", /* Winbond */
-	"ESM", /* ESMT */
-	"NA",
-	"NA",
-	"NA",
-	"NA",
-	"NA",
-	"MIC", /* Micron */
-};
 
 static unsigned int sec_hw_rev;
 static unsigned int chipid_fail_cnt;
 static unsigned int lpi_timeout_cnt;
 static unsigned int cache_err_cnt;
 static unsigned int codediff_cnt;
+
+#define MAX_NR_DRAMINFO	(16)
+static char draminfo[MAX_NR_DRAMINFO];
+
 #if defined(CONFIG_SAMSUNG_VST_CAL)
 static unsigned int vst_result;
 #endif
@@ -71,122 +41,6 @@ static unsigned long pcb_offset;
 static unsigned long smd_offset;
 static unsigned int lpddr4_size;
 static char warranty = 'D';
-
-#ifdef _DDR_TRANING	/* DDR training result structure */
-#define MK_DDR_TRN_DATA_BASE 0x02062000
-#define NUM_OF_CH                       (4)
-#define NUM_OF_TRN_OFFSET_INFO          (2)
-#define NUM_OF_TRN_DLL_INFO             (1)
-#define NUM_OF_TRN_GATE_INFO            (4)
-#define NUM_OF_TRN_RD_DESKEW_INFO       (9)
-#define NUM_OF_TRN_RD_DESKEWQ_INFO      (2)
-#define NUM_OF_TRN_WR_DESKEW_INFO       (9)
-#define NUM_OF_TRN_INFO                 (0)
-
-enum phy_rank_info {
-	PHY_RANK_0,
-	PHY_RANK_1,
-	PHY_RANK_ALL,
-};
-
-enum phy_byte_info {
-	PHY_BYTE_0,
-	PHY_BYTE_1,
-	PHY_BYTE_ALL,
-};
-
-struct phy_trn_cbt_info_t {
-	unsigned char ca[6];
-	unsigned char ck;
-	unsigned char cs[2];
-	unsigned char cke[2];
-
-};
-
-struct phy_trn_read_dqs_info_t {
-	unsigned char center[PHY_BYTE_ALL];
-	unsigned char left[PHY_BYTE_ALL];
-};
-
-struct phy_trn_wr_lvl_info_t {
-	unsigned short code[PHY_BYTE_ALL];
-};
-
-struct phy_trn_gate_info_t {
-	unsigned short center[PHY_BYTE_ALL];
-	unsigned char  cycle[PHY_BYTE_ALL];
-};
-
-struct phy_trn_read_info_t {
-	unsigned short deskewc[NUM_OF_TRN_RD_DESKEW_INFO][PHY_BYTE_ALL];
-	unsigned short deskewl[NUM_OF_TRN_RD_DESKEW_INFO][PHY_BYTE_ALL];
-	struct phy_trn_read_dqs_info_t  dqs;
-};
-
-struct phy_trn_write_info_t {
-	unsigned short deskewc[NUM_OF_TRN_WR_DESKEW_INFO][PHY_BYTE_ALL];
-	unsigned short deskewl[NUM_OF_TRN_WR_DESKEW_INFO][PHY_BYTE_ALL];
-
-};
-
-struct phy_trn_all_level_deskew_offset_info_t {
-	signed char offset[PHY_BYTE_ALL];
-
-};
-
-struct phy_trn_prbs_info_t {
-	short read[PHY_RANK_ALL][PHY_BYTE_ALL];
-	short write[PHY_RANK_ALL][PHY_BYTE_ALL];
-};
-
-struct phy_trn_soc_vref_info_t {
-	unsigned char net_lv;
-	unsigned char vref;
-	unsigned int average;
-	unsigned char left;
-	unsigned char right;
-
-};
-
-union mr14_t {
-	unsigned int data;
-	struct  {
-		unsigned int	vref_dq : (5 - 0 + 1);
-		unsigned int	vr_dq : (6 - 6 + 1);
-		unsigned int	reserved_7 : (7 - 7 + 1);
-	} bitfield;
-};
-
-struct phy_trn_memory_vref_info_t {
-	unsigned char net_lv;
-	unsigned char vref;
-	unsigned int average;
-	unsigned char left;
-	unsigned char right;
-	union mr14_t mr14;
-};
-
-struct phy_trn_clock_duty_info_t {
-	unsigned char nmos;
-	unsigned char pmos;
-	unsigned int max_size;
-};
-
-struct phy_trn_data_t {
-	unsigned int				dll;
-	struct phy_trn_cbt_info_t		cbt;
-	struct phy_trn_wr_lvl_info_t		wr_lvl;
-	struct phy_trn_gate_info_t		gate[PHY_RANK_ALL];
-	struct phy_trn_read_info_t		read[PHY_RANK_ALL];//read training per rank enabled from KC
-	struct phy_trn_write_info_t		write[PHY_RANK_ALL];
-	struct phy_trn_all_level_deskew_offset_info_t  read_offset[12][PHY_RANK_ALL];
-	struct phy_trn_all_level_deskew_offset_info_t  write_offset[12][PHY_RANK_ALL];
-	struct phy_trn_prbs_info_t		prbs;
-	struct phy_trn_soc_vref_info_t		soc_vref[3][PHY_RANK_ALL];
-	struct phy_trn_memory_vref_info_t	memory_vref[2][PHY_RANK_ALL];
-	struct phy_trn_clock_duty_info_t	clock_duty;
-};
-#endif	/* DDR training result structure */
 
 static int __init sec_hw_param_get_hw_rev(char *arg)
 {
@@ -283,6 +137,16 @@ static int __init sec_hw_param_bin(char *arg)
 }
 
 early_param("sec_debug.bin", sec_hw_param_bin);
+
+static int __init sec_hw_param_draminfo(char *arg)
+{
+	snprintf(draminfo, MAX_NR_DRAMINFO, "%s", arg);
+	pr_info("%s: %s\n", __func__, draminfo);
+
+	return 0;
+}
+
+early_param("androidboot.dram_info", sec_hw_param_draminfo);
 
 static u32 chipid_reverse_value(u32 value, u32 bitcnt)
 {
@@ -402,29 +266,9 @@ static ssize_t sec_hw_param_ap_info_show(struct kobject *kobj,
 				"\"IDS_LIT\":\"%d\",", asv_ids_information(lids));
 	info_size +=
 		snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
-				"\"IDS_G3D\":\"%d\"", asv_ids_information(gids));
+				"\"IDS_G3D\":\"%d\",", asv_ids_information(gids));
 
 	return info_size;
-}
-
-static char *get_dram_manufacturer(void)
-{
-	void *lpddr_reg;
-	u64 val;
-	int mr5_vendor_id = 0;
-
-	lpddr_reg = ioremap(LPDDR_BASE, SZ_64);
-
-	if (!lpddr_reg) {
-		pr_err("failed to get i/o address lpddr_reg\n");
-		return lpddr4_manufacture_name[mr5_vendor_id];
-	}
-
-	val = readq((void __iomem *)lpddr_reg);
-
-	mr5_vendor_id = (val & 0xff00) >> 8;
-
-	return lpddr4_manufacture_name[mr5_vendor_id];
 }
 
 static ssize_t sec_hw_param_ddr_info_show(struct kobject *kobj,
@@ -432,105 +276,8 @@ static ssize_t sec_hw_param_ddr_info_show(struct kobject *kobj,
 					  char *buf)
 {
 	ssize_t info_size = 0;
-	struct phy_trn_data_t *trn_data;
-	unsigned long addr;
-	unsigned int data;
-	int i, j, k;
-	unsigned short min_vwm, temp_vwm;
-	void __iomem *dram_trn_addr;
 
-	info_size +=
-	    snprintf((char *)(buf), DATA_SIZE, "\"DDRV\":\"%s\",",
-		     get_dram_manufacturer());
-	info_size +=
-	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
-		     "\"LPDDR4\":\"%dGB\",", lpddr4_size);
-
-	dram_trn_addr = ioremap(MK_DDR_TRN_DATA_BASE, 0x4000);
-	for (k = 0; k < NUM_OF_CH; k++) {
-		data = readl(dram_trn_addr + 0xc60 + 4 * k);
-		info_size +=
-			snprintf(
-				(char *)(buf + info_size),
-				DATA_SIZE - info_size,
-				"\"sc%dr0\":\"%x\",", k, (data >> 16) & 0xff);
-		info_size +=
-			snprintf(
-				(char *)(buf + info_size),
-				DATA_SIZE - info_size,
-				"\"sc%dr1\":\"%x\",", k, data & 0xff);
-	}
-	for (k = 0; k < NUM_OF_CH; k++) {
-		data = readl(dram_trn_addr + 0xc80 + 4 * k);
-		info_size +=
-			snprintf(
-				(char *)(buf + info_size),
-				DATA_SIZE - info_size,
-				"\"dc%dr0\":\"%x\",", k, (data >> 16) & 0xff);
-		info_size +=
-			snprintf(
-				(char *)(buf + info_size),
-				DATA_SIZE - info_size,
-				"\"dc%dr1\":\"%x\",", k, data & 0xff);
-	}
-	for (k = 0; k < NUM_OF_CH; k++) {
-		addr = readl(dram_trn_addr + 0xc50 + 4 * k);
-
-		if (addr > 0x2a000 && addr < 0x2c000) {
-			trn_data =
-				(struct phy_trn_data_t *)
-				(dram_trn_addr + addr - 0x29000);
-
-			for (j = 0; j < PHY_BYTE_ALL; j++) {
-				for (i = 0; i < NUM_OF_TRN_RD_DESKEW_INFO; i++) {
-					if (i == 0) {
-						min_vwm = 2 *
-							(trn_data->read[0].deskewc[i][j] -
-							 trn_data->read[0].deskewl[i][j]);
-					} else {
-						temp_vwm = 2 *
-							(trn_data->read[0].deskewc[i][j] -
-							 trn_data->read[0].deskewl[i][j]);
-						if (min_vwm > temp_vwm)
-							min_vwm = temp_vwm;
-					}
-				}
-				info_size +=
-					snprintf(
-						(char *)(buf + info_size),
-						DATA_SIZE - info_size,
-						"\"rc%db%d\":\"%x\",", k, j, min_vwm);
-			}
-			for (j = 0; j < PHY_BYTE_ALL; j++) {
-				for (i = 0; i < NUM_OF_TRN_WR_DESKEW_INFO; i++) {
-					if (i == 0) {
-						min_vwm = 2 *
-							(trn_data->write[0].deskewc[i][j] -
-							 trn_data->write[0].deskewl[i][j]);
-					} else {
-						temp_vwm = 2 *
-							(trn_data->write[0].deskewc[i][j] -
-							 trn_data->write[0].deskewl[i][j]);
-						if (min_vwm > temp_vwm)
-							min_vwm = temp_vwm;
-					}
-				}
-				info_size +=
-					snprintf(
-						(char *)(buf + info_size),
-						DATA_SIZE - info_size,
-						"\"wc%db%d\":\"%x\",", k, j, min_vwm);
-			}
-		}
-	}
-	iounmap(dram_trn_addr);
-
-	info_size +=
-	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
-		     "\"C2D\":\"\",");
-	info_size +=
-	    snprintf((char *)(buf + info_size), DATA_SIZE - info_size,
-		     "\"D2D\":\"\"");
+	info_size += snprintf((char *)(buf), DATA_SIZE, "\"DDRV\":\"%s\"", draminfo);
 
 	return info_size;
 }
@@ -585,6 +332,17 @@ static ssize_t sec_hw_param_extrf_info_show(struct kobject *kobj,
 	ssize_t info_size = 0;
 
 	secdbg_exin_get_extra_info_F(buf);
+	info_size = strlen(buf);
+
+	return info_size;
+}
+
+static ssize_t sec_hw_param_extrt_info_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
+{
+	ssize_t info_size = 0;
+
+	secdbg_exin_get_extra_info_T(buf);
 	info_size = strlen(buf);
 
 	return info_size;
@@ -657,6 +415,9 @@ static struct kobj_attribute sec_hw_param_extrm_info_attr =
 static struct kobj_attribute sec_hw_param_extrf_info_attr =
 	__ATTR(extrf_info, 0440, sec_hw_param_extrf_info_show, NULL);
 
+static struct kobj_attribute sec_hw_param_extrt_info_attr =
+	__ATTR(extrt_info, 0440, sec_hw_param_extrt_info_show, NULL);
+
 #ifdef CONFIG_SEC_PARAM
 static struct kobj_attribute sec_hw_param_pcb_info_attr =
 	__ATTR(pcb_info, 0660, NULL, sec_hw_param_pcb_info_store);
@@ -676,6 +437,7 @@ static struct attribute *sec_hw_param_attributes[] = {
 	&sec_hw_param_extrc_info_attr.attr,
 	&sec_hw_param_extrm_info_attr.attr,
 	&sec_hw_param_extrf_info_attr.attr,
+	&sec_hw_param_extrt_info_attr.attr,
 #ifdef CONFIG_SEC_PARAM
 	&sec_hw_param_pcb_info_attr.attr,
 	&sec_hw_param_smd_info_attr.attr,

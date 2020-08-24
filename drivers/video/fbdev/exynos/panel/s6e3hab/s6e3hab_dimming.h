@@ -95,6 +95,7 @@ static struct tp s6e3hab_hubble_tp[S6E3HAB_NR_TP] = {
 	{ .level = 255, .volt_src = VREG_OUT, .name = "V255", .center = { 0x200, 0x200, 0x200 }, .numerator = 177, .denominator = 1200, .bits = 10 },
 };
 
+#ifdef CONFIG_SUPPORT_HMD
 static struct tp s6e3hab_hubble_hmd_tp[S6E3HAB_NR_TP] = {
 	{ .level = 0, .volt_src = VREG_OUT, .name = "VT", .center = { 0x0, 0x0, 0x0 }, .numerator = 0, .denominator = 1200, .bits = 4 },
 	{ .level = 0, .volt_src = V0_OUT, .name = "V0", .center = { 0x3, 0x3, 0x3 }, .numerator = 0, .denominator = 1200, .bits = 4 },
@@ -109,10 +110,11 @@ static struct tp s6e3hab_hubble_hmd_tp[S6E3HAB_NR_TP] = {
 	{ .level = 203, .volt_src = VT_OUT, .name = "V203", .center = { 0x80, 0x80, 0x80 }, .numerator = 64, .denominator = 320, .bits = 8 },
 	{ .level = 255, .volt_src = VREG_OUT, .name = "V255", .center = { 0x200, 0x200, 0x200 }, .numerator = 177, .denominator = 1200, .bits = 10 },
 };
+#endif
 
 #ifdef CONFIG_SUPPORT_DIM_FLASH
 static struct dim_flash_info s6e3hab_dim_flash_info[MAX_S6E3HAB_VRR][MAX_DIM_FLASH] = {
-	[S6E3HAB_VRR_60_NORMAL] = {
+	[S6E3HAB_VRR_DIM_60NS] = {
 		[DIM_FLASH_GAMMA] = {
 			.name = "dim_flash_gamma",
 			.offset = S6E3HAB_DIM_FLASH_GAMMA_OFS,
@@ -156,7 +158,7 @@ static struct dim_flash_info s6e3hab_dim_flash_info[MAX_S6E3HAB_VRR][MAX_DIM_FLA
 			.ncol = S6E3HAB_DIM_FLASH_HMD_AOR_COL
 		},
 	},
-	[S6E3HAB_VRR_60_HS] = {
+	[S6E3HAB_VRR_DIM_60HS] = {
 		[DIM_FLASH_GAMMA] = {
 			.name = "dim_flash_60hz_hs_gamma",
 			.offset = S6E3HAB_DIM_FLASH_60HZ_HS_GAMMA_OFS,
@@ -200,7 +202,7 @@ static struct dim_flash_info s6e3hab_dim_flash_info[MAX_S6E3HAB_VRR][MAX_DIM_FLA
 			.ncol = S6E3HAB_DIM_FLASH_60HZ_HS_HMD_AOR_COL
 		},
 	},
-	[S6E3HAB_VRR_120_HS] = {
+	[S6E3HAB_VRR_DIM_120HS] = {
 		[DIM_FLASH_GAMMA] = {
 			.name = "dim_flash_120hz_gamma",
 			.offset = S6E3HAB_DIM_FLASH_120HZ_GAMMA_OFS,

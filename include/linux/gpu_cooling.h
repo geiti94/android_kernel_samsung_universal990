@@ -138,6 +138,8 @@ static inline int gpu_dvfs_get_step(void) { return 0; }
 static inline int gpu_dvfs_get_cur_clock(void) { return 0; }
 static inline int gpu_dvfs_get_utilization(void) { return 0; }
 static inline int gpu_dvfs_get_max_freq(void) { return 0; }
+static int gpu_dvfs_get_sustainable_info_array(int index) { return 0; }
+static int gpu_dvfs_get_max_lock(void) { return 0; }
 static inline bool gpu_dvfs_get_need_cpu_qos(void) { return false; }
 #endif
 #endif /* __GPU_COOLING_H__ */

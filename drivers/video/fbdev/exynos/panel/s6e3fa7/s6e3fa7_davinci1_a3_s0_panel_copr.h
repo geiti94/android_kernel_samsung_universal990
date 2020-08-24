@@ -30,15 +30,15 @@
 		(S6E3FA7_DAVINCI1_A3_S0_COPR_GAMMA << 1) | \
 		(S6E3FA7_DAVINCI1_A3_S0_COPR_EN << 0))
 
-#define S6E3FA7_DAVINCI1_A3_S0_COPR_ER		(262)
-#define S6E3FA7_DAVINCI1_A3_S0_COPR_EG		(413)
-#define S6E3FA7_DAVINCI1_A3_S0_COPR_EB		(93)
+#define S6E3FA7_DAVINCI1_A3_S0_COPR_ER		(324)
+#define S6E3FA7_DAVINCI1_A3_S0_COPR_EG		(341)
+#define S6E3FA7_DAVINCI1_A3_S0_COPR_EB		(103)
 #define S6E3FA7_DAVINCI1_A3_S0_COPR_MAX_CNT	(3)
 
-#define S6E3FA7_DAVINCI1_A3_S0_COPR_ROI_X_S	(800)
-#define S6E3FA7_DAVINCI1_A3_S0_COPR_ROI_Y_S	(138)
-#define S6E3FA7_DAVINCI1_A3_S0_COPR_ROI_X_E	(835)
-#define S6E3FA7_DAVINCI1_A3_S0_COPR_ROI_Y_E	(165)
+#define S6E3FA7_DAVINCI1_A3_S0_COPR_ROI_X_S	(640)
+#define S6E3FA7_DAVINCI1_A3_S0_COPR_ROI_Y_S	(100)
+#define S6E3FA7_DAVINCI1_A3_S0_COPR_ROI_X_E	(667)
+#define S6E3FA7_DAVINCI1_A3_S0_COPR_ROI_Y_E	(127)
 
 static struct seqinfo davinci1_a3_s0_copr_seqtbl[MAX_COPR_SEQ];
 static struct pktinfo PKTINFO(davinci1_a3_s0_level2_key_enable);
@@ -56,8 +56,8 @@ static struct maptbl davinci1_a3_s0_copr_maptbl[] = {
 /* ===================================================================================== */
 static u8 DAVINCI1_A3_S0_COPR[] = {
 	0xE1,
-	0x03, 0x14, 0x06, 0x9D, 0x5D, 0x00, 0x03, 0x0B, 0x20, 0x00,
-	0x8A, 0x03, 0x43, 0x00, 0xA5
+	0x03, 0x14, 0x44, 0x55, 0x67, 0x00, 0x03, 0x0A, 0x80, 0x00,
+	0x64, 0x02, 0x9B, 0x00, 0x7F
 };
 
 static u8 DAVINCI1_A3_S0_COPR_CLR_CNT_ON[] = { 0xE1, S6E3FA7_DAVINCI1_A3_S0_COPR_CLR_CNT_ON };

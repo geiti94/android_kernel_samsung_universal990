@@ -22,7 +22,8 @@
 #include "s6e3ha9_digital_clock_img.h"
 
 // beyond x u-type and beyond2 panel
-static DEFINE_STATIC_PACKET(s6e3ha9_beyondx_utype_aod_self_mask_img_pkt, DSI_PKT_TYPE_WR_SR, BEYONDX_UTYPE_SELF_MASK_IMG, 0);
+static DEFINE_STATIC_PACKET_WITH_OPTION(s6e3ha9_beyondx_utype_aod_self_mask_img_pkt,
+		DSI_PKT_TYPE_WR_SR, BEYONDX_UTYPE_SELF_MASK_IMG, 0, PKT_OPTION_SR_ALIGN_16);
 
 static void *s6e3ha9_beyondx_utype_aod_self_mask_img_cmdtbl[] = {
 	&KEYINFO(s6e3ha9_aod_l2_key_enable),
@@ -71,7 +72,8 @@ static struct aod_tune s6e3ha9_beyondx_utype_aod = {
 
 
 // beyond x c type
-static DEFINE_STATIC_PACKET(s6e3ha9_beyondx_aod_self_mask_img_pkt, DSI_PKT_TYPE_WR_SR, BEYONDX_SELF_MASK_IMG, 0);
+static DEFINE_STATIC_PACKET_WITH_OPTION(s6e3ha9_beyondx_aod_self_mask_img_pkt,
+		DSI_PKT_TYPE_WR_SR, BEYONDX_SELF_MASK_IMG, 0, PKT_OPTION_SR_ALIGN_16);
 
 static void *s6e3ha9_beyondx_aod_self_mask_img_cmdtbl[] = {
 	&KEYINFO(s6e3ha9_aod_l2_key_enable),

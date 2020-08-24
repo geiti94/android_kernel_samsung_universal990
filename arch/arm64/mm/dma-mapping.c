@@ -394,6 +394,7 @@ extern int pcie_iommu_map(int ch_num, unsigned long iova, phys_addr_t paddr,
 extern size_t pcie_iommu_unmap(int ch_num, unsigned long iova, size_t size);
 dma_addr_t dma_pool_start;
 #endif
+
 #ifdef CONFIG_EXYNOS_PCIE_S2MPU
 static uint32_t refer_table[131200] = {0};//0~32800, 32801~131200
 
@@ -436,7 +437,7 @@ uint64_t exynos_pcie_set_dev_stage2_ap(const char *s2mpu_name, uint32_t vid, uin
 		if (refer_table[start_idx + i] == 1) {
 			ret = exynos_set_dev_stage2_pcie_ap(s2mpu_name, vid, base + (i * SZ_64K), SZ_64K, ATTR_RW);
 			if (ret != 0) {
-				printk("[pcie_set] set_ap error return: %d\n", ret);
+				printk("[pcie_set] set_ap error return: %llu\n", ret);
 				goto map_finish;
 			}
 			/* Need to fix "goto map_finish" like "goto retry" for the other loop*/
@@ -488,7 +489,7 @@ uint64_t exynos_pcie_unset_dev_stage2_ap(const char *s2mpu_name, uint32_t vid, u
 
 			ret = exynos_set_dev_stage2_pcie_ap(s2mpu_name, vid, base + (i * SZ_64K), SZ_64K, ATTR_NO_ACCESS);
 			if (ret != 0) {
-				printk("[pcie_unset] set_ap error return: %d\n", ret);
+				printk("[pcie_unset] set_ap error return: %llu\n", ret);
 				goto unmap_finish;
 			}
 			/* Need to fix "goto map_finish" like "goto retry" for the other loop*/

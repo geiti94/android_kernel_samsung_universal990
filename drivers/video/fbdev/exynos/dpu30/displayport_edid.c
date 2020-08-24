@@ -7,13 +7,16 @@
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
-*/
+ */
 
 #include <linux/fb.h>
 #include "displayport.h"
 
 #ifdef FEATURE_SUPPORT_DISPLAYID
 #include <drm/drm_displayid.h>
+#endif
+#ifdef CONFIG_SEC_DISPLAYPORT_SELFTEST
+#include "../dp_logger/dp_self_test.h"
 #endif
 
 #define EDID_SEGMENT_ADDR	(0x60 >> 1)
@@ -52,7 +55,7 @@ void edid_check_set_i2c_capabilities(void)
 	u8 val[1];
 
 	displayport_reg_dpcd_read(DPCD_ADD_I2C_SPEED_CONTROL_CAPABILITES, 1, val);
-	displayport_info("DPCD_ADD_I2C_SPEED_CONTROL_CAPABILITES = 0x%x\n", val[0]);
+	displayport_dbg("DPCD_ADD_I2C_SPEED_CONTROL_CAPA = 0x%x\n", val[0]);
 
 	if (val[0] != 0) {
 		if (val[0] & I2C_1Mbps)
@@ -169,7 +172,7 @@ EDID_READ_RETRY:
 	}
 
 	block_cnt = edid_buf[EDID_EXTENSION_FLAG] + 1;
-	displayport_info("sst%d block_cnt = %d\n", sst_id + 1, block_cnt);
+	displayport_dbg("sst%d block_cnt = %d\n", sst_id + 1, block_cnt);
 
 	while (++block < block_cnt) {
 		ret = edid_read_block(sst_id, displayport, block,
@@ -288,7 +291,7 @@ void edid_set_preferred_preset(int mode)
 int edid_find_resolution(u16 xres, u16 yres, u16 refresh)
 {
 	int i;
-	int ret=0;
+	int ret = 0;
 
 	for (i = 0; i < supported_videos_pre_cnt; i++) {
 		if (refresh == supported_videos[i].fps &&
@@ -354,7 +357,7 @@ void edid_parse_hdmi14_vsdb(unsigned char *edid_ext_blk,
 	}
 }
 
-int static dv_timing_to_fb_video(videoformat video, struct fb_videomode *fb)
+static int dv_timing_to_fb_video(videoformat video, struct fb_videomode *fb)
 {
 	struct displayport_supported_preset pre = supported_videos[video];
 
@@ -539,6 +542,7 @@ static int edid_parse_audio_video_db(u32 sst_id, struct displayport_device *disp
 	while (pos < edid[2]) {
 		u8 len = edid[pos] & DATA_BLOCK_LENGTH_MASK;
 		u8 type = (edid[pos] >> DATA_BLOCK_TAG_CODE_BIT_POSITION) & 7;
+
 		displayport_dbg("Data block %u of %u bytes\n", type, len);
 
 		if (len == 0)
@@ -562,6 +566,7 @@ static int edid_parse_audio_video_db(u32 sst_id, struct displayport_device *disp
 		} else if (type == VIDEO_DATA_BLOCK) {
 			for (i = pos; i < pos + len; i++) {
 				u8 vic = edid[i] & SVD_VIC_MASK;
+
 				edid_find_preset_in_video_data_block(sst_id, displayport, vic);
 				displayport_dbg("EDID: Video data block vic:%d %s\n",
 					vic, supported_videos[i].name);
@@ -651,7 +656,7 @@ void edid_check_detail_timing_desc1(u32 sst_id, struct displayport_device *displ
 /*use every prefered timing as top priority*/
 #ifdef FEATURE_USE_PREFERRED_TIMING_1ST
 	/* ignore if preferred fps is lower than other matched */
-	if (matched_resolution_fps != 0 && mode->refresh < matched_resolution_fps) {
+	if (matched_resolution_fps != 0 && mode->refresh < (matched_resolution_fps - 1)) {
 		displayport_info("EDID: framerate(%d) lower than matched(%d)\n",
 					mode->refresh, matched_resolution_fps);
 		return;
@@ -692,8 +697,10 @@ void edid_check_detail_timing_desc1(u32 sst_id, struct displayport_device *displ
 	supported_videos[VDUMMYTIMING].dv_timings.bt.vbackporch = mode->upper_margin;
 	supported_videos[VDUMMYTIMING].fps = mode->refresh;
 	/*  VSYNC bit and HSYNC bit is reversed at fbmon.c */
-	supported_videos[VDUMMYTIMING].v_sync_pol = (mode->sync & FB_SYNC_HOR_HIGH_ACT) ? SYNC_POSITIVE : SYNC_NEGATIVE;
-	supported_videos[VDUMMYTIMING].h_sync_pol = (mode->sync & FB_SYNC_VERT_HIGH_ACT) ? SYNC_POSITIVE : SYNC_NEGATIVE;
+	supported_videos[VDUMMYTIMING].v_sync_pol =
+			(mode->sync & FB_SYNC_HOR_HIGH_ACT) ? SYNC_POSITIVE : SYNC_NEGATIVE;
+	supported_videos[VDUMMYTIMING].h_sync_pol =
+			(mode->sync & FB_SYNC_VERT_HIGH_ACT) ? SYNC_POSITIVE : SYNC_NEGATIVE;
 	supported_videos[VDUMMYTIMING].edid_support_match = true;
 	preferred_preset = supported_videos[VDUMMYTIMING].dv_timings;
 
@@ -715,7 +722,7 @@ void edid_check_test_device(u32 sst_id, struct displayport_device *displayport,
 		|| !strcmp(specs->monitor, "UFG DP SINK")) {
 		displayport->sst[sst_id]->bist_used = 1;
 		displayport_info("bist enable in %s\n", __func__);
-	}	
+	}
 }
 
 #ifdef FEATURE_SUPPORT_DISPLAYID
@@ -723,22 +730,22 @@ static void edid_mode_displayid_detailed(u32 sst_id, struct displayid_detailed_t
 {
 	int i;
 	struct displayport_device *displayport = get_displayport_drvdata();
-	unsigned pixel_clock = (timings->pixel_clock[0] |
+	u32 pixel_clock = (timings->pixel_clock[0] |
 				(timings->pixel_clock[1] << 8) |
 				(timings->pixel_clock[2] << 16));
-	unsigned hactive = (timings->hactive[0] | timings->hactive[1] << 8) + 1;
-	unsigned hblank = (timings->hblank[0] | timings->hblank[1] << 8) + 1;
-	unsigned hsync = (timings->hsync[0] | (timings->hsync[1] & 0x7f) << 8) + 1;
-	unsigned hsync_width = (timings->hsw[0] | timings->hsw[1] << 8) + 1;
-	unsigned vactive = (timings->vactive[0] | timings->vactive[1] << 8) + 1;
-	unsigned vblank = (timings->vblank[0] | timings->vblank[1] << 8) + 1;
-	unsigned vsync = (timings->vsync[0] | (timings->vsync[1] & 0x7f) << 8) + 1;
-	unsigned vsync_width = (timings->vsw[0] | timings->vsw[1] << 8) + 1;
+	u32 hactive = (timings->hactive[0] | timings->hactive[1] << 8) + 1;
+	u32 hblank = (timings->hblank[0] | timings->hblank[1] << 8) + 1;
+	u32 hsync = (timings->hsync[0] | (timings->hsync[1] & 0x7f) << 8) + 1;
+	u32 hsync_width = (timings->hsw[0] | timings->hsw[1] << 8) + 1;
+	u32 vactive = (timings->vactive[0] | timings->vactive[1] << 8) + 1;
+	u32 vblank = (timings->vblank[0] | timings->vblank[1] << 8) + 1;
+	u32 vsync = (timings->vsync[0] | (timings->vsync[1] & 0x7f) << 8) + 1;
+	u32 vsync_width = (timings->vsw[0] | timings->vsw[1] << 8) + 1;
 	bool hsync_positive = (timings->hsync[1] >> 7) & 0x1;
 	bool vsync_positive = (timings->vsync[1] >> 7) & 0x1;
-	unsigned htotal = hactive + hblank;
-	unsigned vtotal = vactive + vblank;
-	unsigned fps = div_u64(((u64)pixel_clock * 10000), (htotal * vtotal));
+	u32 htotal = hactive + hblank;
+	u32 vtotal = vactive + vblank;
+	u32 fps = div_u64(((u64)pixel_clock * 10000), (htotal * vtotal));
 
 	displayport_info("DisplayID %d(%d) %d %d %d %d %d %d %d %d %d %d\n",
 			pixel_clock * 10,
@@ -821,9 +828,8 @@ static int edid_validate_displayid(u8 *displayid, int length, int idx)
 
 	if (base->bytes + 5 > length - idx)
 		return -EINVAL;
-	for (i = idx; i <= base->bytes + 5; i++) {
+	for (i = idx; i <= base->bytes + 5; i++)
 		csum += displayid[i];
-	}
 	if (csum) {
 		displayport_info("DisplayID checksum invalid, remainder is %d\n", csum);
 		return -EINVAL;
@@ -890,7 +896,7 @@ static int edid_add_displayid_detailed_modes(u32 sst_id, u8 *edid)
 		}
 	}
 
-	return num_modes;	
+	return num_modes;
 }
 #endif
 
@@ -936,6 +942,11 @@ int edid_update(u32 sst_id, struct displayport_device *displayport)
 		block_cnt = displayport->edid_test_buf[0];
 		displayport_info("using test edid %d\n", block_cnt);
 	}
+#ifdef CONFIG_SEC_DISPLAYPORT_SELFTEST
+	else if (self_test_on_process()) {
+		block_cnt = self_test_get_edid(edid);
+	}
+#endif
 #endif
 	else
 		block_cnt = edid_read(sst_id, displayport);
@@ -952,6 +963,7 @@ int edid_update(u32 sst_id, struct displayport_device *displayport)
 	fb_edid_to_monspecs(edid, &specs);
 	modedb_len = specs.modedb_len;
 
+	strlcpy(displayport->mon_name, specs.monitor, MON_NAME_LEN);
 	displayport_info("mon name: %s, gamma: %u.%u\n", specs.monitor,
 			specs.gamma / 100, specs.gamma % 100);
 
@@ -1089,7 +1101,8 @@ u32 edid_audio_informs(void)
 		if ((ch_info > FB_AUDIO_1N2CH && ch_info < FB_AUDIO_8CH) ||
 				(ch_info >= FB_AUDIO_8CH && audio_sample_rates < FB_AUDIO_192KHZ)) {
 			displayport_info("reduce SF(pro_aud:%d, link_rate:0x%X, ch:0x%X, sf:0x%X)\n",
-					supported_videos[displayport->sst[SST1]->cur_video].pro_audio_support, link_rate,
+				supported_videos[displayport->sst[SST1]->cur_video].pro_audio_support,
+				link_rate,
 					ch_info, audio_sample_rates);
 			audio_sample_rates &= 0x7; /* reduce to under 48KHz */
 		}
@@ -1123,7 +1136,7 @@ u8 edid_read_checksum(void)
 	for (i = 0; i < EDID_BLOCK_SIZE; i++)
 		sum += buf[i];
 
-	displayport_info("edid_read_checksum %02x, %02x", sum%265, buf[EDID_BLOCK_SIZE-1]);
+	displayport_info("edid checksum %02x, %02x", sum%265, buf[EDID_BLOCK_SIZE-1]);
 
 	return buf[EDID_BLOCK_SIZE-1];
 }

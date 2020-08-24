@@ -591,6 +591,9 @@ struct exynos_ufs {
 	s32			pm_qos_fsys0_value;
 	bool lane1_poweroff;
 	struct ufs_cal_param	*cal_param;
+
+	/* performance */
+	void *perf;
 };
 
 static inline struct exynos_ufs *to_exynos_ufs(struct ufs_hba *hba)

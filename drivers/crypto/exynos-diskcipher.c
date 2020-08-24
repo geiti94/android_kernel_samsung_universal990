@@ -55,8 +55,7 @@ int exynos_fmp_crypt_clear(struct bio *bio, void *table_addr)
 			}
 	}
 	if (ret)
-		pr_err("%s: fail to config desc (bio:%p, tfm:%p, ci:%p ret:%d)\n",
-				__func__, bio, dtfm, ci, ret);
+		pr_err("%s: fail to config desc (bio, tfm, ci) ret:%d\n", __func__, ret);
 	return ret;
 }
 
@@ -89,8 +88,7 @@ int exynos_fmp_crypt_cfg(struct bio *bio, void *table_addr,
 #endif
 		ret = crypto_diskcipher_set_crypt(dtfm, &req);
 		if (ret)
-			pr_err("%s: fail to config desc (bio:%p, tfm:%p, ret:%d)\n",
-					__func__, bio, dtfm, ret);
+			pr_err("%s: fail to config desc (bio, tfm) ret:%d\n", __func__, ret);
 		return ret;
 	}
 
@@ -304,6 +302,7 @@ static int exynos_fmp_probe(struct platform_device *pdev)
 	if (!fmp_ctx) {
 		dev_err(&pdev->dev,
 			"%s: Fail to register diskciphero\n", __func__);
+		panic("HACK: fmp probe fail");
 		return -EINVAL;
 	}
 	dev_set_drvdata(&pdev->dev, fmp_ctx);
@@ -321,8 +320,10 @@ static int exynos_fmp_probe(struct platform_device *pdev)
 	ret = crypto_register_diskciphers(fmp_algs, ARRAY_SIZE(fmp_algs));
 	if (ret) {
 		dev_err(&pdev->dev,
-			"%s: Fail to register diskciphero. ret = %d\n",
+			"%s: Fail to register diskcipher. ret = %d\n",
 			__func__, ret);
+		exynos_fmp_exit(pdev);
+		panic("HACK: fmp probe fail");
 		return -EINVAL;
 	}
 
@@ -332,6 +333,9 @@ static int exynos_fmp_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "%s: Fail to create sysfs. ret(%d)\n",
 				__func__, ret);
+		crypto_unregister_diskciphers(fmp_algs, ARRAY_SIZE(fmp_algs));
+		exynos_fmp_exit(pdev);
+		panic("HACK: fmp probe fail");
 		return -EINVAL;
 	}
 

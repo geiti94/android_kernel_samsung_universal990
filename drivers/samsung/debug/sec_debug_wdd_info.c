@@ -67,7 +67,7 @@ void secdbg_wdd_set_emerg_addr(unsigned long addr)
 	wdd_info->emerg_addr = addr;
 }
 
-static void __init secdbg_wdd_probe(void)
+static int __init secdbg_wdd_probe(void)
 {
 	wdd_info = secdbg_base_get_wdd_info();
 	if (wdd_info) {
@@ -75,5 +75,7 @@ static void __init secdbg_wdd_probe(void)
 		wdd_info->tm = &wdd_info_tm;
 		wdd_info->emerg_addr = 0;
 	}
+
+	return 0;
 }
 subsys_initcall(secdbg_wdd_probe);

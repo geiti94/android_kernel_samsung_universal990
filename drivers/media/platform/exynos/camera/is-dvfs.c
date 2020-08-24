@@ -841,9 +841,6 @@ void is_dual_dvfs_update(struct is_device_ischain *device,
 			is_set_dvfs((struct is_core *)device->interface->core, device, scenario_id);
 		} else {
 			dual_info->tick_count++;
-			mgrinfo("tbl[%d] dual DVFS update skip %d -> %d\n", device, group, frame,
-				resourcemgr->dvfs_ctrl.dvfs_table_idx,
-				pre_scenario_id, scenario_id);
 		}
 	}
 

@@ -1485,6 +1485,7 @@ static void __qbuf_work(struct work_struct *work)
 
 	spin_unlock_irqrestore(&vb->fence_cb_lock, flags);
 	
+
 	q = vb->vb2_queue;
 
 	if (q->start_streaming_called && (vb->state == VB2_BUF_STATE_QUEUED ||
@@ -1952,11 +1953,15 @@ static void __vb2_queue_cancel(struct vb2_queue *q)
 	list_for_each_entry(vb, &q->queued_list, queued_entry) {
 		spin_lock_irqsave(&vb->fence_cb_lock, flags);
 		if (vb->in_fence) {
+			del_timer(&vb->fence_timer);
 			dma_fence_remove_callback(vb->in_fence, &vb->fence_cb);
 			dma_fence_put(vb->in_fence);
 			vb->in_fence = NULL;
 		}
 		spin_unlock_irqrestore(&vb->fence_cb_lock, flags);
+
+		if (work_busy(&vb->qbuf_work))
+			cancel_work_sync(&vb->qbuf_work);
 	}
 
 	/*

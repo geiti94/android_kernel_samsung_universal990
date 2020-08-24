@@ -941,7 +941,7 @@ int displayport_reg_set_aux_ch_operation_enable(void)
 				displayport_read(AUX_REQUEST_CONTROL),
 				displayport_read(AUX_COMMAND_CONTROL));
 
-		udelay(400);
+		usleep_range(400, 401);
 		return -EIO;
 	}
 
@@ -1692,11 +1692,11 @@ int displayport_reg_stand_alone_crc_sorting(void)
 	displayport_reg_enable_stand_alone_crc_hw(1);
 	displayport_reg_start(SST1);
 
-	mdelay(20);
+	msleep(20);
 
 	displayport_reg_set_result_flag_clear();
 
-	mdelay(20);
+	msleep(20);
 
 	ret =  displayport_reg_get_stand_alone_crc_result();
 
@@ -2098,7 +2098,7 @@ void displayport_audio_enable(u32 sst_id,
 void displayport_audio_disable(u32 sst_id)
 {
 	if (displayport_read_mask(SST1_AUDIO_ENABLE, AUDIO_EN + 0x1000 * sst_id) == 1) {
-		udelay(1000);
+		udelay(1000); /* can't use sleep() in atomic context */
 		displayport_reg_set_dp_audio_enable(sst_id, 0);
 		displayport_reg_set_audio_fifo_function_enable(sst_id, 0);
 		displayport_reg_set_clear_audio_fifo(sst_id);

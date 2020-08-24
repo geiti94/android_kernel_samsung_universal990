@@ -779,11 +779,12 @@ static ssize_t magnetic_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
+	const char *DEFAULT_NAME = data->mag_type == MAG_TYPE_AKM ? CHIP_ID_AKM : CHIP_ID_YAS;
 
-	if (data->mag_type == MAG_TYPE_AKM)
-		return sprintf(buf, "%s\n", CHIP_ID_AKM);
-	else
-		return sprintf(buf, "%s\n", CHIP_ID_YAS);
+	pr_info("[SSP] %s :: sensor(%d) : %s", __func__, GEOMAGNETIC_UNCALIB_SENSOR, data->sensor_name[GEOMAGNETIC_UNCALIB_SENSOR]);
+	
+	return sprintf(buf, "%s\n", data->sensor_name[GEOMAGNETIC_UNCALIB_SENSOR][0] == 0 ? 
+			DEFAULT_NAME : data->sensor_name[GEOMAGNETIC_UNCALIB_SENSOR]);
 }
 
 static ssize_t raw_data_show(struct device *dev,

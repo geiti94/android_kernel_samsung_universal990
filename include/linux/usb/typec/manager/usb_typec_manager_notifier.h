@@ -179,9 +179,14 @@ typedef struct _manager_data_t
 	int dp_is_connect;
 	int dp_hs_connect;
 	int dp_check_done;
-	struct notifier_block manager_external_notifier_nb; 
+	struct notifier_block manager_external_notifier_nb;
+
+	struct typec_manager_gadget_ops *gadget_ops;
 }manager_data_t;
 
+struct typec_manager_gadget_ops {
+	int (*gadget_get_cmply_link_state)(void);
+};
 
 #define CCIC_BATTERY	(1<<0)
 #define CCIC_USB	(1<<1)
@@ -200,4 +205,7 @@ extern int manager_notifier_register(struct notifier_block *nb,
 		notifier_fn_t notifier, manager_notifier_device_t listener);
 extern int manager_notifier_unregister(struct notifier_block *nb);
 
+void set_usb_enumeration_state(int state);
+void set_usb_enable_state(void);
+void probe_typec_manager_gadget_ops (struct typec_manager_gadget_ops *ops);
 #endif /* __USB_TYPEC_MANAGER_NOTIFIER_H__ */

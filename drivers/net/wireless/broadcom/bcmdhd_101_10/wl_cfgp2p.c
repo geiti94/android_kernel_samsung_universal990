@@ -1,7 +1,7 @@
 /*
  * Linux cfgp2p driver
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  *
  */
 #include <typedefs.h>
@@ -831,10 +831,11 @@ wl_cfgp2p_enable_discovery(struct bcm_cfg80211 *cfg, struct net_device *dev,
 			"wsec", AES_ENABLED, wl_to_p2p_bss_bssidx(cfg, P2PAPI_BSSCFG_DEVICE));
 	if (unlikely(ret < 0)) {
 		CFGP2P_ERR((" wsec error %d\n", ret));
+		goto exit;
 	}
 set_ie:
-	if (ie_len) {
 
+	if (ie_len) {
 		if (bcmcfg_to_prmry_ndev(cfg) == dev) {
 			bssidx = wl_to_p2p_bss_bssidx(cfg, P2PAPI_BSSCFG_DEVICE);
 		} else if ((bssidx = wl_get_bssidx_by_wdev(cfg, cfg->p2p_wdev)) < 0) {
@@ -859,6 +860,13 @@ set_ie:
 	}
 exit:
 	if (ret) {
+		/* Disable discovery I/f on any failure */
+		if (wl_cfgp2p_disable_discovery(cfg) != BCME_OK) {
+			/* Discard error (if any) to avoid override
+			 * of p2p enable error.
+			 */
+			CFGP2P_ERR(("p2p disable disc failed\n"));
+		}
 		wl_flush_fw_log_buffer(dev, FW_LOGSET_MASK_ALL);
 	}
 	mutex_unlock(&cfg->if_sync);
@@ -1140,9 +1148,12 @@ wl_cfgp2p_act_frm_search(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			default_chan_list[i] = channel;
 		}
 	} else {
-		default_chan_list[0] = SOCIAL_CHAN_1;
-		default_chan_list[1] = SOCIAL_CHAN_2;
-		default_chan_list[2] = SOCIAL_CHAN_3;
+		default_chan_list[0] = wf_create_chspec_from_primary(SOCIAL_CHAN_1,
+			WL_CHANSPEC_BW_20, WL_CHANSPEC_BAND_2G);
+		default_chan_list[1] = wf_create_chspec_from_primary(SOCIAL_CHAN_2,
+			WL_CHANSPEC_BW_20, WL_CHANSPEC_BAND_2G);
+		default_chan_list[2] = wf_create_chspec_from_primary(SOCIAL_CHAN_3,
+			WL_CHANSPEC_BW_20, WL_CHANSPEC_BAND_2G);
 	}
 	ret = wl_cfgp2p_escan(cfg, ndev, true, chan_cnt,
 		default_chan_list, WL_P2P_DISC_ST_SEARCH,
@@ -2679,6 +2690,15 @@ wl_cfgp2p_del_p2p_disc_if(struct wireless_dev *wdev, struct bcm_cfg80211 *cfg)
 	if (!cfg->p2p_wdev) {
 		WL_ERR(("Already deleted p2p_wdev\n"));
 		return -EINVAL;
+	}
+
+	/* Ensure discovery i/f is deinitialized */
+	if (wl_cfgp2p_disable_discovery(cfg) != BCME_OK) {
+		/* discard error in the deinit part. Fw state
+		 * recovery would happen from wl down/reset
+		 * context.
+		 */
+		CFGP2P_ERR(("p2p disable disc failed\n"));
 	}
 
 	if (!rtnl_is_locked()) {

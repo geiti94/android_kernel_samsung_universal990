@@ -9,6 +9,8 @@
 #ifndef __DSP_CONTROL_H__
 #define __DSP_CONTROL_H__
 
+#define SCENARIO_NAME_MAX		(32)
+
 enum dsp_control_id {
 	DSP_CONTROL_ENABLE_DVFS,
 	DSP_CONTROL_DISABLE_DVFS,
@@ -28,8 +30,8 @@ struct dsp_control_boost {
 };
 
 struct dsp_control_mo {
-	unsigned int			scenario_id;
-	unsigned int			reserved[3];
+	unsigned char			scenario_name[SCENARIO_NAME_MAX];
+	unsigned int			reserved[2];
 };
 
 union dsp_control {

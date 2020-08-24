@@ -59,6 +59,7 @@ s32 SettingVDIS_Support(struct ssp_data *data, int64_t *dNewDelay)
 	} else if (NewDelay == CAMERA_GYROSCOPE_VDIS_SYNC) {
 		*dNewDelay = CAMERA_GYROSCOPE_VDIS_SYNC_DELAY;
 		data->cameraGyroSyncMode = true;
+		initialize_super_vdis_setting();
 	} else if (NewDelay == CAMERA_GYROSCOPE_SUPER_VDIS_SYNC) {
 		*dNewDelay = CAMERA_GYROSCOPE_SUPER_VDIS_SYNC_DELAY;
 		data->cameraGyroSyncMode = true;
@@ -524,13 +525,15 @@ static ssize_t set_data_injection_enable(struct device *dev,
 	return size;
 }
 
+///*#ifdef CONFIG_SENSORS_SSP_PICASSO
 static ssize_t show_sensor_state(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct ssp_data *data  = dev_get_drvdata(dev);
 
-	return sprintf(buf, "%s\n", data->sensor_state);
+	return sprintf(buf, "%s", data->sensor_state);
 }
+//#endif*/
 
 //dev_attr_mcu_power
 static ssize_t show_mcu_power(struct device *dev,
@@ -1139,7 +1142,9 @@ static DEVICE_ATTR(sensor_dump, 0664,
 	sensor_dump_show, sensor_dump_store);
 static DEVICE_ATTR(bcm_minidump, 0440, bcm_minidump_show, NULL);
 static DEVICE_ATTR(reset_info, 0440, reset_info_show, NULL);
+//*#ifdef CONFIG_SENSORS_SSP_PICASSO
 static DEVICE_ATTR(sensor_state, 0444, show_sensor_state, NULL);
+//#endif*/
 static DEVICE_ATTR(mcu_power, 0664, show_mcu_power, set_mcu_power);
 
 static DEVICE_ATTR(thermistor_channel_0, 0444, show_thermistor_channel0, NULL);
@@ -1157,7 +1162,9 @@ static struct device_attribute *mcu_attrs[] = {
 	&dev_attr_enable_irq,
 	&dev_attr_ssp_flush,
 	&dev_attr_data_injection_enable,
+//*#ifdef CONFIG_SENSORS_SSP_PICASSO
 	&dev_attr_sensor_state,
+//#endif*/
 	&dev_attr_ssp_control,
 	&dev_attr_sensor_dump,
 #if defined(CONFIG_SSP_REGISTER_RW)

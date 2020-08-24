@@ -1469,18 +1469,6 @@ int sec_bat_parse_dt(struct device *dev,
 			battery->pdata->num_age_step = 0;
 		}
 		pr_err("%s num_age_step : %d\n", __func__, battery->pdata->num_age_step);
-#if defined(CONFIG_STEP_CHARGING)		
-		for (len = 0; len < battery->pdata->num_age_step; ++len) {
-			pr_err("[%d/%d]cycle:%d, float:%d, full_v:%d, recharge_v:%d, soc:%d, step charging condition:%d\n",
-				len, battery->pdata->num_age_step-1,
-				battery->pdata->age_data[len].cycle,
-				battery->pdata->age_data[len].float_voltage,
-				battery->pdata->age_data[len].full_condition_vcell,
-				battery->pdata->age_data[len].recharge_condition_vcell,
-				battery->pdata->age_data[len].full_condition_soc,
-				battery->pdata->age_data[len].step_charging_condition);
-		}
-#else
 		for (len = 0; len < battery->pdata->num_age_step; ++len) {
 			pr_err("[%d/%d]cycle:%d, float:%d, full_v:%d, recharge_v:%d, soc:%d\n",
 				len, battery->pdata->num_age_step-1,
@@ -1490,7 +1478,6 @@ int sec_bat_parse_dt(struct device *dev,
 				battery->pdata->age_data[len].recharge_condition_vcell,
 				battery->pdata->age_data[len].full_condition_soc);
 		}
-#endif
 	} else {
 		battery->pdata->num_age_step = 0;
 		pr_err("%s there is not age_data\n", __func__);
@@ -1774,6 +1761,13 @@ void sec_bat_parse_mode_dt(struct sec_battery_info *battery)
 	}
 
 	if (battery->store_mode) {
+		ret = of_property_read_u32(np, "battery,store_mode_max_input_power",
+			&pdata->store_mode_max_input_power);
+		if (ret) {
+			pr_info("%s : store_mode_max_input_power is Empty\n", __func__);
+			pdata->store_mode_max_input_power = 4000;
+		}
+
 		ret = of_property_read_u32(np, "battery,store_mode_afc_input_current",
 			&pdata->store_mode_afc_input_current);
 		if (ret) {

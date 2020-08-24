@@ -347,6 +347,22 @@ static int abox_dma_hw_free(struct snd_pcm_substream *substream)
 	return snd_pcm_lib_free_pages(substream);
 }
 
+static int abox_dma_prepare(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct abox_dma_data *data = snd_soc_dai_get_drvdata(rtd->cpu_dai);
+	struct device *dev = data->dev;
+
+	dev_dbg(dev, "%s\n", __func__);
+
+	/* set auto fade in before dma enable */
+	snd_soc_component_update_bits(data->cmpnt, DMA_REG_CTRL,
+			ABOX_DMA_AUTO_FADE_IN_MASK,
+			data->auto_fade_in ? ABOX_DMA_AUTO_FADE_IN_MASK : 0);
+
+	return 0;
+}
+
 static int abox_dma_trigger(struct snd_pcm_substream *substream, int cmd)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -526,6 +542,7 @@ static struct snd_pcm_ops abox_dma_ops = {
 	.close		= abox_dma_close,
 	.hw_params	= abox_dma_hw_params,
 	.hw_free	= abox_dma_hw_free,
+	.prepare	= abox_dma_prepare,
 	.trigger	= abox_dma_trigger,
 	.pointer	= abox_dma_pointer,
 	.mmap		= abox_dma_mmap,
@@ -874,6 +891,9 @@ int abox_dma_hw_params_put(struct snd_kcontrol *kcontrol,
 
 	dev_dbg(dev, "%s(%d, %ld)\n", __func__, param, value);
 
+	if (value < mc->min || value > mc->max)
+		return -EINVAL;
+
 	switch (param) {
 	case DMA_RATE:
 		abox_dma_hw_params_set(dev, value, 0, 0, 0, 0, 0);
@@ -900,6 +920,35 @@ int abox_dma_hw_params_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+int abox_dma_auto_fade_in_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
+	struct device *dev = cmpnt->dev;
+	struct abox_dma_data *data = dev_get_drvdata(dev);
+
+	dev_dbg(dev, "%s\n", __func__);
+
+	ucontrol->value.integer.value[0] = data->auto_fade_in;
+
+	return 0;
+}
+
+int abox_dma_auto_fade_in_put(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
+	struct device *dev = cmpnt->dev;
+	struct abox_dma_data *data = dev_get_drvdata(dev);
+	bool value = !!ucontrol->value.integer.value[0];
+
+	dev_dbg(dev, "%s(%d)\n", __func__, value);
+
+	data->auto_fade_in = value;
+
+	return 0;
+}
+
 struct snd_soc_dai *abox_dma_get_dai(struct device *dev, enum abox_dma_dai type)
 {
 	struct abox_dma_data *data = dev_get_drvdata(dev);
@@ -914,6 +963,91 @@ struct snd_soc_dai *abox_dma_get_dai(struct device *dev, enum abox_dma_dai type)
 	}
 
 	return ERR_PTR(-EINVAL);
+}
+
+int abox_dma_can_close(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	int rdir = substream->stream == SNDRV_PCM_STREAM_PLAYBACK ?
+			SNDRV_PCM_STREAM_CAPTURE : SNDRV_PCM_STREAM_PLAYBACK;
+
+	switch (rtd->dpcm[rdir].state) {
+	case SND_SOC_DPCM_STATE_OPEN:
+	case SND_SOC_DPCM_STATE_HW_PARAMS:
+	case SND_SOC_DPCM_STATE_PREPARE:
+	case SND_SOC_DPCM_STATE_START:
+	case SND_SOC_DPCM_STATE_STOP:
+	case SND_SOC_DPCM_STATE_PAUSED:
+	case SND_SOC_DPCM_STATE_SUSPEND:
+	case SND_SOC_DPCM_STATE_HW_FREE:
+		return 0;
+	default:
+		return 1;
+	}
+}
+
+int abox_dma_can_free(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	int rdir = substream->stream == SNDRV_PCM_STREAM_PLAYBACK ?
+			SNDRV_PCM_STREAM_CAPTURE : SNDRV_PCM_STREAM_PLAYBACK;
+
+	switch (rtd->dpcm[rdir].state) {
+	case SND_SOC_DPCM_STATE_HW_PARAMS:
+	case SND_SOC_DPCM_STATE_PREPARE:
+	case SND_SOC_DPCM_STATE_START:
+	case SND_SOC_DPCM_STATE_STOP:
+	case SND_SOC_DPCM_STATE_PAUSED:
+	case SND_SOC_DPCM_STATE_SUSPEND:
+		return 0;
+	default:
+		return 1;
+	}
+}
+
+int abox_dma_can_stop(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	int rdir = substream->stream == SNDRV_PCM_STREAM_PLAYBACK ?
+			SNDRV_PCM_STREAM_CAPTURE : SNDRV_PCM_STREAM_PLAYBACK;
+
+	switch (rtd->dpcm[rdir].state) {
+	case SND_SOC_DPCM_STATE_START:
+	case SND_SOC_DPCM_STATE_PAUSED:
+	case SND_SOC_DPCM_STATE_SUSPEND:
+		return 0;
+	default:
+		return 1;
+	}
+}
+
+int abox_dma_can_start(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	int rdir = substream->stream == SNDRV_PCM_STREAM_PLAYBACK ?
+			SNDRV_PCM_STREAM_CAPTURE : SNDRV_PCM_STREAM_PLAYBACK;
+
+	switch (rtd->dpcm[rdir].state) {
+	case SND_SOC_DPCM_STATE_START:
+		return 0;
+	default:
+		return 1;
+	}
+}
+
+int abox_dma_can_prepare(struct snd_pcm_substream *substream)
+{
+	return abox_dma_can_start(substream);
+}
+
+int abox_dma_can_params(struct snd_pcm_substream *substream)
+{
+	return abox_dma_can_start(substream);
+}
+
+int abox_dma_can_open(struct snd_pcm_substream *substream)
+{
+	return abox_dma_can_start(substream);
 }
 
 static unsigned int abox_dma_get_dst_format(struct abox_dma_data *data)
@@ -1397,8 +1531,9 @@ static const struct soc_enum abox_ddma_src_enum[] = {
 
 static const struct snd_kcontrol_new abox_ddma_controls[] = {
 	SOC_ENUM("SRC", abox_ddma_src_enum),
-	SOC_SINGLE("Auto Fade In", DMA_REG_CTRL,
-			ABOX_DMA_AUTO_FADE_IN_L, 1, 0),
+	SOC_SINGLE_EXT("Auto Fade In", DMA_REG_CTRL,
+			ABOX_DMA_AUTO_FADE_IN_L, 1, 0,
+			abox_dma_auto_fade_in_get, abox_dma_auto_fade_in_put),
 	SOC_SINGLE("Vol Factor", DMA_REG_VOL_FACTOR,
 			ABOX_DMA_VOL_FACTOR_L, 0xffffff, 0),
 	SOC_SINGLE("Vol Change", DMA_REG_VOL_CHANGE,

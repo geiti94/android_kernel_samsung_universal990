@@ -68,7 +68,7 @@ void pdp_hw_s_core(struct is_pdp *pdp, bool pd_enable, struct is_sensor_cfg *sen
 	u32 num_buffers, ulong freq, u32 binning, u32 position);
 void pdp_hw_s_init(void __iomem *base);
 void pdp_hw_s_reset(void __iomem *base);
-void pdp_hw_s_global(void __iomem *base, u32 ch, u32 path, void *data);
+void pdp_hw_s_global(void __iomem *base, u32 ch, u32 lic_mode, void *data);
 void pdp_hw_s_context(void __iomem *base, u32 curr_ch, u32 curr_path);
 void pdp_hw_s_path(void __iomem *base, u32 path);
 void pdp_hw_s_wdma_init(void __iomem *base);

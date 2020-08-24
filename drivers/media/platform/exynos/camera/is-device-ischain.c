@@ -1173,6 +1173,7 @@ int is_itf_stream_on(struct is_device_ischain *device)
 	struct is_frame *frame;
 	unsigned long flags;
 	struct is_resourcemgr *resourcemgr;
+	struct is_group_task *gtask;
 	u32 scount, init_shots, qcount;
 
 	FIMC_BUG(!device);
@@ -1190,6 +1191,7 @@ int is_itf_stream_on(struct is_device_ischain *device)
 		goto p_err;
 	}
 
+	gtask = &groupmgr->gtask[group_leader->id];
 	init_shots = group_leader->init_shots;
 	scount = atomic_read(&group_leader->scount);
 
@@ -1228,10 +1230,10 @@ int is_itf_stream_on(struct is_device_ischain *device)
 		/* trigger one more asyn_shots */
 		if (is_sensor_g_fast_mode(sensor) == 1) {
 			group_leader->asyn_shots += 1;
-			group_leader->init_shots = group_leader->asyn_shots;
 			group_leader->skip_shots = group_leader->asyn_shots;
 			atomic_inc(&group_leader->smp_shot_count);
 			up(&group_leader->smp_trigger);
+			up(&gtask->smp_resource);
 		}
 	}
 
@@ -1600,6 +1602,9 @@ int is_ischain_runtime_suspend(struct device *dev)
 	ret = pdata->clk_off(&pdev->dev);
 	if (ret)
 		err("clk_off is fail(%d)", ret);
+
+	/* This is for just debugging */
+	pdata->print_clk(&pdev->dev);
 
 #if defined(CONFIG_PM_DEVFREQ)
 	refcount = atomic_dec_return(&core->resourcemgr.qos_refcount);

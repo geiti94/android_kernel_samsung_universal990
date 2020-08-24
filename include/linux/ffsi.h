@@ -63,9 +63,9 @@
 /**
  *
  */
-#define FFSI_DEF_RAND_NEUTRAL		(2)
+#define FFSI_DEF_RAND_NEUTRAL		(5)
 #define FFSI_TRIGGER_THROTTLE		(3)
-#define FFSI_FASTEN_THROTTLE		(-100)
+#define FFSI_FASTEN_THROTTLE		(-10000)
 
 /**
  * 1-dimensional discrete indexing degree of randomness which correspondingly

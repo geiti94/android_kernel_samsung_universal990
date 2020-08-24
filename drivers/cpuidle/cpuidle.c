@@ -275,13 +275,7 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 	time_start = ns_to_ktime(local_clock());
 
 	stop_critical_timings();
-#ifdef CONFIG_SEC_PERF_LATENCYCHECKER
-	sec_perf_latencychecker_disable(smp_processor_id());
-#endif
 	entered_state = target_state->enter(dev, drv, index);
-#ifdef CONFIG_SEC_PERF_LATENCYCHECKER
-	sec_perf_latencychecker_enable(smp_processor_id());
-#endif
 	start_critical_timings();
 
 	sched_clock_idle_wakeup_event();

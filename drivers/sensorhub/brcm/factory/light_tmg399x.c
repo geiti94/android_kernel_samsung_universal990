@@ -58,7 +58,12 @@ static ssize_t light_vendor_show(struct device *dev,
 static ssize_t light_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", CHIP_ID);
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	pr_info("[SSP] %s :: sensor(%d) : %s", __func__, LIGHT_SENSOR, data->sensor_name[LIGHT_SENSOR]);
+	
+	return sprintf(buf, "%s\n", data->sensor_name[LIGHT_SENSOR][0] == 0 ? 
+			CHIP_ID : data->sensor_name[LIGHT_SENSOR]);
 }
 
 static ssize_t light_lux_show(struct device *dev,
@@ -277,7 +282,12 @@ static ssize_t light_circle_show(struct device *dev,
 	struct ssp_data *data = dev_get_drvdata(dev);
 
 	switch(data->ap_type) {
-#if defined(CONFIG_SENSORS_SSP_PICASSO)
+#if defined(CONFIG_SENSORS_SSP_CANVAS)
+		case 0:
+			return snprintf(buf, PAGE_SIZE, "42.1 7.8 2.4\n");
+		case 1:
+			return snprintf(buf, PAGE_SIZE, "45.2 7.3 2.4\n");
+#elif defined(CONFIG_SENSORS_SSP_PICASSO)
 		case 0:
 			return snprintf(buf, PAGE_SIZE, "45.1 8.2 2.4\n");
 		case 1:

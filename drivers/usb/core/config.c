@@ -219,7 +219,20 @@ static int usb_parse_endpoint(struct device *ddev, int cfgno, int inum,
 	size -= d->bLength;
 
 	if (( d->bmAttributes & 0x3 ) == 0x1) {
-		if ((d->bmAttributes & 0x30) == 0x00) {
+		if ((d->bmAttributes & 0x30) == 0x10) {
+			/* Only Feedback endpoint(Not implict feedback data endpoint) */
+			if (d->bEndpointAddress & USB_ENDPOINT_DIR_MASK) {
+				to_usb_device(ddev)->hwinfo.fb_in_ep =
+					d->bEndpointAddress;
+				dev_info(ddev, "Feedback IN ISO endpoint #0%x 0x%x\n",
+					d->bEndpointAddress, d->bSynchAddress);
+			} else {
+				to_usb_device(ddev)->hwinfo.fb_out_ep =
+					d->bEndpointAddress;
+				dev_info(ddev, "Feedback OUT ISO endpoint #0%x 0x%x\n",
+					d->bEndpointAddress, d->bSynchAddress);
+			}
+		} else {
 			/* Data Stream Endpoint only */
 			if (d->bEndpointAddress & USB_ENDPOINT_DIR_MASK) {
 				if (d->bEndpointAddress != to_usb_device(ddev)->hwinfo.fb_in_ep) {
@@ -247,19 +260,6 @@ static int usb_parse_endpoint(struct device *ddev, int cfgno, int inum,
 					dev_info(ddev, "Feedback IN ISO endpoint #0%x 0x%x\n",
 						d->bEndpointAddress, d->bSynchAddress);
 				}
-			}
-		} else {
-			/* Feedback or implict feedback data endpoint */
-			if (d->bEndpointAddress & USB_ENDPOINT_DIR_MASK) {
-				to_usb_device(ddev)->hwinfo.fb_in_ep =
-					d->bEndpointAddress;
-				dev_info(ddev, "Feedback IN ISO endpoint #0%x 0x%x\n",
-					d->bEndpointAddress, d->bSynchAddress);
-			} else {
-				to_usb_device(ddev)->hwinfo.fb_out_ep =
-					d->bEndpointAddress;
-				dev_info(ddev, "Feedback OUT ISO endpoint #0%x 0x%x\n",
-					d->bEndpointAddress, d->bSynchAddress);
 			}
 		}
 	}

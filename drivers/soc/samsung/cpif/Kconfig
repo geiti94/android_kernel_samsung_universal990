@@ -181,11 +181,18 @@ config CP_GRO_EXCEPTION
 	---help---
 	  Disable GRO for clat packets when usb tethering is enabled
 
-config CP_RESET_WA
-	bool "CP RESET WA"
+config CP_JUMBO_4K_WA
+	bool "Enable 4K jumbo frames for pktproc"
 	default n
 	---help---
-	  CP RESET WA
+	  enable 4K jumbo frames for pktproc
+
+config CP_WRESET_WA
+	bool "CP warm reset WA due to WRSTBI disabled"
+	depends on LINK_DEVICE_PCIE
+	default n
+	---help---
+	  CP warm reset WA
 
 endmenu
 endif

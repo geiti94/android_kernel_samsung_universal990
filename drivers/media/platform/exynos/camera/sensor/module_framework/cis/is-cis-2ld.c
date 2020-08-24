@@ -42,6 +42,17 @@
 
 #define SENSOR_NAME "S5K2LD"
 /* #define DEBUG_2LD_PLL */
+#define NEED_UPDATE_LUT0_LUT1(cis_data) \
+	((cis_data)->sen_frame_id == 0x0 \
+	|| (cis_data)->sen_frame_id == 0xF \
+	|| (cis_data)->sen_frame_id == 0xC \
+	|| (cis_data)->stream_on == false)
+
+#define NEED_UPDATE_LUT2_LUT3(cis_data) \
+	((cis_data)->sen_frame_id == 0x0 \
+	|| (cis_data)->sen_frame_id == 0xD \
+	|| (cis_data)->sen_frame_id == 0xE \
+	|| (cis_data)->stream_on == false)
 
 static const u32 *sensor_2ld_global;
 static u32 sensor_2ld_global_size;
@@ -72,8 +83,6 @@ static struct ae_param sensor_2ld_target_exp_backup;
 static bool sensor_2ld_LTE_1s_flag;
 static bool sensor_2ld_night_flag;
 
-static bool sensor_2ld_enable_dual_sync_dump;
-
 static bool sensor_2ld_cis_is_wdr_mode_on(cis_shared_data *cis_data)
 {
 	unsigned int mode = cis_data->sens_config_index_cur;
@@ -89,12 +98,9 @@ static bool sensor_2ld_cis_is_wdr_mode_on(cis_shared_data *cis_data)
 	return sensor_2ld_support_wdr[mode];
 }
 
-static bool sensor_2ld_cis_is_aeb_mode_on(cis_shared_data *cis_data)
+static bool sensor_2ld_cis_get_aeb_supported(cis_shared_data *cis_data)
 {
 	unsigned int mode = cis_data->sens_config_index_cur;
-
-	if (!is_vender_aeb_mode_on(cis_data))
-		return false;
 
 	if (mode < 0 || mode >= SENSOR_2LD_MODE_MAX) {
 		err("invalid mode(%d)!!", mode);
@@ -102,6 +108,68 @@ static bool sensor_2ld_cis_is_aeb_mode_on(cis_shared_data *cis_data)
 	}
 
 	return sensor_2ld_support_aeb[mode];
+}
+
+
+int sensor_2ld_cis_set_aeb_mode_change(struct v4l2_subdev *subdev)
+{
+	int ret = 0;
+	struct is_cis *cis = NULL;
+	unsigned int mode = 0;
+
+	WARN_ON(!subdev);
+
+	cis = (struct is_cis *)v4l2_get_subdevdata(subdev);
+	WARN_ON(!cis);
+	WARN_ON(!cis->cis_data);
+
+	mode = cis->cis_data->sens_config_index_cur;
+
+	if (!sensor_2ld_cis_get_aeb_supported(cis->cis_data)) {
+		pr_info("[%s] not support mode %d evt %x\n", __func__,
+			mode, cis->cis_data->cis_rev);
+		cis->cis_data->pre_aeb_mode = cis->cis_data->cur_aeb_mode;
+		return ret;
+	}
+
+	ret = sensor_2ld_cis_group_param_hold_func(subdev, 0x01);
+	if (ret < 0)
+		err("group_param_hold_func failed");
+
+	switch (cis->cis_data->cur_aeb_mode) {
+	case SENSOR_AEB_MODE_ON:
+		pr_info("%s : enable AEB\n", __func__);
+		ret |= is_sensor_write16(cis->client, 0xFCFC, 0x4000);
+		ret |= is_sensor_write8(cis->client, 0x0E0B, 0x04);
+		ret |= is_sensor_write16(cis->client, 0x0E0C, 0x0300);
+		ret |= is_sensor_write16(cis->client, 0x0E0E, 0x0000); // all register 6*2 offset
+		ret |= is_sensor_write16(cis->client,0x0B30, 0x0000); // LN OFF
+		break;
+	case SENSOR_AEB_MODE_OFF:
+		if (!sensor_2ld_LTE_1s_flag) {
+			pr_info("%s : disable AEB\n", __func__);
+			ret |= is_sensor_write16(cis->client, 0xFCFC, 0x4000);
+			ret |= is_sensor_write8(cis->client, 0x0E0B, 0x00);
+		}
+		break;
+	default:
+		dbg_sensor(1, "[%s] not support aeb mode(%d)\n",
+				__func__, cis->cis_data->cur_aeb_mode);
+	}
+
+	if (ret < 0) {
+		err("is_sensor_write fail!!");
+		goto p_err;
+	}
+
+	ret = sensor_2ld_cis_group_param_hold_func(subdev, 0x00);
+	if (ret < 0)
+		err("group_param_hold_func failed");
+
+	cis->cis_data->pre_aeb_mode = cis->cis_data->cur_aeb_mode;
+
+p_err:
+	return ret;
 }
 
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
@@ -215,10 +283,13 @@ static void sensor_2ld_set_integration_max_margin(u32 mode, cis_shared_data *cis
 
 	switch (mode) {
 	case SENSOR_2LD_4032X3024_30FPS:
+	case SENSOR_2LD_4032X3024_60FPS:
 	case SENSOR_2LD_4032X2268_60FPS:
 	case SENSOR_2LD_4032X2268_30FPS:
 	case SENSOR_2LD_4032X3024_24FPS:
 	case SENSOR_2LD_4032X2268_24FPS:
+	case SENSOR_2LD_4032X2268_120FPS:
+	case SENSOR_2LD_3328X1872_120FPS:
 		/* FRS */
 		cis_data->max_margin_coarse_integration_time = SENSOR_2LD_COARSE_INTEGRATION_TIME_MAX_MARGIN;
 		break;
@@ -491,6 +562,8 @@ int sensor_2ld_cis_init(struct v4l2_subdev *subdev)
 	cis->cis_data->low_expo_start = 33000;
 	cis->cis_data->pre_lownoise_mode = IS_CIS_LNOFF;
 	cis->cis_data->cur_lownoise_mode = IS_CIS_LNOFF;
+	cis->cis_data->pre_aeb_mode = SENSOR_AEB_MODE_OFF;
+	cis->cis_data->cur_aeb_mode = SENSOR_AEB_MODE_OFF;
 	cis->need_mode_change = false;
 	cis->long_term_mode.sen_strm_off_on_step = 0;
 	cis->long_term_mode.sen_strm_off_on_enable = false;
@@ -499,10 +572,10 @@ int sensor_2ld_cis_init(struct v4l2_subdev *subdev)
 	cis->mipi_clock_index_new = CAM_MIPI_NOT_INITIALIZED;
 #endif
 	cis->cis_data->lte_multi_capture_mode = false;
+	cis->cis_data->sen_frame_id = 0x0;
 
 	sensor_2ld_load_retention = false;
 	sensor_2ld_LTE_1s_flag = false;
-	sensor_2ld_enable_dual_sync_dump = false;
 
 	sensor_2ld_cis_data_calculation(sensor_2ld_pllinfos[setfile_index], cis->cis_data);
 	sensor_2ld_set_integration_max_margin(setfile_index, cis->cis_data);
@@ -599,8 +672,7 @@ int sensor_2ld_cis_log_status(struct v4l2_subdev *subdev)
 	I2C_MUTEX_LOCK(cis->i2c_lock);
 
 	pr_info("[%s] *******************************\n", __func__);
-	ret = is_sensor_write16(client, 0xFCFC, 0x4000);
-	if (unlikely(!ret)) pr_info("0x4000 page\n"); else goto i2c_err;
+	/* 4000 page */
 	ret = is_sensor_read16(client, 0x0000, &data16);
 	if (unlikely(!ret)) pr_info("model_id(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x0002, &data16);
@@ -610,44 +682,52 @@ int sensor_2ld_cis_log_status(struct v4l2_subdev *subdev)
 	ret = is_sensor_read8(client, 0x0100, &data8);
 	if (unlikely(!ret)) pr_info("0x0100(0x%x)\n", data8); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x0340, &data16);
-	if (unlikely(!ret)) pr_info("FLL(0x%x)\n", data16); else goto i2c_err;
+	if (unlikely(!ret)) pr_info("0x0340(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x021E, &data16);
-	if (unlikely(!ret)) pr_info("WDR(0x%x)\n", data16); else goto i2c_err;
+	if (unlikely(!ret)) pr_info("0x021E(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x0202, &data16);
-	if (unlikely(!ret)) pr_info("short EXP(0x%x)\n", data16); else goto i2c_err;
+	if (unlikely(!ret)) pr_info("0x0202(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x0226, &data16);
-	if (unlikely(!ret)) pr_info("long EXP(0x%x)\n", data16); else goto i2c_err;
+	if (unlikely(!ret)) pr_info("0x0226(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x0702, &data16);
-	if (unlikely(!ret)) pr_info("CIT shifter1(0x%x)\n", data16); else goto i2c_err;
+	if (unlikely(!ret)) pr_info("0x0702(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x0704, &data16);
-	if (unlikely(!ret)) pr_info("CIT shifter2(0x%x)\n", data16); else goto i2c_err;
+	if (unlikely(!ret)) pr_info("0x0704(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x0204, &data16);
-	if (unlikely(!ret)) pr_info("again(0x%x)\n", data16); else goto i2c_err;
+	if (unlikely(!ret)) pr_info("0x0204(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x020E, &data16);
-	if (unlikely(!ret)) pr_info("short dgain(0x%x)\n", data16); else goto i2c_err;
+	if (unlikely(!ret)) pr_info("0x020E(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x0230, &data16);
-	if (unlikely(!ret)) pr_info("long dgain(0x%x)\n", data16); else goto i2c_err;
+	if (unlikely(!ret)) pr_info("0x0230(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x0B30, &data16);
-	if (unlikely(!ret)) pr_info("LN mode(0x%x)\n", data16); else goto i2c_err;
+	if (unlikely(!ret)) pr_info("0x0B30(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x0A7A, &data16);
 	if (unlikely(!ret)) pr_info("0x0A7A(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read16(client, 0x0A7C, &data16);
 	if (unlikely(!ret)) pr_info("0x0A7C(0x%x)\n", data16); else goto i2c_err;
 	ret = is_sensor_read8(client, 0x0E0B, &data8);
-	if (unlikely(!ret)) pr_info("AEB(0x%x)\n", data8); else goto i2c_err;
-	ret = is_sensor_write16(client, 0xFCFC, 0x2000);
+	if (unlikely(!ret)) pr_info("0x0E0B(0x%x)\n", data8); else goto i2c_err;
+	/* 2000 page */
+	ret = is_sensor_write16(client, 0x602C, 0x2000);
 	if (unlikely(!ret)) pr_info("0x2000 page\n"); else goto i2c_err;
-	ret = is_sensor_read16(client, 0xD570, &data16);
+	ret = is_sensor_write16(client, 0x602E, 0xD570);
+	ret |= is_sensor_read16(client, 0x6F12, &data16);
 	if (unlikely(!ret)) pr_info("0xD570(0x%x)\n", data16); else goto i2c_err;
-	ret = is_sensor_write16(client, 0xFCFC, 0x2000);
+	/* 2007 page */
+	ret = is_sensor_write16(client, 0x602C, 0x2007);
 	if (unlikely(!ret)) pr_info("0x2007 page\n"); else goto i2c_err;
-	ret = is_sensor_read16(client, 0xF4B2, &data16);
+	ret = is_sensor_write16(client, 0x602E, 0xF4B2);
+	ret |= is_sensor_read16(client, 0x6F12, &data16);
 	if (unlikely(!ret)) pr_info("0xF4B2(0x%x)\n", data16); else goto i2c_err;
-	ret = is_sensor_read16(client, 0xF4B6, &data16);
+	ret = is_sensor_write16(client, 0x602E, 0xF4B6);
+	ret |= is_sensor_read16(client, 0x6F12, &data16);
 	if (unlikely(!ret)) pr_info("0xF4B6(0x%x)\n", data16); else goto i2c_err;
-	ret = is_sensor_read16(client, 0xF4B8, &data16);
+	ret = is_sensor_write16(client, 0x602E, 0xF4B8);
+	ret |= is_sensor_read16(client, 0x6F12, &data16);
 	if (unlikely(!ret)) pr_info("0xF4B8(0x%x)\n", data16); else goto i2c_err;
+	/* restore 4000 page */
 	ret = is_sensor_write16(client, 0xFCFC, 0x4000);
+	ret |= is_sensor_write16(client, 0x602C, 0x4000);
 	if (unlikely(!ret)) pr_info("restore to 0x4000 page\n"); else goto i2c_err;
 	pr_info("[%s] *******************************\n", __func__);
 
@@ -830,12 +910,16 @@ static void sensor_2ld_cis_set_paf_stat_enable(u32 mode, cis_shared_data *cis_da
 
 	switch (mode) {
 	case SENSOR_2LD_4032X3024_30FPS:
+	case SENSOR_2LD_4032X3024_60FPS:
 	case SENSOR_2LD_4032X2268_60FPS:
 	case SENSOR_2LD_4032X2268_30FPS:
 	case SENSOR_2LD_2016X1512_30FPS:
 	case SENSOR_2LD_2016X1134_30FPS:
 	case SENSOR_2LD_4032X3024_24FPS:
 	case SENSOR_2LD_4032X2268_24FPS:
+	case SENSOR_2LD_2016X1134_240FPS:
+	case SENSOR_2LD_4032X2268_120FPS:
+	case SENSOR_2LD_3328X1872_120FPS:
 		cis_data->is_data.paf_stat_enable = true;
 		break;
 	default:
@@ -848,7 +932,7 @@ bool sensor_2ld_cis_get_lownoise_supported(cis_shared_data *cis_data)
 {
 	WARN_ON(!cis_data);
 
-	if (sensor_2ld_cis_is_aeb_mode_on(cis_data))
+	if (cis_data->cur_aeb_mode)
 		return false;
 
 	switch (cis_data->sens_config_index_cur) {
@@ -995,6 +1079,12 @@ int sensor_2ld_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 		info("[%s] sensor mode done(%d)\n", __func__, mode);
 	}
 
+	pr_info("%s : disable AEB\n", __func__);
+	cis->cis_data->pre_aeb_mode = SENSOR_AEB_MODE_OFF;
+	cis->cis_data->cur_aeb_mode = SENSOR_AEB_MODE_OFF;
+	ret |= is_sensor_write16(cis->client, 0xFCFC, 0x4000);
+	ret |= is_sensor_write8(cis->client, 0x0E0B, 0x00);
+
 	if (sensor_2ld_cis_get_lownoise_supported(cis->cis_data)) {
 		cis->cis_data->pre_lownoise_mode = IS_CIS_LN2;
 		cis->cis_data->cur_lownoise_mode = IS_CIS_LN2;
@@ -1076,24 +1166,20 @@ int sensor_2ld_cis_set_lownoise_mode_change(struct v4l2_subdev *subdev)
 #ifdef CAMERA_REAR2
 		switch (mode) {
 		case SENSOR_2LD_4032X3024_30FPS:
-			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x243F);
+			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x2A30);
 			ret |= is_sensor_write16(cis->client, 0x0A7C, 0x0010);
-			ret |= is_sensor_write16(cis->client, 0x0340, 0x2F27);
 			break;
 		case SENSOR_2LD_4032X2268_30FPS:
-			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x2330);
+			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x2B70);
 			ret |= is_sensor_write16(cis->client, 0x0A7C, 0x0010);
-			ret |= is_sensor_write16(cis->client, 0x0340, 0x2F27);
 			break;
 		case SENSOR_2LD_4032X3024_24FPS:
-			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x3110);
+			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x3606);
 			ret |= is_sensor_write16(cis->client, 0x0A7C, 0x0010);
-			ret |= is_sensor_write16(cis->client, 0x0340, 0x3B57);
 			break;
 		case SENSOR_2LD_4032X2268_24FPS:
-			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x3030);
+			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x3740);
 			ret |= is_sensor_write16(cis->client, 0x0A7C, 0x0010);
-			ret |= is_sensor_write16(cis->client, 0x0340, 0x3B57);
 			break;
 		}
 #endif
@@ -1106,14 +1192,20 @@ int sensor_2ld_cis_set_lownoise_mode_change(struct v4l2_subdev *subdev)
 #ifdef CAMERA_REAR2
 		switch (mode) {
 		case SENSOR_2LD_4032X3024_30FPS:
-			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x153F);
+			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x0065);
 			ret |= is_sensor_write16(cis->client, 0x0A7C, 0x0010);
-			ret |= is_sensor_write16(cis->client, 0x0340, 0x2F27);
+			break;
+		case SENSOR_2LD_4032X2268_30FPS:
+			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x0060);
+			ret |= is_sensor_write16(cis->client, 0x0A7C, 0x0010);
 			break;
 		case SENSOR_2LD_4032X3024_24FPS:
-			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x1B80);
+			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x0066);
 			ret |= is_sensor_write16(cis->client, 0x0A7C, 0x0010);
-			ret |= is_sensor_write16(cis->client, 0x0340, 0x3B57);
+			break;
+		case SENSOR_2LD_4032X2268_24FPS:
+			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x0025);
+			ret |= is_sensor_write16(cis->client, 0x0A7C, 0x0010);
 			break;
 		}
 #endif
@@ -1126,46 +1218,30 @@ int sensor_2ld_cis_set_lownoise_mode_change(struct v4l2_subdev *subdev)
 #ifdef CAMERA_REAR2
 		switch (mode) {
 		case SENSOR_2LD_4032X3024_30FPS:
-			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x0070);
+			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x0265);
 			ret |= is_sensor_write16(cis->client, 0x0A7C, 0x0010);
-			ret |= is_sensor_write16(cis->client, 0x0340, 0x2F27);
+			break;
+		case SENSOR_2LD_4032X2268_30FPS:
+			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x01F0);
+			ret |= is_sensor_write16(cis->client, 0x0A7C, 0x0010);
 			break;
 		case SENSOR_2LD_4032X3024_24FPS:
-			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x0090);
+			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x0240);
 			ret |= is_sensor_write16(cis->client, 0x0A7C, 0x0010);
-			ret |= is_sensor_write16(cis->client, 0x0340, 0x3B57);
+			break;
+		case SENSOR_2LD_4032X2268_24FPS:
+			ret |= is_sensor_write16(cis->client, 0x0A7A, 0x01C0);
+			ret |= is_sensor_write16(cis->client, 0x0A7C, 0x0010);
 			break;
 		}
 #endif
 		cis->cis_data->max_margin_coarse_integration_time = 0x6C; /* 108 */
 		break;
 	case IS_CIS_LN2_PEDESTAL128:
-		pr_info("[%s] IS_CIS_LN2_PEDESTAL128 TEMP_2020 to be checked\n", __func__);
-#if 0 // TEMP_2020
-		dbg_sensor(1, "[%s] IS_CIS_LN2_PEDESTAL128\n", __func__);
-		ret |= is_sensor_write16(cis->client, 0x0B30, 0x0200);
-		ret |= is_sensor_write16(cis->client, 0x0BC0, 0x0080); /* pedestal 128 */
-
-#ifdef CAMERA_REAR2
-		ret |= is_sensor_write16(cis->client, 0x30D0, 0x0000);
-		ret |= is_sensor_write16(cis->client, 0x30D2, 0x0500);
-#endif
-		ext_info->use_retention_mode = SENSOR_RETENTION_INACTIVE;
-#endif
+		pr_info("[%s] IS_CIS_LN2_PEDESTAL128 to be checked\n", __func__);
 		break;
 	case IS_CIS_LN4_PEDESTAL128:
-		pr_info("[%s] IS_CIS_LN4_PEDESTAL128 TEMP_2020 to be checked\n", __func__);
-#if 0 // TEMP_2020
-		dbg_sensor(1, "[%s] IS_CIS_LN4_PEDESTAL128\n", __func__);
-		ret |= is_sensor_write16(cis->client, 0x0B30, 0x0300);
-		ret |= is_sensor_write16(cis->client, 0x0BC0, 0x0080); /* pedestal 128 */
-
-#ifdef CAMERA_REAR2
-		ret |= is_sensor_write16(cis->client, 0x30D0, 0x0000);
-		ret |= is_sensor_write16(cis->client, 0x30D2, 0x0500);
-#endif
-		ext_info->use_retention_mode = SENSOR_RETENTION_INACTIVE;
-#endif
+		pr_info("[%s] IS_CIS_LN4_PEDESTAL128 to be checked\n", __func__);
 		break;
 	default:
 		dbg_sensor(1, "[%s] not support lownoise mode(%d)\n",
@@ -1232,11 +1308,19 @@ int sensor_2ld_cis_retention_prepare(struct v4l2_subdev *subdev)
 	int ret = 0;
 	int i = 0;
 	struct is_cis *cis = NULL;
+	struct is_module_enum *module;
+	struct is_device_sensor_peri *sensor_peri = NULL;
+	struct sensor_open_extended *ext_info;
 
 	WARN_ON(!subdev);
 
 	cis = (struct is_cis *)v4l2_get_subdevdata(subdev);
 	WARN_ON(!cis);
+
+	sensor_peri = container_of(cis, struct is_device_sensor_peri, cis);
+	module = sensor_peri->module;
+	ext_info = &module->ext;
+	WARN_ON(!ext_info);
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
 	for (i = 0; i < sensor_2ld_max_retention_num; i++) {
@@ -1246,6 +1330,24 @@ int sensor_2ld_cis_retention_prepare(struct v4l2_subdev *subdev)
 			goto p_err;
 		}
 	}
+
+	ret |= is_sensor_write16(cis->client, 0x6028, 0x3000);
+	ret |= is_sensor_write16(cis->client, 0x602A, 0x0484);
+	ret |= is_sensor_write16(cis->client, 0x6F12, 0x0100);
+	ret |= is_sensor_write16(cis->client, 0x010E, 0x0100);
+
+	ret |= is_sensor_write16(cis->client, 0x0BCC, 0x0000); // Block mipi signal
+	ret |= is_sensor_write16(cis->client, 0x0100, 0x0100);
+	ret |= is_sensor_write8(cis->client, 0x0100, 0x00);
+
+	if (ret < 0) {
+		err("is_sensor_write fail!!");
+		goto p_err;
+	}
+
+	usleep_range(10000, 10000);
+
+	ext_info->use_retention_mode = SENSOR_RETENTION_ACTIVATED;
 
 	info("[%s] retention sensor RAM write done\n", __func__);
 
@@ -1558,7 +1660,7 @@ int sensor_2ld_cis_stream_on(struct v4l2_subdev *subdev)
 	 * then 8 ms waiting is needed before the StreamOn of a sensor (S5K2LD).
 	 */
 	if (test_bit(IS_SENSOR_PREPROCESSOR_AVAILABLE, &sensor_peri->peri_state))
-		mdelay(8);
+		usleep_range(8000, 8100);
 
 	device = (struct is_device_sensor *)v4l2_get_subdev_hostdata(subdev);
 	if (unlikely(!device)) {
@@ -1582,48 +1684,14 @@ int sensor_2ld_cis_stream_on(struct v4l2_subdev *subdev)
 	}
 #endif
 
-	if (sensor_2ld_cis_is_aeb_mode_on(cis_data)) {
-		info("%s : apply AEB setting \n", __func__);
-		is_sensor_write16(cis->client, 0xFCFC, 0x4000);
-		is_sensor_write8(cis->client, 0x0E0B, 0x04);
-		is_sensor_write16(cis->client, 0x0E0C, 0x0300);
-		is_sensor_write16(cis->client, 0x0E0E, 0x0000); // all register 6*2 offset
-		is_sensor_write16(cis->client,0x0B30, 0x0000); // LN OFF
-		cis_data->sen_frame_id = 0xF;
-	} else {
-		if (!sensor_2ld_LTE_1s_flag) {
-			info("%s : disable AEB \n", __func__);
-			is_sensor_write16(cis->client, 0xFCFC, 0x4000);
-			is_sensor_write8(cis->client, 0x0E0B, 0x00);
-			cis_data->sen_frame_id = 0xA;
-		}
-	}
-
-	if (ex_mode == EX_LIVEFOCUS) {
-		u16 rv0, rv1, rv2, rv3, rv4, rv5;
-
-		ret = is_sensor_read16(client, 0x0A70, &rv0);
-		ret = is_sensor_read16(client, 0x0A72, &rv1);
-		ret = is_sensor_read16(client, 0x0A78, &rv2);
-		ret = is_sensor_read16(client, 0x0A7A, &rv3);
-		ret = is_sensor_read16(client, 0x0A7C, &rv4);
-		ret = is_sensor_read16(client, 0x0340, &rv5);
-
-		info("%s - dual sync dump, 0x0A70=[0x%x], 0x0A72=[0x%x], 0x0A78=[0x%x], 0x0A7A=[0x%x], 0x0A7C=[0x%x], 0x0340=[0x%x]\n",
-			__func__, rv0, rv1, rv2, rv3, rv4, rv5);
-
-		sensor_2ld_enable_dual_sync_dump = true;
-	}
-
 	/* Sensor stream on */
 	info("%s\n", __func__);
+	is_sensor_write16(client, 0x0BCC, 0x0100); // Enable mipi signal
 	is_sensor_write16(client, 0x0100, 0x0100);
 
 	ret = sensor_2ld_cis_group_param_hold_func(subdev, 0x00);
 	if (ret < 0)
 		err("group_param_hold_func failed at stream on");
-
-	I2C_MUTEX_UNLOCK(cis->i2c_lock);
 
 	cis_data->stream_on = true;
 	sensor_2ld_load_retention = true;
@@ -1648,6 +1716,8 @@ int sensor_2ld_cis_stream_on(struct v4l2_subdev *subdev)
 #endif
 
 p_err:
+	I2C_MUTEX_UNLOCK(cis->i2c_lock);
+
 	return ret;
 }
 
@@ -1717,14 +1787,6 @@ int sensor_2ld_cis_stream_off(struct v4l2_subdev *subdev)
 	is_sensor_write16(cis->client, 0x6F12, 0x0100);
 	is_sensor_write16(cis->client, 0x010E, 0x0100);
 	if (ext_info->use_retention_mode == SENSOR_RETENTION_INACTIVE) {
-		is_sensor_write16(cis->client, 0x6000, 0x0005);
-		is_sensor_write16(cis->client, 0xFCFC, 0x3001);
-		is_sensor_write16(cis->client, 0xB9EC, 0xCAFE);
-		is_sensor_write16(cis->client, 0xB9EE, 0x1234);
-		is_sensor_write16(cis->client, 0xB9F0, 0xABBA);
-		is_sensor_write16(cis->client, 0xB9F2, 0x0345);
-		is_sensor_write16(cis->client, 0xFCFC, 0x4000);
-		is_sensor_write16(cis->client, 0x6000, 0x0085);
 		ext_info->use_retention_mode = SENSOR_RETENTION_ACTIVATED;
 	}
 
@@ -1732,11 +1794,9 @@ int sensor_2ld_cis_stream_off(struct v4l2_subdev *subdev)
 #endif
 
 	is_sensor_write8(client, 0x0100, 0x00);
+	cis_data->stream_on = false;
 
 	I2C_MUTEX_UNLOCK(cis->i2c_lock);
-
-	cis_data->stream_on = false;
-	cis_data->sen_frame_id = 0xA;
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
@@ -1932,6 +1992,9 @@ int sensor_2ld_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_param
 	cis_data->cur_short_exposure_coarse = short_coarse_int;
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
+	if (cis_data->stream_on == false)
+		sensor_2ld_load_retention = false;
+
 	hold = sensor_2ld_cis_group_param_hold_func(subdev, 0x01);
 	if (hold < 0) {
 		ret = hold;
@@ -1941,14 +2004,14 @@ int sensor_2ld_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_param
 	ret |= is_sensor_write16(cis->client, 0xFCFC, 0x4000);
 
 	/* AEB mode */
-	if (sensor_2ld_cis_is_aeb_mode_on(cis_data)) {
-		if (cis_data->sen_frame_id == 0xF || cis_data->sen_frame_id == 0xC || cis_data->stream_on == false) {
+	if (cis->cis_data->cur_aeb_mode == SENSOR_AEB_MODE_ON) {
+		if (NEED_UPDATE_LUT0_LUT1(cis_data)) {
 			ret |= is_sensor_write16(client, AEB_2LD_LUT0 + AEB_2LD_OFFSET_CIT, long_coarse_int); // #1 short CIT
 			ret |= is_sensor_write16(client, AEB_2LD_LUT0 + AEB_2LD_OFFSET_LCIT, long_coarse_int); // #1 long CIT
 			ret |= is_sensor_write16(client, AEB_2LD_LUT1 + AEB_2LD_OFFSET_CIT, short_coarse_int); // #2 short CIT
 			ret |= is_sensor_write16(client, AEB_2LD_LUT1 + AEB_2LD_OFFSET_LCIT, short_coarse_int); // #2 long CIT
 		}
-		if (cis_data->sen_frame_id == 0xD || cis_data->sen_frame_id == 0xE || cis_data->stream_on == false) {
+			if (NEED_UPDATE_LUT2_LUT3(cis_data)) {
 			ret |= is_sensor_write16(client, AEB_2LD_LUT2 + AEB_2LD_OFFSET_CIT, long_coarse_int); // #3 short CIT
 			ret |= is_sensor_write16(client, AEB_2LD_LUT2 + AEB_2LD_OFFSET_LCIT, long_coarse_int); // #3 long CIT
 			ret |= is_sensor_write16(client, AEB_2LD_LUT3 + AEB_2LD_OFFSET_CIT, short_coarse_int); // #4 short CIT
@@ -2235,19 +2298,16 @@ int sensor_2ld_cis_set_frame_duration(struct v4l2_subdev *subdev, u32 frame_dura
 #ifdef USE_CAMERA_SSM_TEST
 	if (cis->cis_data->sens_config_index_cur == SENSOR_2LD_1280X720_60FPS_MODE2_SSM_960) {
 		if ((cis->cis_data->sen_vsync_count % 120) == 119) {
+			I2C_MUTEX_LOCK(cis->i2c_lock);
 			switch (record_status) {
 			case 0:
 				info("%s - Manual Cue(MSB) + select 960fps(%d)", __func__, cis->cis_data->sen_vsync_count);
-				I2C_MUTEX_LOCK(cis->i2c_lock);
 				is_sensor_write16(cis->client, 0x0A52, 0x0103);
-				I2C_MUTEX_UNLOCK(cis->i2c_lock);
 				record_status++;
 				break;
 			case 5:
 				info("%s - ssm_end_record : sen_vsync_count(%d)", __func__, cis->cis_data->sen_vsync_count);
-				I2C_MUTEX_LOCK(cis->i2c_lock);
 				is_sensor_write8(cis->client, 0x0A51, 0x01);
-				I2C_MUTEX_UNLOCK(cis->i2c_lock);
 				record_status++;
 				break;
 			case 10:
@@ -2257,6 +2317,7 @@ int sensor_2ld_cis_set_frame_duration(struct v4l2_subdev *subdev, u32 frame_dura
 				record_status++;
 				break;
 			}
+			I2C_MUTEX_UNLOCK(cis->i2c_lock);
 		}
 	}
 #endif
@@ -2329,42 +2390,28 @@ int sensor_2ld_cis_set_frame_duration(struct v4l2_subdev *subdev, u32 frame_dura
 	frame_length_lines = (u16)((vt_pic_clk_freq_khz * frame_duration) / (line_length_pck * 1000));
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
+	if (cis_data->stream_on == false)
+		sensor_2ld_load_retention = false;
+
 	hold = sensor_2ld_cis_group_param_hold_func(subdev, 0x01);
 	if (hold < 0) {
 		ret = hold;
 		goto p_err_i2c_unlock;
 	}
 
-	if (sensor_2ld_enable_dual_sync_dump) {
-		u16 rv0, rv1, rv2, rv3, rv4, rv5;
 
-		ret = is_sensor_read16(client, 0x0A70, &rv0);
-		ret = is_sensor_read16(client, 0x0A72, &rv1);
-		ret = is_sensor_read16(client, 0x0A78, &rv2);
-		ret = is_sensor_read16(client, 0x0A7A, &rv3);
-		ret = is_sensor_read16(client, 0x0A7C, &rv4);
-		ret = is_sensor_read16(client, 0x0340, &rv5);
+	if (cis->cis_data->cur_aeb_mode != cis->cis_data->pre_aeb_mode)
+		ret |= sensor_2ld_cis_set_aeb_mode_change(subdev);
 
-		info("%s - dual sync dump, 0x0A70=[0x%x], 0x0A72=[0x%x], 0x0A78=[0x%x], 0x0A7A=[0x%x], 0x0A7C=[0x%x], 0x0340=[0x%x]\n",
-			__func__, rv0, rv1, rv2, rv3, rv4, rv5);
-
-		sensor_2ld_enable_dual_sync_dump = false;
-	}
-
-	if (sensor_2ld_cis_is_aeb_mode_on(cis_data)) {
-		/* // TEMP_2020
-		if (cis_data->sens_config_index_cur == SENSOR_2LD_4032X3024_30FPS)
-			frame_duration = 25000;
-		else
-		*/
+	if (cis->cis_data->cur_aeb_mode == SENSOR_AEB_MODE_ON) {
 		frame_duration /= 2;
 
 		frame_length_lines = (u16)((vt_pic_clk_freq_khz * frame_duration) / (line_length_pck * 1000));
-		if (cis_data->sen_frame_id == 0xF || cis_data->sen_frame_id == 0xC || cis_data->stream_on == false) {
+		if (NEED_UPDATE_LUT0_LUT1(cis_data)) {
 			ret |= is_sensor_write16(client, AEB_2LD_LUT0 + AEB_2LD_OFFSET_FLL, frame_length_lines); // #1 FLL
 			ret |= is_sensor_write16(client, AEB_2LD_LUT1 + AEB_2LD_OFFSET_FLL, frame_length_lines); // #2 FLL
 		}
-		if (cis_data->sen_frame_id == 0xD || cis_data->sen_frame_id == 0xE || cis_data->stream_on == false) {
+		if (NEED_UPDATE_LUT2_LUT3(cis_data)) {
 			ret |= is_sensor_write16(client, AEB_2LD_LUT2 + AEB_2LD_OFFSET_FLL, frame_length_lines); // #3 FLL
 			ret |= is_sensor_write16(client, AEB_2LD_LUT3 + AEB_2LD_OFFSET_FLL, frame_length_lines); // #4 FLL
 		}
@@ -2577,19 +2624,22 @@ int sensor_2ld_cis_set_analog_gain(struct v4l2_subdev *subdev, struct ae_param *
 	}
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
+	if (cis_data->stream_on == false)
+		sensor_2ld_load_retention = false;
+
 	hold = sensor_2ld_cis_group_param_hold_func(subdev, 0x01);
 	if (hold < 0) {
 		ret = hold;
 		goto p_err_i2c_unlock;
 	}
 
-	if (sensor_2ld_cis_is_aeb_mode_on(cis_data)) {
-		if (cis_data->sen_frame_id == 0xF || cis_data->sen_frame_id == 0xC || cis_data->stream_on == false) {
+	if (cis->cis_data->cur_aeb_mode == SENSOR_AEB_MODE_ON) {
+		if (NEED_UPDATE_LUT0_LUT1(cis_data)) {
 			ret |= is_sensor_write16(client, AEB_2LD_LUT0 + AEB_2LD_OFFSET_AGAIN, analog_gain); // #1 Again
 			ret |= is_sensor_write16(client, AEB_2LD_LUT1 + AEB_2LD_OFFSET_AGAIN, analog_gain); // #2 Again
 
 		}
-		if (cis_data->sen_frame_id == 0xD || cis_data->sen_frame_id == 0xE || cis_data->stream_on == false) {
+		if (NEED_UPDATE_LUT2_LUT3(cis_data)) {
 			ret |= is_sensor_write16(client, AEB_2LD_LUT2 + AEB_2LD_OFFSET_AGAIN, analog_gain); // #3 Again
 			ret |= is_sensor_write16(client, AEB_2LD_LUT3 + AEB_2LD_OFFSET_AGAIN, analog_gain); // #4 Again
 		}
@@ -2825,21 +2875,24 @@ int sensor_2ld_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_param 
 	}
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
+	if (cis_data->stream_on == false)
+		sensor_2ld_load_retention = false;
+
 	hold = sensor_2ld_cis_group_param_hold_func(subdev, 0x01);
 	if (hold < 0) {
 		ret = hold;
 		goto p_err_i2c_unlock;
 	}
 
-	if (sensor_2ld_cis_is_aeb_mode_on(cis_data)) {
-		if (cis_data->sen_frame_id == 0xF || cis_data->sen_frame_id == 0xC || cis_data->stream_on == false) {
+	if (cis->cis_data->cur_aeb_mode == SENSOR_AEB_MODE_ON) {
+		if (NEED_UPDATE_LUT0_LUT1(cis_data)) {
 			ret |= is_sensor_write16(client, AEB_2LD_LUT0 + AEB_2LD_OFFSET_DGAIN, long_gain); // #1 Dgain
 			ret |= is_sensor_write16(client, AEB_2LD_LUT0 + AEB_2LD_OFFSET_LDGAIN, long_gain); // #1 long Dgain
 
 			ret |= is_sensor_write16(client, AEB_2LD_LUT1 + AEB_2LD_OFFSET_DGAIN, short_gain); // #2 Dgain
 			ret |= is_sensor_write16(client, AEB_2LD_LUT1 + AEB_2LD_OFFSET_LDGAIN, short_gain); // #2 long Dgain
 		}
-		if (cis_data->sen_frame_id == 0xD || cis_data->sen_frame_id == 0xE || cis_data->stream_on == false) {
+		if (NEED_UPDATE_LUT2_LUT3(cis_data)) {
 			ret |= is_sensor_write16(client, AEB_2LD_LUT2 + AEB_2LD_OFFSET_DGAIN, long_gain); // #3 Dgain
 			ret |= is_sensor_write16(client, AEB_2LD_LUT2 + AEB_2LD_OFFSET_LDGAIN, long_gain); // #3 long Dgain
 
@@ -3675,7 +3728,7 @@ int sensor_2ld_cis_set_factory_control(struct v4l2_subdev *subdev, u32 command)
 
 	switch (command) {
 	case FAC_CTRL_BIT_TEST:
-		pr_info("[%s] FAC_CTRL_BIT_TEST TEMP_2020 to be checked\n", __func__);
+		pr_info("[%s] FAC_CTRL_BIT_TEST to be checked\n", __func__);
 #if 0
 		ret |= is_sensor_write16(cis->client, 0xFCFC, 0x4000);
 		ret |= is_sensor_write16(cis->client, 0xF44A, 0x0009); // TG 2.55v -> 2.45v

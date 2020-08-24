@@ -29,9 +29,9 @@ int dsp_interface_interrupt(struct dsp_interface *itf, int status)
 	int ret;
 
 	dsp_enter();
-	if (status & BIT(DSP_TO_CA5_INT_RESET)) {
+	if (status & BIT(DSP_TO_CC_INT_RESET)) {
 		dsp_ctrl_writel(DSPC_HOST_MAILBOX_INTR_NS, 0x1 << 8);
-	} else if (status & BIT(DSP_TO_CA5_INT_MAILBOX)) {
+	} else if (status & BIT(DSP_TO_CC_INT_MAILBOX)) {
 		dsp_ctrl_writel(DSPC_CA5_SWI_SET_NS, 0x1 << 9);
 	} else {
 		dsp_err("wrong interrupt requested(%x)\n", status);

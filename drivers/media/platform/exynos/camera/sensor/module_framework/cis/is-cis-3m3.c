@@ -877,7 +877,7 @@ int sensor_3m3_cis_stream_on(struct v4l2_subdev *subdev)
 			addr = 0x0005; /* smiaRegs_rd_general_frame_count */
 			is_sensor_read16(client, addr, &value);
 			info("%s - 0x%x(0x%x)\n", __func__, addr, value);
-			msleep(5);
+			usleep_range(5000, 5100);
 			timeout++;
 		}
 	}

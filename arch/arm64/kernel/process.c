@@ -35,7 +35,6 @@
 #include <linux/delay.h>
 #include <linux/reboot.h>
 #include <linux/interrupt.h>
-#include <linux/kallsyms.h>
 #include <linux/init.h>
 #include <linux/cpu.h>
 #include <linux/elfcore.h>
@@ -345,11 +344,14 @@ void __show_regs(struct pt_regs *regs)
 	show_regs_print_info(KERN_DEFAULT);
 	print_pstate(regs);
 
+	if (!user_mode(regs)) {
+		printk("pc : %pS\n", (void *)regs->pc);
+		printk("lr : %pS\n", (void *)lr);
+	} else {
+		printk("pc : %016llx\n", regs->pc);
+		printk("lr : %016llx\n", lr);
+	}
 
-	print_symbol("PC is at %s\n", instruction_pointer(regs));
-	print_symbol("LR is at %s\n", lr);
-	printk("pc : [<%016llx>] lr : [<%016llx>] pstate: %08llx\n",
-	       regs->pc, lr, regs->pstate);
 	printk("sp : %016llx\n", sp);
 
 	i = top_reg;
@@ -376,6 +378,16 @@ void show_regs(struct pt_regs * regs)
 	dump_backtrace(regs, NULL);
 }
 
+#ifdef CONFIG_SEC_DEBUG_AUTO_COMMENT
+void show_regs_auto_comment(struct pt_regs * regs, bool comm)
+{
+	__show_regs(regs);
+	if (comm)
+		dump_backtrace_auto_summary(regs, NULL);
+	else
+		dump_backtrace(regs, NULL);
+}
+#endif
 static void tls_thread_flush(void)
 {
 	write_sysreg(0, tpidr_el0);

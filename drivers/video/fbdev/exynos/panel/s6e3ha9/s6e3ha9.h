@@ -140,6 +140,10 @@
 #define S6E3HA9_SELF_DIAG_OFS			0
 #define S6E3HA9_SELF_DIAG_LEN			1
 
+#define S6E3HA9_SELF_MASK_CHECKSUM_REG		0x14
+#define S6E3HA9_SELF_MASK_CHECKSUM_OFS		0
+#define S6E3HA9_SELF_MASK_CHECKSUM_LEN		2
+
 #ifdef CONFIG_SUPPORT_DDI_FLASH
 #define S6E3HA9_POC_CHKSUM_REG		0xEC
 #define S6E3HA9_POC_CHKSUM_OFS		0
@@ -340,6 +344,11 @@ enum {
 	LPM_DYN_VLIN_MAPTBL,
 	LPM_OFF_MAPTBL,
 	LPM_AOR_OFF_MAPTBL,
+#ifdef CONFIG_ACTIVE_CLOCK
+	ACTIVE_CLK_CTRL_MAPTBL,
+	ACTIVE_CLK_SELF_DRAWER,
+	ACTIVE_CLK_CTRL_UPDATE_MAPTBL,
+#endif
 #ifdef CONFIG_SUPPORT_DDI_FLASH
 	POC_ON_MAPTBL,
 	POC_WR_ADDR_MAPTBL,
@@ -369,8 +378,12 @@ enum {
 	ISC_THRESHOLD_MAPTBL,
 	STM_TUNE_MAPTBL,
 #endif
+#ifdef CONFIG_DYNAMIC_FREQ
+	DYN_FFC_MAPTBL,
+#endif
 	GAMMA_INTER_CONTROL_MAPTBL,
 	POC_COMP_MAPTBL,
+	DIA_ONOFF_MAPTBL,
 	MAX_MAPTBL,
 };
 
@@ -403,6 +416,7 @@ enum {
 	READ_ERR_FG,
 	READ_DSI_ERR,
 	READ_SELF_DIAG,
+	READ_SELF_MASK_CHECKSUM,
 #ifdef CONFIG_SUPPORT_DDI_FLASH
 	READ_POC_CHKSUM,
 	READ_POC_CTRL,
@@ -499,6 +513,7 @@ enum {
 #ifdef CONFIG_SUPPORT_CCD_TEST
 	RES_CCD_STATE,
 #endif
+	RES_SELF_MASK_CHECKSUM,
 };
 
 static u8 S6E3HA9_ID[S6E3HA9_ID_LEN];
@@ -563,6 +578,7 @@ static u8 S6E3HA9_MCD_RESISTANCE[S6E3HA9_MCD_RESISTANCE_LEN];
 #ifdef CONFIG_SUPPORT_CCD_TEST
 static u8 S6E3HA9_CCD_STATE[S6E3HA9_CCD_STATE_LEN];
 #endif
+static u8 S6E3HA9_SELF_MASK_CHECKSUM[S6E3HA9_SELF_MASK_CHECKSUM_LEN];
 
 static struct rdinfo s6e3ha9_rditbl[] = {
 	[READ_ID] = RDINFO_INIT(id, DSI_PKT_TYPE_RD, S6E3HA9_ID_REG, S6E3HA9_ID_OFS, S6E3HA9_ID_LEN),
@@ -626,7 +642,7 @@ static struct rdinfo s6e3ha9_rditbl[] = {
 #ifdef CONFIG_SUPPORT_CCD_TEST
 	[READ_CCD_STATE] = RDINFO_INIT(ccd_state, DSI_PKT_TYPE_RD, S6E3HA9_CCD_STATE_REG, S6E3HA9_CCD_STATE_OFS, S6E3HA9_CCD_STATE_LEN),
 #endif
-
+	[READ_SELF_MASK_CHECKSUM] = RDINFO_INIT(self_mask_checksum, DSI_PKT_TYPE_RD, S6E3HA9_SELF_MASK_CHECKSUM_REG, S6E3HA9_SELF_MASK_CHECKSUM_OFS, S6E3HA9_SELF_MASK_CHECKSUM_LEN),
 };
 
 static DEFINE_RESUI(id, &s6e3ha9_rditbl[READ_ID], 0);
@@ -690,6 +706,7 @@ static DEFINE_RESUI(ccd_state, &s6e3ha9_rditbl[READ_CCD_STATE], 0);
 #endif
 
 static DEFINE_RESUI(mcd_resistance, &s6e3ha9_rditbl[READ_MCD_RESISTANCE], 0);
+static DEFINE_RESUI(self_mask_checksum, &s6e3ha9_rditbl[READ_SELF_MASK_CHECKSUM], 0);
 
 static struct resinfo s6e3ha9_restbl[] = {
 	[RES_ID] = RESINFO_INIT(id, S6E3HA9_ID, RESUI(id)),
@@ -752,6 +769,7 @@ static struct resinfo s6e3ha9_restbl[] = {
 #ifdef CONFIG_SUPPORT_CCD_TEST
 	[RES_CCD_STATE] = RESINFO_INIT(ccd_state, S6E3HA9_CCD_STATE, RESUI(ccd_state)),
 #endif
+	[RES_SELF_MASK_CHECKSUM] = RESINFO_INIT(self_mask_checksum, S6E3HA9_SELF_MASK_CHECKSUM, RESUI(self_mask_checksum)),
 };
 
 enum {
@@ -810,6 +828,7 @@ static int getidx_elvss_temp_table(struct maptbl *);
 #ifdef CONFIG_SUPPORT_XTALK_MODE
 static int getidx_vgh_table(struct maptbl *);
 #endif
+static int getidx_dia_onoff_table(struct maptbl *tbl);
 static int getidx_hbm_onoff_table(struct maptbl *);
 static int getidx_acl_onoff_table(struct maptbl *);
 static int getidx_acl_opr_table(struct maptbl *);
@@ -833,6 +852,11 @@ static void copy_gamma_inter_control_maptbl(struct maptbl *tbl, u8 *dst);
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
 static void copy_copr_maptbl(struct maptbl *, u8 *);
 #endif
+#ifdef CONFIG_ACTIVE_CLOCK
+static void copy_self_clk_update_maptbl(struct maptbl *tbl, u8 *dst);
+static void copy_self_clk_maptbl(struct maptbl *, u8 *);
+static void copy_self_drawer(struct maptbl *tbl, u8 *dst);
+#endif
 #ifdef CONFIG_SUPPORT_GRAM_CHECKSUM
 static int s6e3ha9_getidx_vddm_table(struct maptbl *);
 static int s6e3ha9_getidx_gram_img_pattern_table(struct maptbl *tbl);
@@ -844,6 +868,9 @@ static int s6e3ha9_getidx_tdmb_tune_table(struct maptbl *tbl);
 static int init_hmd_gamma_table(struct maptbl *);
 static int getidx_hmd_dimming_mtptbl(struct maptbl *);
 #endif /* CONFIG_SUPPORT_HMD */
+#ifdef CONFIG_DYNAMIC_FREQ
+static int getidx_dyn_ffc_table(struct maptbl *tbl);
+#endif /*CONFIG_DYNAMIC_FREQ*/
 #ifdef CONFIG_EXYNOS_DECON_MDNIE_LITE
 static int init_color_blind_table(struct maptbl *tbl);
 static int getidx_mdnie_scenario_maptbl(struct maptbl *tbl);

@@ -9,6 +9,7 @@
 #include "sched.h"
 
 #include <trace/events/power.h>
+#include <linux/sec_perf.h>
 
 /* Linker adds these: start and end of __cpuidle functions */
 extern char __cpuidle_text_start[], __cpuidle_text_end[];
@@ -252,6 +253,9 @@ static void do_idle(void)
 		}
 
 		arch_cpu_idle_enter();
+#ifdef CONFIG_SEC_PERF_LATENCYCHECKER
+		sec_perf_latencychecker_disable(smp_processor_id());
+#endif
 
 		/*
 		 * In poll mode we reenable interrupts and spin. Also if we
@@ -265,6 +269,11 @@ static void do_idle(void)
 		} else {
 			cpuidle_idle_call();
 		}
+
+#ifdef CONFIG_SEC_PERF_LATENCYCHECKER
+		sec_perf_latencychecker_enable(smp_processor_id());
+#endif
+
 		arch_cpu_idle_exit();
 	}
 

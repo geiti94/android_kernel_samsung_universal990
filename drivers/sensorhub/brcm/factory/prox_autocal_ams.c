@@ -114,7 +114,12 @@ static ssize_t proximity_vendor_show(struct device *dev,
 static ssize_t proximity_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", CHIP_ID);
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	pr_info("[SSP] %s :: sensor(%d) : %s", __func__, PROXIMITY_SENSOR, data->sensor_name[PROXIMITY_SENSOR]);
+	
+	return sprintf(buf, "%s\n", data->sensor_name[PROXIMITY_SENSOR][0] == 0 ? 
+			CHIP_ID : data->sensor_name[PROXIMITY_SENSOR]);
 }
 
 static ssize_t proximity_probe_show(struct device *dev,
@@ -683,7 +688,7 @@ static ssize_t proximity_cal_store(struct device *dev,
 	int iRet = 0;
 	int64_t enable = 0;
 	struct ssp_data *data = dev_get_drvdata(dev);
-	int cal_data[2] = {0, };
+	int cal_data[2] = {0, 1};
 	
 
 	if (!(data->uSensorState & (1 << PROXIMITY_SENSOR))) {
@@ -706,7 +711,9 @@ static ssize_t proximity_cal_store(struct device *dev,
 	} else {
 		iRet = proximity_save_calibration(cal_data, sizeof(cal_data));
 		if (iRet < 0)
-			pr_err("[SSP] %s : initilaize fail", __func__); 
+			pr_err("[SSP] %s : initilaize fail", __func__);
+		if (set_prox_cal_to_ssp(data) < 0)
+			pr_err("[SSP]: %s - sending proximity calibration data failed\n", __func__);
 	}
 
 	return size;

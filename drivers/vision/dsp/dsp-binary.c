@@ -12,7 +12,7 @@
 #include "dsp-binary.h"
 
 int dsp_binary_load(const char *name, char *postfix, const char *extension,
-		void *target, size_t size)
+		void *target, size_t size, size_t *loaded_size)
 {
 	int ret;
 	char full_name[DSP_BINARY_NAME_SIZE];
@@ -48,12 +48,12 @@ int dsp_binary_load(const char *name, char *postfix, const char *extension,
 	}
 
 	memcpy(target, fw_blob->data, fw_blob->size);
-	ret = fw_blob->size;
+	if (loaded_size)
+		*loaded_size = fw_blob->size;
+	dsp_info("binary[%s/%zu] is loaded\n", full_name, fw_blob->size);
 	release_firmware(fw_blob);
-
-	dsp_info("binary[%s] is loaded\n", full_name);
 	dsp_leave();
-	return ret;
+	return 0;
 p_err_size:
 	release_firmware(fw_blob);
 p_err_req:
@@ -62,7 +62,8 @@ p_err_target:
 }
 
 int dsp_binary_master_load(const char *name, char *postfix,
-		const char *extension, void __iomem *target, size_t size)
+		const char *extension, void __iomem *target, size_t size,
+		size_t *loaded_size)
 {
 	int ret;
 	char full_name[DSP_BINARY_NAME_SIZE];
@@ -104,12 +105,13 @@ int dsp_binary_master_load(const char *name, char *postfix,
 				fw_blob->size & 0x3);
 		writel(remain, target + (fw_blob->size & ~0x3));
 	}
-	ret = fw_blob->size;
-	release_firmware(fw_blob);
 
-	dsp_info("binary[%s] is loaded\n", full_name);
+	if (loaded_size)
+		*loaded_size = fw_blob->size;
+	dsp_info("binary[%s/%zu] is loaded\n", full_name, fw_blob->size);
+	release_firmware(fw_blob);
 	dsp_leave();
-	return ret;
+	return 0;
 p_err_size:
 	release_firmware(fw_blob);
 p_err_req:
@@ -118,7 +120,7 @@ p_err_target:
 }
 
 int dsp_binary_alloc_load(const char *name, char *postfix,
-		const char *extension, void **target)
+		const char *extension, void **target, size_t *loaded_size)
 {
 	int ret;
 	char full_name[DSP_BINARY_NAME_SIZE];
@@ -155,12 +157,12 @@ int dsp_binary_alloc_load(const char *name, char *postfix,
 	}
 
 	memcpy(*target, fw_blob->data, fw_blob->size);
-	ret = fw_blob->size;
+	if (loaded_size)
+		*loaded_size = fw_blob->size;
+	dsp_info("binary[%s/%zu] is loaded\n", full_name, fw_blob->size);
 	release_firmware(fw_blob);
-
-	dsp_info("binary[%s] is loaded\n", full_name);
 	dsp_leave();
-	return ret;
+	return 0;
 p_err_alloc:
 	release_firmware(fw_blob);
 p_err_req:

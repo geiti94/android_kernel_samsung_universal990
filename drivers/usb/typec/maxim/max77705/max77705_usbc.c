@@ -166,7 +166,7 @@ struct pdic_fw_update {
 	int enforce_do;
 };
 
-#ifdef MAX77705_GRL_ENABLE
+#ifdef CONFIG_MAX77705_GRL_ENABLE
 static int max77705_i2c_master_write(struct max77705_usbc_platform_data *usbpd_data,
 			int slave_addr, u8 *reg_addr)
 {
@@ -385,7 +385,7 @@ static void max77705_usbc_gpio5_read_complete(
 	complete(&usbc_data->ccic_sysfs_completion);
 }
 
-#ifdef MAX77705_GRL_ENABLE
+#ifdef CONFIG_MAX77705_GRL_ENABLE
 static void max77705_set_forcetrimi(struct max77705_usbc_platform_data *usbc_data)
 {
 	u8 ArrSendData[2] = {0x00, 0x00};
@@ -1554,7 +1554,7 @@ static ssize_t max77705_fw_update(struct device *dev,
 		max77705_usbc_opcode_write(g_usbc_data, &write_data);
 
 		break;
-#ifdef MAX77705_GRL_ENABLE
+#ifdef CONFIG_MAX77705_GRL_ENABLE
 	case 11:
 		msg_maxim("SYSTEM MESSAGE GRL COMMAND!!!");
 		write_data.opcode = OPCODE_GRL_COMMAND;
@@ -2112,7 +2112,7 @@ static void max77705_irq_execute(struct max77705_usbc_platform_data *usbc_data,
 	case OPCODE_READ_SELFTEST:
 		max77705_response_selftest_read(usbc_data, data);
 		break;
-#ifdef MAX77705_GRL_ENABLE
+#ifdef CONFIG_MAX77705_GRL_ENABLE
 	case OPCODE_GRL_COMMAND:
 		max77705_set_forcetrimi(usbc_data);
 		break;
@@ -2733,7 +2733,7 @@ void max77705_usbc_check_sysmsg(struct max77705_usbc_platform_data *usbc_data, u
 		if (!is_empty_queue) {
 			copy_usbc_cmd_data(&(usbc_data->last_opcode), &cmd_data);
 
-#ifdef MAX77705_GRL_ENABLE
+#ifdef CONFIG_MAX77705_GRL_ENABLE
 			if (cmd_data.opcode == OPCODE_GRL_COMMAND || next_opcode == OPCODE_VDM_DISCOVER_SET_VDM_REQ) {
 #else
 			if (next_opcode == OPCODE_VDM_DISCOVER_SET_VDM_REQ) {
@@ -2767,7 +2767,7 @@ void max77705_usbc_check_sysmsg(struct max77705_usbc_platform_data *usbc_data, u
 #endif
 		/* TO DO DEQEUE MSG. */
 		break;
-#ifdef MAX77705_GRL_ENABLE
+#ifdef CONFIG_MAX77705_GRL_ENABLE
 	case SYSMSG_SET_GRL:
 		max77705_usbc_clear_queue(usbc_data);
 		msg_maxim("SYSTEM MESSAGE GRL COMMAND!!!");

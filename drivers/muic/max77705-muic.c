@@ -613,7 +613,7 @@ static ssize_t max77705_muic_show_uart_sel(struct device *dev,
 	}
 
 	pr_info("%s %s", __func__, mode);
-	return sprintf(buf, mode);
+	return sprintf(buf, "%s", mode);
 }
 
 static ssize_t max77705_muic_set_uart_sel(struct device *dev,
@@ -663,7 +663,7 @@ static ssize_t max77705_muic_show_usb_sel(struct device *dev,
 	}
 
 	pr_debug("%s %s", __func__, mode);
-	return sprintf(buf, mode);
+	return sprintf(buf, "%s", mode);
 }
 
 static ssize_t max77705_muic_set_usb_sel(struct device *dev,
@@ -1182,6 +1182,8 @@ static int max77705_muic_handle_detach(struct max77705_muic_data *muic_data, int
 		goto out_without_noti;
 	}
 
+	muic_data->dcdtmo_retry = 0;
+
 #if 0
 	/* Enable Charger Detection */
 	max77705_muic_enable_chgdet(muic_data);
@@ -1574,7 +1576,10 @@ static u8 max77705_resolve_chgtyp(struct max77705_muic_data *muic_data, u8 chgty
 	/* Check DCD timeout */
 	if (dcdtmo && chgtyp == CHGTYP_USB &&
 			(irq == muic_data->irq_chgtyp || irq == MUIC_IRQ_INIT_DETECT)) {
-		ret = CHGTYP_TIMEOUT_OPEN;
+		if (irq == MUIC_IRQ_INIT_DETECT)
+			ret = CHGTYP_TIMEOUT_OPEN;
+		else
+			ret = (muic_data->dcdtmo_retry >= 2) ? CHGTYP_TIMEOUT_OPEN : CHGTYP_NO_VOLTAGE;
 		goto out;
 	}
 
@@ -1742,6 +1747,11 @@ static void max77705_muic_detect_dev(struct max77705_muic_data *muic_data,
 					__func__, muic_data->irq_vbadc);
 			return;
 		}
+	}
+
+	if (irq == muic_data->irq_dcdtmo && dcdtmo) {
+		muic_data->dcdtmo_retry++;
+		pr_info("%s:%s DCD_TIMEOUT retry count: %d\n", MUIC_DEV_NAME, __func__, muic_data->dcdtmo_retry);
 	}
 
 #if !defined(CONFIG_SEC_FACTORY)
@@ -2357,6 +2367,7 @@ int max77705_muic_probe(struct max77705_usbc_platform_data *usbc_data)
 	muic_data->is_factory_start = false;
 	muic_data->switch_val = COM_OPEN;
 	muic_data->is_charger_mode = false;
+	muic_data->dcdtmo_retry = 0;
 
 	usbc_data->muic_data = muic_data;
 	g_muic_data = muic_data;

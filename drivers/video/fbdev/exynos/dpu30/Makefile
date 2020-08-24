@@ -32,3 +32,4 @@ obj-y += panels/
 obj-y += mcd_hdr/
 obj-$(CONFIG_SUPPORT_MCD_MOTTO_TUNE) += dsim_motto.o
 
+ccflags-$(CONFIG_SAMSUNG_TUI)    += -Idrivers/misc/tui

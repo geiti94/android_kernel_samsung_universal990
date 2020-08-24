@@ -30,6 +30,7 @@ struct dsp_hw_debug {
 	struct dentry		*userdefined;
 	struct dentry		*dump_value;
 	struct dentry		*firmware_mode;
+	struct dentry		*bus;
 	struct dentry		*npu_test;
 	struct dsp_priv_mem	npu_fw;
 	struct dentry		*test;

@@ -22,7 +22,7 @@
 #include <soc/samsung/exynos-devfreq.h>
 
 #define DISP_FACTOR		100UL
-#define LCD_REFRESH_RATE	60UL
+#define LCD_REFRESH_RATE	60U
 #define MULTI_FACTOR 		(1U << 10)
 /* bus utilization 70% : same value with INT_UTIL */
 #define BUS_UTIL		70
@@ -381,6 +381,11 @@ static void dpu_bts_find_max_disp_freq(struct decon_device *decon,
 	decon->bts.peak = max_disp_ch_bw;
 	decon->bts.max_disp_freq = max_disp_ch_bw * 100 / (16 * BUS_UTIL) + 1;
 
+	if (decon->bts.fps == 120) {
+		if (decon->bts.max_disp_freq < 266000)
+			decon->bts.max_disp_freq = 266000;
+	}
+
 	for (i = 0; i < decon->dt.max_win; ++i) {
 		if ((config[i].state != DECON_WIN_STATE_BUFFER) &&
 				(config[i].state != DECON_WIN_STATE_COLOR))
@@ -671,6 +676,7 @@ void dpu_bts_acquire_bw(struct decon_device *decon)
 	DPU_DEBUG_BTS("Get initial INT freq(%lu)\n",
 			exynos_devfreq_get_domain_freq(DEVFREQ_INT));
 
+
 	decon->bts.fps = decon->lcd_info->fps;
 #if defined(CONFIG_DECON_BTS_VRR_ASYNC)
 	decon->bts.next_fps = decon->lcd_info->fps;
@@ -691,6 +697,7 @@ void dpu_bts_acquire_bw(struct decon_device *decon)
 		 * If current disp freq is higher than calculated freq,
 		 * it must not be set. if not, underrun can occur.
 		 */
+
 		if (exynos_devfreq_get_domain_freq(DEVFREQ_DISP) < aclk_freq)
 			pm_qos_update_request(&decon->bts.disp_qos, aclk_freq);
 
@@ -855,6 +862,15 @@ void dpu_bts_init(struct decon_device *decon)
 	pm_qos_add_request(&decon->bts.disp_qos, PM_QOS_DISPLAY_THROUGHPUT, 0);
 	decon->bts.scen_updated = 0;
 
+	if (decon->id == 0) {
+		/* min INT freq in LCD screen on state : 200Mhz
+		 * This is necessary because of bootloader display case
+		 */
+		pm_qos_update_request(&decon->bts.int_qos, 200 * 1000);
+		DPU_DEBUG_BTS("[Init] INT freq(%lu)\n",
+				exynos_devfreq_get_domain_freq(DEVFREQ_INT));
+	}
+
 	for (i = 0; i < BTS_DPP_MAX; ++i) {
 		sd = decon->dpp_sd[i];
 		v4l2_subdev_call(sd, core, ioctl, DPP_GET_PORT_NUM,
@@ -881,6 +897,39 @@ void dpu_bts_deinit(struct decon_device *decon)
 	DPU_DEBUG_BTS("%s -\n", __func__);
 }
 
+void dpu_bts_pan_display(struct decon_device *decon, struct decon_win_config *config)
+{
+	u32 aclk_freq = 0;
+	u64 resol_clock = 0;
+
+	DPU_DEBUG_BTS("%s +\n", __func__);
+
+	if (!decon->bts.enabled)
+		return;
+
+	resol_clock = dpu_bts_get_resol_clock(decon->lcd_info->xres,
+					decon->lcd_info->yres, decon->bts.fps);
+
+	decon->bts.resol_clk = (u32)resol_clock;
+
+	aclk_freq = dpu_bts_calc_aclk_disp(decon, config, resol_clock);
+
+	DPU_DEBUG_BTS("Initial calculated disp freq(%lu) @%d fps\n",
+			aclk_freq, decon->bts.fps);
+	/*
+	 * If current disp freq is higher than calculated freq,
+	 * it must not be set. if not, underrun can occur.
+	 */
+
+	if (exynos_devfreq_get_domain_freq(DEVFREQ_DISP) < aclk_freq)
+		pm_qos_update_request(&decon->bts.disp_qos, aclk_freq);
+
+	DPU_DEBUG_BTS("%s -: Get initial disp freq (%lu)\n", __func__,
+		exynos_devfreq_get_domain_freq(DEVFREQ_DISP));
+
+	DPU_DEBUG_BTS("%s -\n", __func__);
+}
+
 struct decon_bts_ops decon_bts_control = {
 	.bts_init		= dpu_bts_init,
 	.bts_calc_bw		= dpu_bts_calc_bw,
@@ -889,4 +938,5 @@ struct decon_bts_ops decon_bts_control = {
 	.bts_release_bw		= dpu_bts_release_bw,
 	.bts_hiber_release_bw	= dpu_bts_hiber_release_bw,
 	.bts_deinit		= dpu_bts_deinit,
+	.bts_pan_display	= dpu_bts_pan_display,
 };

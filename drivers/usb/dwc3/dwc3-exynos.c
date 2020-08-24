@@ -50,6 +50,7 @@ struct dwc3_exynos {
 	struct regulator	*vdd10;
 
 	int			idle_ip_index;
+	unsigned long		bus_clock_rate;
 
 	struct dwc3_exynos_rsw	rsw;
 };
@@ -286,7 +287,7 @@ int dwc3_exynos_set_bus_clock(struct device *dev, int clk_level)
 			dev_info(dev, "Unsupported clock level");
 		}
 
-		dev_info(dev, "Changed USB Bus clock %d\n",
+		dev_info(dev, "Changed USB Bus clock %lu\n",
 					clk_get_rate(exynos->bus_clock));
 	}
 
@@ -697,6 +698,12 @@ static int dwc3_exynos_suspend(struct device *dev)
 
 	dev_dbg(dev, "%s\n", __func__);
 
+	if (!IS_ERR_OR_NULL(exynos->bus_clock)) {
+		/* Save Current Clock */
+		exynos->bus_clock_rate = clk_get_rate(exynos->bus_clock);
+		dev_info(dev, "Save bus_clock : %lu\n", exynos->bus_clock_rate);
+	}
+
 	if (pm_runtime_suspended(dev))
 		return 0;
 
@@ -720,6 +727,12 @@ static int dwc3_exynos_resume(struct device *dev)
 
 	dev_info(dev, "%s\n", __func__);
 
+	if (!IS_ERR_OR_NULL(exynos->bus_clock)) {
+		/* Restore Bus Clock */
+		clk_set_rate(exynos->bus_clock, exynos->bus_clock_rate + 1);
+		dev_info(dev, "Restore bus_clock : %lu\n",
+					clk_get_rate(exynos->bus_clock));
+	}
 	/* inform what USB state is not idle to IDLE_IP */
 	/* exynos_update_ip_idle_status(exynos->idle_ip_index, 0); */
 

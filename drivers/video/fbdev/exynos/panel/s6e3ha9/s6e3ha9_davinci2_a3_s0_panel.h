@@ -25,9 +25,15 @@
 #include "s6e3ha9_davinci_panel_poc.h"
 #endif
 #include "s6e3ha9_davinci2_a3_s0_panel_dimming.h"
+#ifdef CONFIG_SUPPORT_HMD
 #include "s6e3ha9_davinci2_a3_s0_panel_hmd_dimming.h"
+#endif
 #ifdef CONFIG_SUPPORT_AOD_BL
 #include "s6e3ha9_davinci2_a3_s0_panel_aod_dimming.h"
+#endif
+
+#ifdef CONFIG_ACTIVE_CLOCK
+#include "../active_clk_img_white.h"
 #endif
 
 #ifdef CONFIG_EXTEND_LIVE_CLOCK
@@ -35,16 +41,18 @@
 #include "../aod/aod_drv.h"
 #endif
 
-#ifdef CONFIG_SUPPORT_POC_SPI
-#include "../spi/w25q80_panel_spi.h"
-#include "../spi/mx25r4035_panel_spi.h"
+#ifdef CONFIG_SUPPORT_DISPLAY_PROFILER
+#include "s6e3ha9_profiler_panel.h"
+#include "../display_profiler/display_profiler.h"
 #endif
 
 #ifdef CONFIG_DYNAMIC_FREQ
 #include "davinci2_df_tbl.h"
 #endif
 #include "s6e3ha9_davinci_irc.h"
+#ifdef CONFIG_SUPPORT_DSU
 #include "s6e3ha9_davinci_resol.h"
+#endif
 
 #undef __pn_name__
 #define __pn_name__	davinci2_a3_s0
@@ -206,6 +214,11 @@ static u8 davinci2_a3_s0_elvss_temp_table[][S6E3HA9_DAVINCI_TOTAL_NR_LUMINANCE][
 	},
 };
 
+static u8 davinci2_a3_s0_dia_onoff_table[][1] = {
+	{ 0xE1 }, /* dia off */
+	{ 0xE2 }, /* dia on */
+};
+
 #ifdef CONFIG_SUPPORT_XTALK_MODE
 static u8 davinci2_a3_s0_vgh_table[][1] = {
 	{ 0xEB }, /* VGH 7.0V */
@@ -284,7 +297,7 @@ static u8 davinci2_a3_s0_acl_opr_table[][1] = {
 };
 
 static u8 davinci2_a3_s0_irc_mode_table[][1] = {
-	{ 0xA1 },
+	{ 0xE1 },
 	{ 0xA1 },
 };
 
@@ -633,6 +646,34 @@ static u8 davinci2_a3_s0_gram_inv_img_pattern_table[][1] = {
 };
 #endif
 
+#ifdef CONFIG_DYNAMIC_FREQ
+static u8 davinci2_a3_s0_dyn_ffc_table[][19] = {
+	{
+		/* 897 */
+		0x0D, 0x10, 0x64, 0x22, 0x78, 0x09, 0x00, 0x1A,
+		0xFC, 0x24, 0xD2, 0x7A, 0x00, 0x10, 0x00, 0x33,
+		0x00, 0xFF, 0x3C
+	},
+	{
+		/* 903.5 */
+		0x0D, 0x10, 0x64, 0x22, 0x39, 0x09, 0x00, 0x1A,
+		0xFC, 0x24, 0xD2, 0x7A, 0x00, 0x10, 0x00, 0x33,
+		0x00, 0xFF, 0x3C
+	},
+	{
+		/* 910 */
+		0x0D, 0x10, 0x64, 0x21, 0xFA, 0x09, 0x00, 0x1A,
+		0xFC, 0x24, 0xD2, 0x7A, 0x00, 0x10, 0x00, 0x33,
+		0x00, 0xFF, 0x3C
+	},
+	{
+		/* 929.5Mbps */
+		0x0D, 0x10, 0x64, 0x21, 0x44, 0x09, 0x00, 0x1A,
+		0xFC, 0x24, 0xD2, 0x7A, 0x00, 0x10, 0x00, 0x33,
+		0x00, 0xFF, 0x3C
+	},
+};
+#endif
 static struct maptbl davinci2_a3_s0_maptbl[MAX_MAPTBL] = {
 	[GAMMA_MAPTBL] = DEFINE_2D_MAPTBL(davinci2_a3_s0_gamma_table, init_gamma_table, getidx_dimming_maptbl, copy_gamma_maptbl),
 	[AOR_MAPTBL] = DEFINE_2D_MAPTBL(davinci2_a3_s0_aor_table, init_aor_table, getidx_dimming_maptbl, copy_aor_maptbl),
@@ -664,6 +705,11 @@ static struct maptbl davinci2_a3_s0_maptbl[MAX_MAPTBL] = {
 	[LPM_MODE_MAPTBL] = DEFINE_3D_MAPTBL(davinci2_a3_s0_lpm_mode_table, init_common_table, getidx_lpm_table, copy_common_maptbl),
 	[LPM_DYN_VLIN_MAPTBL] = DEFINE_2D_MAPTBL(davinci2_a3_s0_lpm_dyn_vlin_table, init_common_table, getidx_lpm_dyn_vlin_table, copy_common_maptbl),
 	[LPM_OFF_MAPTBL] = DEFINE_3D_MAPTBL(davinci2_a3_s0_lpm_off_table, init_common_table, getidx_lpm_table, copy_common_maptbl),
+#ifdef CONFIG_ACTIVE_CLOCK
+	[ACTIVE_CLK_CTRL_MAPTBL] = DEFINE_0D_MAPTBL(davinci2_a3_s0_self_clk_ctrl_table, init_common_table, NULL, copy_self_clk_maptbl),
+	[ACTIVE_CLK_SELF_DRAWER] = DEFINE_0D_MAPTBL(davinci2_a3_s0_self_drawer, init_common_table, NULL, copy_self_drawer),
+	[ACTIVE_CLK_CTRL_UPDATE_MAPTBL] = DEFINE_0D_MAPTBL(davinci2_a3_s0_self_clk_update_table, init_common_table, NULL, copy_self_clk_update_maptbl),
+#endif
 #ifdef CONFIG_SUPPORT_GRAM_CHECKSUM
 	[VDDM_MAPTBL] = DEFINE_2D_MAPTBL(davinci2_a3_s0_vddm_table, init_common_table, s6e3ha9_getidx_vddm_table, copy_common_maptbl),
 	[GRAM_IMG_MAPTBL] = DEFINE_2D_MAPTBL(davinci2_a3_s0_gram_img_pattern_table, init_common_table, s6e3ha9_getidx_gram_img_pattern_table, copy_common_maptbl),
@@ -674,8 +720,12 @@ static struct maptbl davinci2_a3_s0_maptbl[MAX_MAPTBL] = {
 	[ISC_THRESHOLD_MAPTBL] = DEFINE_0D_MAPTBL(davinci2_a3_s0_isc_thresh_hold_table, init_common_table, NULL, copy_isc_threshold_maptbl),
 	[STM_TUNE_MAPTBL] = DEFINE_0D_MAPTBL(davinci2_a3_s0_stm_tune_table, init_stm_tune, NULL, copy_stm_tune_maptbl),
 #endif
+#ifdef CONFIG_DYNAMIC_FREQ
+	[DYN_FFC_MAPTBL] = DEFINE_2D_MAPTBL(davinci2_a3_s0_dyn_ffc_table, init_common_table, getidx_dyn_ffc_table, copy_common_maptbl),
+#endif
 	[GAMMA_INTER_CONTROL_MAPTBL] = DEFINE_0D_MAPTBL(davinci2_a3_s0_gamma_inter_table, init_common_table, NULL, copy_gamma_inter_control_maptbl),
 	[POC_COMP_MAPTBL] = DEFINE_2D_MAPTBL(davinci2_a3_s0_poc_comp_table, init_common_table, getidx_dimming_maptbl, copy_common_maptbl),
+	[DIA_ONOFF_MAPTBL] = DEFINE_2D_MAPTBL(davinci2_a3_s0_dia_onoff_table, init_common_table, getidx_dia_onoff_table, copy_common_maptbl),
 };
 
 /* ===================================================================================== */
@@ -754,14 +804,56 @@ static u8 DAVINCI2_A3_S0_SET_AREA[] = {
 	0x1A, 0x1F, 0x00, 0x00, 0x00, 0x00,
 };
 
+#ifdef CONFIG_ACTIVE_CLOCK
+static u8 DAVINCI2_A3_S0_ENABLE_ACTIVE_CLK[] = {
+	0xE3,
+	0x00, 0x00, 0x00, 0x08, 0x11, 0x00, 0x00, 0x00,
+	0x03, 0x01, 0x00, 0x00, 0x00, 0x00, 0x80, 0x0A,
+	0x0B, 0x00, 0x00, 0x02, 0xD0, 0x02, 0xC3, 0x3C,
+	0x13, 0x00, 0x3C, 0x13, 0x00, 0x3C, 0x13, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+static u8 DAVINCI2_A3_S0_UPDATE_ACTIVE_CLK[] = {
+	0xE3,
+	0x00, 0x00, 0x00, 0x08, 0x11, 0x00, 0x00, 0x00,
+	0x03, 0x01,
+};
+static u8 DAVINCI2_A3_S0_DISABLE_ACTIVE_CLK[] = {
+	0xE3,
+	0x00, 0x00
+};
+static u8 DAVINCI2_A3_S0_SET_SELF_DRAWER[] = {
+	0xE2,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x02, 0xCF, 0x02, 0x97, 0x05, 0xA0, 0x0B,
+	0x90, 0x01, 0x07, 0xF0, 0xF0, 0xF0, 0x00, 0x00, 0x00,
+	0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+};
+
+static u8 DAVINCI2_A3_S0_DISABLE_SELF_DRAWER[] = {
+	0xE2,
+	0x00, 0x00
+};
+#endif
+
 static u8 DAVINCI2_A3_S0_TE_ON[] = { 0x35, 0x00 };
 static u8 DAVINCI2_A3_S0_TE_OFF[] = { 0x34 };
 static u8 DAVINCI2_A3_S0_ERR_FG[] = { 0xED, 0x04, 0x4C };
+#ifdef CONFIG_DYNAMIC_FREQ
 static u8 DAVINCI2_A3_S0_FFC[] = {
 	0xC5,
-	0x0D, 0x10, 0xB4, 0x3E, 0x01,
+	0x0D, 0x10, 0x64, 0x21, 0xFA, 0x09, 0x00, 0x1A,
+	0xFC, 0x24, 0xD2, 0x7A, 0x00, 0x10, 0x00, 0x33,
+	0x00, 0xFF, 0x3C
 };
-
+#endif
 static u8 DAVINCI2_A3_S0_TSP_HSYNC[] = {
 	0xB9,
 	0x01, 0xB0, 0xE1, 0x09, 0x00, 0x00, 0x00, 0x11, 0x03
@@ -823,6 +915,8 @@ static u8 DAVINCI2_A3_S0_GAMMA_UPDATE_ENABLE[] = { 0xF7, 0x03 };
 static u8 DAVINCI2_A3_S0_ACL_ONOFF[] = { 0x55, 0x00 };
 static u8 DAVINCI2_A3_S0_ACL_CONTROL[] = { 0xB4, 0x00, 0x44, 0x80, 0x65, 0x26, 0x00 };
 static u8 DAVINCI2_A3_S0_ACL_DIM_FRM[] = { 0xB4, 0x20 };
+
+static u8 DAVINCI2_A3_S0_DIA_ONOFF[] = { 0x91, 0x00 };
 
 static u8 DAVINCI2_A3_S0_SCALER[] = { 0xBA, 0x01, 0x26, 0x08, 0x08, 0xF3};
 static u8 DAVINCI2_A3_S0_CASET[] = { 0x2A, 0x00, 0x00, 0x05, 0x9F };
@@ -950,7 +1044,9 @@ static u8 DAVINCI2_A3_S0_STM_ENABLE[] = {
 	0x01, 0x08, 0x10, 0x21, 0x11, 0x42, 0x01, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 DAVINCI2_A3_S0_STM_DISABLE[] = { 0x86, 0x00 };
+#endif
 
 #ifdef CONFIG_SUPPORT_DYNAMIC_HLPM
 static u8 DAVINCI2_A3_S0_DYNAMIC_HLPM_ENABLE[] = {
@@ -1015,7 +1111,14 @@ static DEFINE_STATIC_PACKET(davinci2_a3_s0_exit_alpm, DSI_PKT_TYPE_WR, DAVINCI2_
 static DEFINE_STATIC_PACKET(davinci2_a3_s0_te_off, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_TE_OFF, 0);
 static DEFINE_STATIC_PACKET(davinci2_a3_s0_te_on, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_TE_ON, 0);
 static DEFINE_STATIC_PACKET(davinci2_a3_s0_err_fg, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_ERR_FG, 0);
-static DEFINE_STATIC_PACKET(davinci2_a3_s0_ffc, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_FFC, 0);
+#ifdef CONFIG_DYNAMIC_FREQ
+static DEFINE_PKTUI(davinci2_a3_s0_ffc, &davinci2_a3_s0_maptbl[DYN_FFC_MAPTBL], 1);
+static DEFINE_VARIABLE_PACKET(davinci2_a3_s0_ffc, DSI_PKT_TYPE_WR_NO_WAKE, DAVINCI2_A3_S0_FFC, 0);
+static u8 DAVINCI2_A3_S0_FFC_OFF[] = {
+	0xC5, 0x08, 0x10
+};
+static DEFINE_STATIC_PACKET(davinci2_a3_s0_ffc_off, DSI_PKT_TYPE_WR_NO_WAKE, DAVINCI2_A3_S0_FFC_OFF, 0);
+#endif
 static DEFINE_STATIC_PACKET(davinci2_a3_s0_tsp_hsync, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_TSP_HSYNC, 0);
 
 static DEFINE_PKTUI(davinci2_a3_s0_dsc, &davinci2_a3_s0_maptbl[DSC_MAPTBL], 0);
@@ -1044,6 +1147,18 @@ static DEFINE_VARIABLE_PACKET(davinci2_a3_s0_lpm_dyn_vlin, DSI_PKT_TYPE_WR, DAVI
 static DEFINE_STATIC_PACKET(davinci2_a3_s0_lpm_off_dyn_vlin, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_LPM_OFF_DYN_VLIN, 0x1D);
 static DEFINE_PKTUI(davinci2_a3_s0_lpm_mode, &davinci2_a3_s0_maptbl[LPM_MODE_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(davinci2_a3_s0_lpm_mode, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_LPM_MODE, 0);
+
+#ifdef CONFIG_ACTIVE_CLOCK
+static DEFINE_PKTUI(davinci2_a3_s0_enable_active_clk, &davinci2_a3_s0_maptbl[ACTIVE_CLK_CTRL_MAPTBL], 1);
+static DEFINE_VARIABLE_PACKET(davinci2_a3_s0_enable_active_clk, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_ENABLE_ACTIVE_CLK, 0);
+static DEFINE_PKTUI(davinci2_a3_s0_set_self_drawer, &davinci2_a3_s0_maptbl[ACTIVE_CLK_SELF_DRAWER], 1);
+static DEFINE_VARIABLE_PACKET(davinci2_a3_s0_set_self_drawer, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_SET_SELF_DRAWER, 0);
+static DEFINE_PKTUI(davinci2_a3_s0_update_active_clk, &davinci2_a3_s0_maptbl[ACTIVE_CLK_CTRL_UPDATE_MAPTBL], 1);
+static DEFINE_VARIABLE_PACKET(davinci2_a3_s0_update_active_clk, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_UPDATE_ACTIVE_CLK, 0);
+static DEFINE_STATIC_PACKET(davinci2_a3_s0_disable_self_drawer, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_DISABLE_SELF_DRAWER, 0);
+static DEFINE_STATIC_PACKET(davinci2_a3_s0_disable_active_clk, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_DISABLE_ACTIVE_CLK, 0);
+static DEFINE_STATIC_PACKET(davinci2_a3_s0_active_clk_img_pkt, DSI_PKT_TYPE_WR_SR, live_clock_image, 0);
+#endif
 
 #ifdef CONFIG_SUPPORT_GRAM_CHECKSUM
 static DEFINE_STATIC_PACKET(davinci2_a3_s0_sw_reset, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_SW_RESET, 0);
@@ -1076,7 +1191,9 @@ static DEFINE_STATIC_PACKET(davinci2_a3_s0_ccd_test_disable, DSI_PKT_TYPE_WR, DA
 #endif
 
 static DEFINE_STATIC_PACKET(davinci2_a3_s0_stm_enable, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_STM_ENABLE, 0);
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_STATIC_PACKET(davinci2_a3_s0_stm_disable, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_STM_DISABLE, 0);
+#endif
 
 static DEFINE_STATIC_PACKET(davinci2_a3_s0_gamma_mode1, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_GAMMA_MODE1, 0x95);
 
@@ -1179,7 +1296,7 @@ static DECLARE_PKTUI(davinci2_a3_s0_vgh_vint) = {
 static DEFINE_VARIABLE_PACKET(davinci2_a3_s0_vgh_vint, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_VGH_VINT, 0);
 static DECLARE_PKTUI(davinci2_a3_s0_irc_value) = {
 	{ .offset = 1, .maptbl = &davinci2_a3_s0_maptbl[IRC_MAPTBL] },
-	//{ .offset = 2, .maptbl = &davinci2_a3_s0_maptbl[IRC_MODE_MAPTBL] },
+	{ .offset = 2, .maptbl = &davinci2_a3_s0_maptbl[IRC_MODE_MAPTBL] },
 };
 static DEFINE_VARIABLE_PACKET(davinci2_a3_s0_irc_value, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_IRC_VALUE, S6E3HA9_IRC_VALUE_OFS);
 static DEFINE_STATIC_PACKET(davinci2_a3_s0_irc_on, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_IRC_ON, 0);
@@ -1189,6 +1306,9 @@ static DEFINE_STATIC_PACKET(davinci2_a3_s0_irc_off, DSI_PKT_TYPE_WR, DAVINCI2_A3
 static DEFINE_STATIC_PACKET(davinci2_a3_s0_gamma_update_enable, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_GAMMA_UPDATE_ENABLE, 0);
 static DEFINE_PKTUI(davinci2_a3_s0_acl_onoff, &davinci2_a3_s0_maptbl[ACL_ONOFF_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(davinci2_a3_s0_acl_onoff, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_ACL_ONOFF, 0);
+
+static DEFINE_PKTUI(davinci2_a3_s0_dia_onoff, &davinci2_a3_s0_maptbl[DIA_ONOFF_MAPTBL], 1);
+static DEFINE_VARIABLE_PACKET(davinci2_a3_s0_dia_onoff, DSI_PKT_TYPE_WR, DAVINCI2_A3_S0_DIA_ONOFF, 0);
 
 static DECLARE_PKTUI(davinci2_a3_s0_acl_control) = {
 	{ .offset = 2, .maptbl = &davinci2_a3_s0_maptbl[ACL_FRAME_AVG_MAPTBL] },
@@ -1274,7 +1394,9 @@ static DEFINE_STATIC_PACKET(davinci2_a3_s0_grayspot_off_02, DSI_PKT_TYPE_WR, DAV
 static DEFINE_PANEL_MDELAY(davinci2_a3_s0_wait_1msec, 1);
 static DEFINE_PANEL_MDELAY(davinci2_a3_s0_wait_5msec, 5);
 static DEFINE_PANEL_MDELAY(davinci2_a3_s0_wait_sleep_out, 10);
+#ifdef CONFIG_SUPPORT_AFC
 static DEFINE_PANEL_MDELAY(davinci2_a3_s0_wait_afc_off, 20);
+#endif
 static DEFINE_PANEL_MDELAY(davinci2_a3_s0_wait_sleep_in, 120);
 static DEFINE_PANEL_UDELAY(davinci2_a3_s0_wait_1_frame_in_60hz, 16700);
 static DEFINE_PANEL_UDELAY(davinci2_a3_s0_wait_1_frame_in_30hz, 33400);
@@ -1324,9 +1446,11 @@ static void *davinci2_a3_s0_init_cmdtbl[] = {
 	&KEYINFO(davinci2_a3_s0_level1_key_disable),
 	&KEYINFO(davinci2_a3_s0_level2_key_enable),
 	&PKTINFO(davinci2_a3_s0_err_fg),
+#ifdef CONFIG_DYNAMIC_FREQ
 	&KEYINFO(davinci2_a3_s0_level3_key_enable),
-	&PKTINFO(davinci2_a3_s0_ffc),
+	&PKTINFO(davinci2_a3_s0_ffc_off),
 	&KEYINFO(davinci2_a3_s0_level3_key_disable),
+#endif
 	&PKTINFO(davinci2_a3_s0_tsp_hsync),
 	&PKTINFO(davinci2_a3_s0_isc),
 	&PKTINFO(davinci2_a3_s0_stm_enable),
@@ -1489,10 +1613,15 @@ static void *davinci2_a3_s0_alpm_enter_delay_cmdtbl[] = {
 
 static void *davinci2_a3_s0_alpm_exit_cmdtbl[] = {
 	&KEYINFO(davinci2_a3_s0_level2_key_enable),
+#ifdef CONFIG_ACTIVE_CLOCK
+	&PKTINFO(davinci2_a3_s0_disable_active_clk),
+	&PKTINFO(davinci2_a3_s0_disable_self_drawer),
+#endif
 	&PKTINFO(davinci2_a3_s0_lpm_off_nit),
 	&PKTINFO(davinci2_a3_s0_avc2_on),
 	&PKTINFO(davinci2_a3_s0_exit_alpm),
 	&KEYINFO(davinci2_a3_s0_level2_key_disable),
+	&SEQINFO(davinci2_a3_s0_seqtbl[PANEL_PARTIAL_DISP_OFF_SEQ]),
 };
 
 static void *davinci2_a3_s0_gamma_inter_control_cmdtbl[] = {
@@ -1501,6 +1630,11 @@ static void *davinci2_a3_s0_gamma_inter_control_cmdtbl[] = {
 	&KEYINFO(davinci2_a3_s0_level2_key_disable),
 };
 
+static void *davinci2_a3_s0_dia_onoff_cmdtbl[] = {
+	&KEYINFO(davinci2_a3_s0_level2_key_enable),
+	&PKTINFO(davinci2_a3_s0_dia_onoff),
+	&KEYINFO(davinci2_a3_s0_level2_key_disable),
+};
 
 static void *davinci2_a3_s0_partial_disp_on_cmdtbl[] = {
 	&KEYINFO(davinci2_a3_s0_level2_key_enable),
@@ -1515,6 +1649,12 @@ static void *davinci2_a3_s0_partial_disp_off_cmdtbl[] = {
 	&PKTINFO(davinci2_a3_s0_partial_disp_off_01),
 	&PKTINFO(davinci2_a3_s0_partial_disp_off_02),
 	&PKTINFO(davinci2_a3_s0_gamma_update_enable),
+	&KEYINFO(davinci2_a3_s0_level2_key_disable),
+};
+
+static void *davinci2_a3_s0_check_condition_cmdtbl[] = {
+	&KEYINFO(davinci2_a3_s0_level2_key_enable),
+	&s6e3ha9_dmptbl[DUMP_RDDPM],
 	&KEYINFO(davinci2_a3_s0_level2_key_disable),
 };
 
@@ -1794,6 +1934,28 @@ static void *davinci2_a3_s0_grayspot_off_cmdtbl[] = {
 };
 #endif
 
+#ifdef CONFIG_ACTIVE_CLOCK
+static void *davinci2_a3_s0_active_clk_img_cmdtbl[] = {
+	&PKTINFO(davinci2_a3_s0_active_clk_img_pkt),
+};
+
+static void *davinci2_a3_s0_active_clk_ctrl_cmdtbl[] = {
+	&KEYINFO(davinci2_a3_s0_level2_key_enable),
+	&PKTINFO(davinci2_a3_s0_enable_active_clk),
+	&PKTINFO(davinci2_a3_s0_set_self_drawer),
+	&KEYINFO(davinci2_a3_s0_level2_key_disable),
+};
+
+static void *davinci2_a3_s0_active_clk_update_cmdtbl[] = {
+	&KEYINFO(davinci2_a3_s0_level2_key_enable),
+	&PKTINFO(davinci2_a3_s0_enable_active_clk),
+	&PKTINFO(davinci2_a3_s0_set_self_drawer),
+	&DLYINFO(davinci2_a3_s0_wait_1_frame_in_30hz),
+	&PKTINFO(davinci2_a3_s0_update_active_clk),
+	&KEYINFO(davinci2_a3_s0_level2_key_disable),
+};
+#endif
+
 #ifdef CONFIG_SUPPORT_ISC_DEFECT
 static u8 DAVINCI2_A3_S0_ISC_IPOFF_SEQ_01[] = {
 	0xF5, 0x80
@@ -1953,6 +2115,19 @@ static void *davinci2_a3_s0_dummy_cmdtbl[] = {
  	&PKTINFO(davinci2_a3_s0_te_off),
 };
 
+#ifdef CONFIG_DYNAMIC_FREQ
+static DEFINE_STATIC_PACKET(davinci2_a3_s0_level3_key_enable_no_wake, DSI_PKT_TYPE_WR_NO_WAKE, DAVINCI2_A3_S0_KEY3_ENABLE, 0);
+static DEFINE_PANEL_KEY(davinci2_a3_s0_level3_key_enable_no_wake, CMD_LEVEL_3, KEY_ENABLE, &PKTINFO(davinci2_a3_s0_level3_key_enable_no_wake));
+static DEFINE_STATIC_PACKET(davinci2_a3_s0_level3_key_disable_no_wake, DSI_PKT_TYPE_WR_NO_WAKE, DAVINCI2_A3_S0_KEY3_DISABLE, 0);
+static DEFINE_PANEL_KEY(davinci2_a3_s0_level3_key_disable_no_wake, CMD_LEVEL_3, KEY_DISABLE, &PKTINFO(davinci2_a3_s0_level3_key_disable_no_wake));
+
+static void *davinci2_a3_s0_dynamic_ffc_cmdtbl[] = {
+	&KEYINFO(davinci2_a3_s0_level3_key_enable_no_wake),
+	&PKTINFO(davinci2_a3_s0_ffc_off),
+	&PKTINFO(davinci2_a3_s0_ffc),
+	&KEYINFO(davinci2_a3_s0_level3_key_disable_no_wake),
+};
+#endif
 static struct seqinfo davinci2_a3_s0_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_INIT_SEQ] = SEQINFO_INIT("init-seq", davinci2_a3_s0_init_cmdtbl),
 	[PANEL_RES_INIT_SEQ] = SEQINFO_INIT("resource-init-seq", davinci2_a3_s0_res_init_cmdtbl),
@@ -1983,6 +2158,11 @@ static struct seqinfo davinci2_a3_s0_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_MST_ON_SEQ] = SEQINFO_INIT("mst-on-seq", davinci2_a3_s0_mst_on_cmdtbl),
 	[PANEL_MST_OFF_SEQ] = SEQINFO_INIT("mst-off-seq", davinci2_a3_s0_mst_off_cmdtbl),
 #endif
+#ifdef CONFIG_ACTIVE_CLOCK
+	[PANEL_ACTIVE_CLK_IMG_SEQ] = SEQINFO_INIT("active-clk-img-seq", davinci2_a3_s0_active_clk_img_cmdtbl),
+	[PANEL_ACTIVE_CLK_CTRL_SEQ] = SEQINFO_INIT("active-clk-ctrl-seq", davinci2_a3_s0_active_clk_ctrl_cmdtbl),
+	[PANEL_ACTIVE_CLK_UPDATE_SEQ] = SEQINFO_INIT("active-clk-update-seq", davinci2_a3_s0_active_clk_update_cmdtbl),
+#endif
 #ifdef CONFIG_SUPPORT_GRAM_CHECKSUM
 	[PANEL_GCT_ENTER_SEQ] = SEQINFO_INIT("gct-enter-seq", davinci2_a3_s0_gct_enter_cmdtbl),
 	[PANEL_GCT_VDDM_SEQ] = SEQINFO_INIT("gct-vddm-seq", davinci2_a3_s0_gct_vddm_cmdtbl),
@@ -2012,17 +2192,21 @@ static struct seqinfo davinci2_a3_s0_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_ISC_THRESHOLD_SEQ] = SEQINFO_INIT("isc-threshold-seq", davinci2_a3_s0_isc_threshold_cmdtbl),
 	[PANEL_STM_TUNE_SEQ] = SEQINFO_INIT("stm-tune-seq", davinci2_a3_s0_stm_tune_cmdtbl),
 #endif
+#ifdef CONFIG_DYNAMIC_FREQ
+	[PANEL_DYNAMIC_FFC_SEQ] = SEQINFO_INIT("dynamic-ffc-seq", davinci2_a3_s0_dynamic_ffc_cmdtbl),
+#endif
 	[PANEL_GAMMA_INTER_CONTROL_SEQ] = SEQINFO_INIT("gamma-control-seq", davinci2_a3_s0_gamma_inter_control_cmdtbl),
 	[PANEL_PARTIAL_DISP_ON_SEQ] = SEQINFO_INIT("partial-disp-on", davinci2_a3_s0_partial_disp_on_cmdtbl),
 	[PANEL_PARTIAL_DISP_OFF_SEQ] = SEQINFO_INIT("partial-disp-off", davinci2_a3_s0_partial_disp_off_cmdtbl),
+	[PANEL_CHECK_CONDITION_SEQ] = SEQINFO_INIT("check-condition-seq", davinci2_a3_s0_check_condition_cmdtbl),
+	[PANEL_DIA_ONOFF_SEQ] = SEQINFO_INIT("dia-onoff-seq", davinci2_a3_s0_dia_onoff_cmdtbl),
 	[PANEL_DUMP_SEQ] = SEQINFO_INIT("dump-seq", davinci2_a3_s0_dump_cmdtbl),
 	[PANEL_DUMMY_SEQ] = SEQINFO_INIT("dummy-seq", davinci2_a3_s0_dummy_cmdtbl),
 };
-
 #ifdef CONFIG_SUPPORT_POC_SPI
-struct spi_data *s6e3ha9_davinci_spi_data_list[] = {
-	&w25q80_spi_data,
-	&mx25r4035_spi_data,
+struct spi_data s6e3ha9_davinci_spi_data = {
+	.spi_addr = 0x0,
+	.speed_hz = 12500000
 };
 #endif
 
@@ -2035,11 +2219,15 @@ struct common_panel_info s6e3ha9_davinci2_a3_s0_default_panel_info = {
 	.rev = 0,
 	.ddi_props = {
 		.gpara = (DDI_SUPPORT_WRITE_GPARA | DDI_SUPPORT_POINT_GPARA),
+		.support_partial_disp = false,
+		.ssd_off_lpm_to_normal = true,
 	},
+#ifdef CONFIG_SUPPORT_DSU
 	.mres = {
 		.nr_resol = ARRAY_SIZE(s6e3ha9_davinci_resol),
 		.resol = s6e3ha9_davinci_resol,
 	},
+#endif
 	.maptbl = davinci2_a3_s0_maptbl,
 	.nr_maptbl = ARRAY_SIZE(davinci2_a3_s0_maptbl),
 	.seqtbl = davinci2_a3_s0_seqtbl,
@@ -2054,10 +2242,12 @@ struct common_panel_info s6e3ha9_davinci2_a3_s0_default_panel_info = {
 	.mdnie_tune = &s6e3ha9_davinci2_a3_s0_mdnie_tune,
 #endif
 	.panel_dim_info = {
-		&s6e3ha9_davinci2_a3_s0_panel_dimming_info,
-		&s6e3ha9_davinci2_a3_s0_panel_hmd_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_DISP] = &s6e3ha9_davinci2_a3_s0_panel_dimming_info,
+#ifdef CONFIG_SUPPORT_HMD
+		[PANEL_BL_SUBDEV_TYPE_HMD] = &s6e3ha9_davinci2_a3_s0_panel_hmd_dimming_info,
+#endif
 #ifdef CONFIG_SUPPORT_AOD_BL
-		&s6e3ha9_davinci2_a3_s0_panel_aod_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_AOD] = &s6e3ha9_davinci2_a3_s0_panel_aod_dimming_info,
 #endif
 	},
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
@@ -2070,11 +2260,13 @@ struct common_panel_info s6e3ha9_davinci2_a3_s0_default_panel_info = {
 	.poc_data = &s6e3ha9_davinci_poc_data,
 #endif
 #ifdef CONFIG_SUPPORT_POC_SPI
-	.spi_data_tbl = s6e3ha9_davinci_spi_data_list,
-	.nr_spi_data_tbl = ARRAY_SIZE(s6e3ha9_davinci_spi_data_list),
+	.spi_data = &s6e3ha9_davinci_spi_data,
 #endif
 #ifdef CONFIG_DYNAMIC_FREQ
 	.df_freq_tbl = d2_dynamic_freq_set,
+#endif
+#ifdef CONFIG_SUPPORT_DISPLAY_PROFILER
+	.profile_tune = &ha9_profiler_tune,
 #endif
 };
 

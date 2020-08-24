@@ -766,7 +766,7 @@ int sensor_3j1_cis_stream_on(struct v4l2_subdev *subdev)
 	if (ret < 0)
 		err("group_param_hold_func failed at stream on");
 
-	msleep(8);
+	usleep_range(8000, 8100);
 	/* Dual sync Master setting start */
 	is_sensor_write16(client, 0x0A70, 0x0001);
 	is_sensor_write16(client, 0x0A72, 0x0100);

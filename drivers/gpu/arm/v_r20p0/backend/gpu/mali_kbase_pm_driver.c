@@ -1531,6 +1531,9 @@ void kbase_pm_clock_on(struct kbase_device *kbdev, bool is_resume)
 {
 	bool reset_required = is_resume;
 	unsigned long flags;
+	/* MALI_SEC_INTEGRATION */
+	struct exynos_context *platform = NULL;
+	platform = (struct exynos_context *)kbdev->platform_context;
 
 	KBASE_DEBUG_ASSERT(NULL != kbdev);
 	lockdep_assert_held(&kbdev->js_data.runpool_mutex);
@@ -1549,6 +1552,9 @@ void kbase_pm_clock_on(struct kbase_device *kbdev, bool is_resume)
 
 	KBASE_TRACE_ADD(kbdev, PM_GPU_ON, NULL, NULL, 0u, 0u);
 
+	/* MALI_SEC_INTEGRATION */
+	GPU_LOG(DVFS_INFO, LSI_RESUME_CHECK, is_resume, kbdev->pm.backend.metrics.timer_active, "resume_check\n");
+
 	if (is_resume && kbdev->pm.backend.callback_power_resume) {
 		kbdev->pm.backend.callback_power_resume(kbdev);
 		return;
@@ -1559,8 +1565,8 @@ void kbase_pm_clock_on(struct kbase_device *kbdev, bool is_resume)
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	kbdev->pm.backend.gpu_powered = true;
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-
-	if (reset_required) {
+	/* MALI_SEC_INTEGRATION */
+	if (reset_required || is_resume == true) {
 		/* GPU state was lost, reset GPU to ensure it is in a
 		 * consistent state */
 		/* MALI_SEC_INTEGRATION */
@@ -1580,9 +1586,14 @@ void kbase_pm_clock_on(struct kbase_device *kbdev, bool is_resume)
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 	mutex_unlock(&kbdev->mmu_hw_mutex);
 
+	/* MALI_SEC_INTEGRATION */
+	if (platform) {
+		GPU_LOG(DVFS_INFO, LSI_RESUME_FREQ, kbdev->pm.backend.metrics.timer_active, platform->cur_clock, "resume_freq\n");
+	}
+
 	if (kbdev->wa.flags & KBASE_WA_FLAG_LOGICAL_SHADER_POWER) {
 		GPU_LOG(DVFS_DEBUG, LSI_WA_EXECUTE, kbdev->wa.flags, 0u, "before kbase_wa_execute in %s\n", __func__);
-		kbase_wa_execute(kbdev, kbase_pm_get_present_cores(kbdev, KBASE_PM_CORE_SHADER));
+		kbase_wa_execute(kbdev, kbdev->pm.debug_core_mask_all);
 	}
 
 	/* Enable the interrupts */

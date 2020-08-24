@@ -816,7 +816,7 @@ static void is_mcs_buffer_queue(struct vb2_buffer *vb)
 
 static void is_mcs_buffer_finish(struct vb2_buffer *vb)
 {
-	int ret = 0;
+	int ret;
 	struct is_video_ctx *vctx;
 	struct is_device_ischain *device;
 
@@ -829,13 +829,11 @@ static void is_mcs_buffer_finish(struct vb2_buffer *vb)
 
 	mvdbgs(3, "%s(%d)\n", vctx, &vctx->queue, __func__, vb->index);
 
-	is_queue_buffer_finish(vb);
-
 	ret = is_ischain_mcs_buffer_finish(device, vb->index);
-	if (ret) {
+	if (ret)
 		merr("is_ischain_mcs_buffer_finish is fail(%d)", device, ret);
-		return;
-	}
+
+	is_queue_buffer_finish(vb);
 }
 
 const struct vb2_ops is_mcs_qops = {

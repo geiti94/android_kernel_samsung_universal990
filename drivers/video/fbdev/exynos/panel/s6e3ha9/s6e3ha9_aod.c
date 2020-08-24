@@ -13,10 +13,32 @@
 #include "../panel_drv.h"
 #include "s6e3ha9_aod.h"
 
+#ifdef PANEL_PR_TAG
+#undef PANEL_PR_TAG
+#define PANEL_PR_TAG	"self"
+#endif
+
 void s6e3ha9_copy_self_mask_ctrl(struct maptbl *tbl, u8 *dst)
 {
-	pr_info("%s was called\n", __func__);
-	pr_info("%x %x %x\n", dst[0], dst[1], dst[2]);
+	panel_info("was called\n");
+	panel_info("%x %x %x\n", dst[0], dst[1], dst[2]);
+}
+
+int s6e3ha9_init_self_mask_ctrl(struct maptbl *tbl)
+{
+	struct aod_dev_info *aod = tbl->pdata;
+	struct aod_ioctl_props *props = &aod->props;
+
+	props->self_mask_checksum_len = SELFMASK_CHECKSUM_LEN;
+	props->self_mask_checksum = kmalloc(sizeof(u8) * props->self_mask_checksum_len, GFP_KERNEL);
+	if (!props->self_mask_checksum) {
+		panel_err("failed to mem alloc\n");
+		return -ENOMEM;
+	}
+	props->self_mask_checksum[0] = SELFMASK_CHECKSUM_VALID1;
+	props->self_mask_checksum[1] = SELFMASK_CHECKSUM_VALID2;
+	panel_info("was called\n");
+	return 0;
 }
 
 void s6e3ha9_copy_digital_pos(struct maptbl *tbl, u8 *dst)
@@ -25,7 +47,7 @@ void s6e3ha9_copy_digital_pos(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if (props->digital.en == 0) {
-		panel_info("AOD:WARN:%s:digital clk was disabled\n", __func__);
+		panel_info("digital clk was disabled\n");
 		return;
 	}
 
@@ -64,7 +86,7 @@ void s6e3ha9_copy_digital_blink(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if (props->digital.b_en == 0) {
-		panel_info("AOD:WARN:%s:digital blink was disabled\n", __func__);
+		panel_info("digital blink was disabled\n");
 		dst[DIG_BLK_EN_REG] = 0x00;
 		return;
 	}
@@ -99,7 +121,7 @@ void s6e3ha9_copy_time(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if (aod == NULL) {
-		panel_err("AOD:ERR:%s:aod is null\n", __func__);
+		panel_err("aod is null\n");
 		return;
 	}
 
@@ -108,7 +130,7 @@ void s6e3ha9_copy_time(struct maptbl *tbl, u8 *dst)
 	dst[TIME_SS_REG] = props->cur_time.cur_s;
 	dst[TIME_MSS_REG] = props->cur_time.cur_ms;
 
-	panel_info("AOD:INFO:%s: %x %x %x\n", __func__, dst[0], dst[1], dst[2]);
+	panel_info("%x %x %x\n", dst[0], dst[1], dst[2]);
 }
 
 
@@ -118,7 +140,7 @@ void s6e3ha9_copy_timer_rate(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if ((aod == NULL) || (props == NULL)) {
-		panel_err("AOD:ERR:%s:aod/props is null\n", __func__);
+		panel_err("aod/props is null\n");
 		return;
 	}
 
@@ -148,12 +170,11 @@ void s6e3ha9_copy_timer_rate(struct maptbl *tbl, u8 *dst)
 		dst[2] = (dst[2] & ~0x03) | 0x03;
 		break;
 	default:
-		panel_info("AOD:INFO:%s:invalid interval:%d\n",
-			__func__, props->cur_time.interval);
+		panel_info("invalid interval:%d\n",
+				props->cur_time.interval);
 		break;
 	}
-	panel_info("PANEL:INFO:%s:dst[1]:%x, dst[2]:%x\n",
-		__func__, dst[1], dst[2]);
+	panel_info("dst[1]:%x, dst[2]:%x\n", dst[1], dst[2]);
 }
 
 
@@ -164,8 +185,8 @@ void s6e3ha9_copy_icon_grid_on_ctrl(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if ((aod == NULL) || (props == NULL)) {
-			panel_err("AOD:ERR:%s:aod/props is null\n", __func__);
-			return;
+		panel_err("aod/props is null\n");
+		return;
 	}
 
 	if (props->self_grid.en) {
@@ -199,7 +220,7 @@ void s6e3ha9_copy_icon_grid_on_ctrl(struct maptbl *tbl, u8 *dst)
 #endif
 	dst[SI_ENABLE_REG] = enable;
 
-	panel_info("AOD:INFO:%s: %x %x %x %x\n", __func__,
+	panel_info("%x %x %x %x\n",
 		dst[SI_POS_X_POS0_REG], dst[SI_POS_X_POS1_REG],
 		dst[SI_POS_Y_POS0_REG], dst[SI_POS_Y_POS1_REG]);
 }
@@ -212,7 +233,7 @@ void s6e3ha9_copy_self_move_on_ctrl(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if ((aod == NULL) || (props == NULL)) {
-		panel_err("AOD:ERR:%s:aod/props is null\n", __func__);
+		panel_err("aod/props is null\n");
 		return;
 	}
 #if 0
@@ -224,7 +245,7 @@ void s6e3ha9_copy_self_move_on_ctrl(struct maptbl *tbl, u8 *dst)
 
 	dst[SM_ENABLE_REG] = enable;
 
-	panel_info("AOD:INFO:%s: %x\n", __func__, dst[SM_ENABLE_REG]);
+	panel_info("%x\n", dst[SM_ENABLE_REG]);
 }
 
 void s6e3ha9_copy_analog_pos(struct maptbl *tbl, u8 *dst)
@@ -233,7 +254,7 @@ void s6e3ha9_copy_analog_pos(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if ((aod == NULL) || (props == NULL)) {
-		panel_err("AOD:ERR:%s:aod/props is null\n", __func__);
+		panel_err("aod/props is null\n");
 		return;
 	}
 
@@ -253,8 +274,8 @@ void s6e3ha9_copy_analog_pos(struct maptbl *tbl, u8 *dst)
 		break;
 	default:
 		dst[ANALOG_ROT_REG] = ALG_ROTATE_0;
-		panel_err("AOD:ERR:%s:undefined rotation mode : %d\n",
-			__func__, props->analog.rotate);
+		panel_err("undefined rotation mode : %d\n",
+				props->analog.rotate);
 		break;
 	}
 
@@ -263,7 +284,7 @@ void s6e3ha9_copy_analog_pos(struct maptbl *tbl, u8 *dst)
 	dst[ANALOG_POS_Y1_REG] = (char)(props->analog.pos_y >> 8);
 	dst[ANALOG_POS_Y2_REG] = (char)(props->analog.pos_y & 0xff);
 
-	panel_dbg("AOD:INFO:%s: %x\n", __func__, dst[ANALOG_POS_X1_REG]);
+	panel_dbg("%x\n", dst[ANALOG_POS_X1_REG]);
 }
 
 void s6e3ha9_copy_analog_en(struct maptbl *tbl, u8 *dst)
@@ -273,7 +294,7 @@ void s6e3ha9_copy_analog_en(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if ((aod == NULL) || (props == NULL)) {
-		panel_err("AOD:ERR:%s:aod/props is null\n", __func__);
+		panel_err("aod/props is null\n");
 		return;
 	}
 
@@ -282,7 +303,7 @@ void s6e3ha9_copy_analog_en(struct maptbl *tbl, u8 *dst)
 
 	dst[TIMER_EN_REG] = en_reg;
 
-	panel_dbg("AOD:INFO:%s: %x %x %x\n", __func__, dst[0], dst[1], dst[2]);
+	panel_dbg("%x %x %x\n", dst[0], dst[1], dst[2]);
 }
 
 #define DIGITAL_EN_REG 	0x02
@@ -297,7 +318,7 @@ void s6e3ha9_copy_digital_en(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if (aod == NULL) {
-		panel_err("AOD:ERR:%s:aod is null\n", __func__);
+		panel_err("aod is null\n");
 		return;
 	}
 
@@ -320,7 +341,7 @@ void s6e3ha9_copy_digital_en(struct maptbl *tbl, u8 *dst)
 
 	dst[DIGITAL_EN_REG] = en_reg;
 
-	panel_info("AOD:INFO:%s: %x %x %x %x\n", __func__, dst[0], dst[1], dst[2], dst[3]);
+	panel_info("%x %x %x %x\n", dst[0], dst[1], dst[2], dst[3]);
 }
 
 int s6e3ha9_getidx_self_mode_pos(struct maptbl *tbl)
@@ -331,28 +352,28 @@ int s6e3ha9_getidx_self_mode_pos(struct maptbl *tbl)
 
 	switch (props->cur_time.interval) {
 	case ALG_INTERVAL_100m:
-		panel_info("AOD:INFO:%s:interval : 100msec\n", __func__);
+		panel_info("interval : 100msec\n");
 		row = 0;
 		break;
 	case ALG_INTERVAL_200m:
-		panel_info("AOD:INFO:%s:interval : 200msec\n", __func__);
+		panel_info("interval : 200msec\n");
 		row = 1;
 		break;
 	case ALG_INTERVAL_500m:
-		panel_info("AOD:INFO:%s:interval : 500msec\n", __func__);
+		panel_info("interval : 500msec\n");
 		row = 2;
 		break;
 	case ALG_INTERVAL_1000:
-		panel_info("AOD:INFO:%s:interval : 1sec\n", __func__);
+		panel_info("interval : 1sec\n");
 		row = 3;
 		break;
 	case INTERVAL_DEBUG:
-		panel_info("AOD:INFO:%s:interval : debug\n", __func__);
+		panel_info("interval : debug\n");
 		row = 4;
 		break;
 	default:
-		panel_info("AOD:INFO:%s:invalid interval:%d\n",
-			__func__, props->cur_time.interval);
+		panel_info("invalid interval:%d\n",
+				props->cur_time.interval);
 		row = 0;
 		break;
 	}
@@ -370,8 +391,8 @@ void s6e3ha9_copy_self_move_reset(struct maptbl *tbl, u8 *dst)
 
 	dst[REG_MOVE_DSP_X] = (char)props->self_reset_cnt;
 
-	panel_info("AOD:INFO:%s: %x:%x:%x:%x:%x\n",
-		__func__, dst[0], dst[1], dst[2], dst[3], dst[4]);
+	panel_info("%x:%x:%x:%x:%x\n",
+			dst[0], dst[1], dst[2], dst[3], dst[4]);
 }
 
 #define ICON_REG_EN 2
@@ -401,11 +422,11 @@ void s6e3ha9_copy_icon_ctrl(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if ((aod == NULL) || (props == NULL)) {
-		panel_err("AOD:ERR:%s:aod/props is null\n", __func__);
+		panel_err("aod/props is null\n");
 		return;
 	}
 
-	panel_info("%s : %d\n", __func__, props->icon.en);
+	panel_info("%d\n", props->icon.en);
 
 	if (props->icon.en) {
 
@@ -429,8 +450,8 @@ void s6e3ha9_copy_icon_ctrl(struct maptbl *tbl, u8 *dst)
 
 	dst[ICON_REG_EN] = enable;
 
-	panel_info("AOD:INFO:%s: %x:%x:%x:%x:%x\n",
-		__func__, dst[0], dst[1], dst[2], dst[3], dst[4]);
+	panel_info("%x:%x:%x:%x:%x\n",
+			dst[0], dst[1], dst[2], dst[3], dst[4]);
 }
 
 #define DIG_COLOR_ALPHA_REG 0x1
@@ -444,7 +465,7 @@ void s6e3ha9_copy_digital_color(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if ((aod == NULL) || (props == NULL)) {
-		panel_err("AOD:ERR:%s:aod/props is null\n", __func__);
+		panel_err("aod/props is null\n");
 		return;
 	}
 
@@ -467,7 +488,7 @@ void s6e3ha9_copy_digital_un_width(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if ((aod == NULL) || (props == NULL)) {
-		panel_err("AOD:ERR:%s:aod/props is null\n", __func__);
+		panel_err("aod/props is null\n");
 		return;
 	}
 
@@ -493,7 +514,7 @@ void s6e3ha9_copy_partial_mode(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if ((aod == NULL) || (props == NULL)) {
-		panel_err("AOD:ERR:%s:aod/props is null\n", __func__);
+		panel_err("aod/props is null\n");
 		return;
 	}
 
@@ -507,7 +528,7 @@ void s6e3ha9_copy_partial_mode(struct maptbl *tbl, u8 *dst)
 
 	dst[SCAN_ENABLE_REG] = enable;
 
-	panel_info("%s : enable : 0x%x\n", __func__, enable);
+	panel_info("enable : 0x%x\n", enable);
 }
 
 /*SP_PLT_SCAN_.. */
@@ -522,7 +543,7 @@ void s6e3ha9_copy_partial_area(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if ((aod == NULL) || (props == NULL)) {
-		panel_err("AOD:ERR:%s:aod/props is null\n", __func__);
+		panel_err("aod/props is null\n");
 		return;
 	}
 
@@ -554,7 +575,7 @@ void s6e3ha9_copy_partial_hlpm(struct maptbl *tbl, u8 *dst)
 	struct aod_ioctl_props *props = &aod->props;
 
 	if ((aod == NULL) || (props == NULL)) {
-		panel_err("AOD:ERR:%s:aod/props is null\n", __func__);
+		panel_err("aod/props is null\n");
 		return;
 	}
 
@@ -595,19 +616,19 @@ int s6e3ha9_getidx_self_pattern(struct maptbl *tbl)
 	switch (props->self_move_pattern) {
 	case 1:
 	case 3:
-		panel_info("AOD:INFO:%s:pattern : %d\n",
-				__func__, props->self_move_pattern);
+		panel_info("pattern : %d\n",
+				props->self_move_pattern);
 		row = 0;
 		break;
 	case 2:
 	case 4:
-		panel_info("AOD:INFO:%s:pattern : %d\n",
-				__func__, props->self_move_pattern);
+		panel_info("pattern : %d\n",
+				props->self_move_pattern);
 		row = 1;
 		break;
 	default:
-		panel_info("AOD:INFO:%s:invalid pattern:%d\n",
-			__func__, props->self_move_pattern);
+		panel_info("invalid pattern:%d\n",
+				props->self_move_pattern);
 		row = 0;
 		break;
 	}
@@ -623,8 +644,8 @@ void s6e3ha9_copy_self_move_enable(struct maptbl *tbl, u8 *dst)
 
 	dst[8] = (char)props->self_move_interval;
 
-	panel_info("AOD:INFO:%s: %x:%x:%x:%x:%x:%x:%x:%x:(%x)\n",
-		__func__, dst[0], dst[1], dst[2], dst[3], dst[4],
+	panel_info("%x:%x:%x:%x:%x:%x:%x:%x:(%x)\n",
+			dst[0], dst[1], dst[2], dst[3], dst[4],
 		dst[5], dst[6], dst[7], dst[8]);
 }
 #endif
@@ -634,14 +655,14 @@ void s6e3ha9_copy_self_move_pattern(struct maptbl *tbl, u8 *dst)
 	int idx;
 
 	if (!tbl || !dst) {
-		pr_err("%s, invalid parameter (tbl %p, dst %p\n",
-				__func__, tbl, dst);
+		panel_err("invalid parameter (tbl %p, dst %p)\n",
+				tbl, dst);
 		return;
 	}
 
 	idx = maptbl_getidx(tbl);
 	if (idx < 0) {
-		pr_err("%s, failed to getidx %d\n", __func__, idx);
+		panel_err("failed to getidx %d\n", idx);
 		return;
 	}
 	memcpy(dst, &(tbl->arr)[idx], sizeof(u8) * tbl->sz_copy);
@@ -650,8 +671,8 @@ void s6e3ha9_copy_self_move_pattern(struct maptbl *tbl, u8 *dst)
 	dst[7] = 0x22;
 #endif
 
-	panel_info("AOD:INFO:%s: %x:%x:%x:%x:%x:%x:%x:(%x):%x\n",
-		__func__, dst[0], dst[1], dst[2], dst[3],
+	panel_info("%x:%x:%x:%x:%x:%x:%x:(%x):%x\n",
+			dst[0], dst[1], dst[2], dst[3],
 		dst[4], dst[5], dst[6], dst[7], dst[8]);
 }
 #endif

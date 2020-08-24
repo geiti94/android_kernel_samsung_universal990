@@ -34,6 +34,10 @@ enum vl53l5_external_control {
 extern int vl53l5_ext_control(enum vl53l5_external_control input, void *data, u32 *size);
 int laser_af_vl53l5_get_distance_info(struct v4l2_subdev *subdev, void *data, u32 *size);
 
+static u64 laser_af_start_time = 0;
+
+#define VL53L5_FIRST_DELAY	168000000L
+
 static int laser_af_vl53l5_init(struct v4l2_subdev *subdev, u32 val)
 {
 	int ret = 0;
@@ -59,29 +63,41 @@ static int laser_af_vl53l5_set_active(struct v4l2_subdev *subdev, bool is_active
 	laser_af = (struct is_laser_af *)v4l2_get_subdevdata(subdev);
 
 	if (is_active) {
-		atomic_inc(&core->laser_refcount);
+		if (!laser_af->active) {
+			atomic_inc(&core->laser_refcount);
 
-		if (atomic_read(&core->laser_refcount) == 1) {
-			mutex_lock(laser_af->laser_lock);
+			if (atomic_read(&core->laser_refcount) == 1) {
+				mutex_lock(laser_af->laser_lock);
 
-			info("[%s] on E\n", __func__);
-			ret = vl53l5_ext_control(VL53L5_EXT_START, NULL, NULL);
-			info("[%s] on X\n", __func__);
+				info("[%s] on E\n", __func__);
+				ret = vl53l5_ext_control(VL53L5_EXT_START, NULL, NULL);
+				info("[%s] on X\n", __func__);
 
-			mutex_unlock(laser_af->laser_lock);
+				laser_af_start_time = is_get_timestamp();
+
+				mutex_unlock(laser_af->laser_lock);
+			}
 		}
+
+		laser_af->active = true;
 	} else {
-		atomic_dec(&core->laser_refcount);
+		if (laser_af->active) {
+			atomic_dec(&core->laser_refcount);
 
-		if (atomic_read(&core->laser_refcount) == 0) {
-			mutex_lock(laser_af->laser_lock);
+			if (atomic_read(&core->laser_refcount) == 0) {
+				mutex_lock(laser_af->laser_lock);
 
-			info("[%s] off E\n", __func__);
-			ret = vl53l5_ext_control(VL53L5_EXT_STOP, NULL, NULL);
-			info("[%s] off X\n", __func__);
+				info("[%s] off E\n", __func__);
+				ret = vl53l5_ext_control(VL53L5_EXT_STOP, NULL, NULL);
+				info("[%s] off X\n", __func__);
 
-			mutex_unlock(laser_af->laser_lock);
+				laser_af_start_time = 0;
+
+				mutex_unlock(laser_af->laser_lock);
+			}
 		}
+
+		laser_af->active = false;
 	}
 
 	return ret;
@@ -91,6 +107,8 @@ static int laser_af_vl53l5_get_distance(struct v4l2_subdev *subdev, void *data, 
 {
 	int ret = 0;
 	struct is_laser_af *laser_af;
+	u64 current_time;
+	unsigned int first_delay;
 
 	FIMC_BUG(!subdev);
 
@@ -99,10 +117,21 @@ static int laser_af_vl53l5_get_distance(struct v4l2_subdev *subdev, void *data, 
 	FIMC_BUG(!laser_af);
 
 	mutex_lock(laser_af->laser_lock);
+	if (laser_af_start_time > 0) {
+		current_time = is_get_timestamp();
+		if (current_time < laser_af_start_time + VL53L5_FIRST_DELAY) {
+			first_delay = (unsigned int)((laser_af_start_time + VL53L5_FIRST_DELAY - current_time) / 1000000L);
+			msleep(first_delay);
+			info("%s, first delay %d", __func__, first_delay);
+		}
+
+		laser_af_start_time = 0;
+	}
+
 	ret = vl53l5_ext_control(VL53L5_EXT_GET_RANGE, data, size);
 	mutex_unlock(laser_af->laser_lock);
 
-	dbg_sensor(1, "ret(%d) size(%d)", ret, *size);
+	dbg_sensor(3, "ret(%d) size(%d)", ret, *size);
 
 	return ret;
 }
@@ -124,9 +153,9 @@ static int __init laser_af_vl53l5_probe(struct device *dev)
 {
 	int ret = 0;
 	struct is_core *core;
-	struct v4l2_subdev *subdev_laser_af;
+	struct v4l2_subdev *subdev_laser_af = NULL;
 	struct is_device_sensor *device;
-	struct is_laser_af *laser_af;
+	struct is_laser_af *laser_af = NULL;
 	struct device_node *dnode;
 	const u32 *sensor_id_spec;
 	u32 sensor_id_len;
@@ -146,8 +175,8 @@ static int __init laser_af_vl53l5_probe(struct device *dev)
 	}
 
 	sensor_id_spec = of_get_property(dnode, "id", &sensor_id_len);
-	if (!sensor_id_spec) {
-		err("sensor_id num read is fail(%d)", ret);
+	if (!sensor_id_spec || sensor_id_len == 0) {
+		err("sensor_id num read is fail(%d), sensor_id_len(%d)", ret, sensor_id_len);
 		goto p_err;
 	}
 
@@ -203,7 +232,15 @@ static int __init laser_af_vl53l5_probe(struct device *dev)
 		probe_info("%s done\n", __func__);
 	}
 
+	return ret;
+
 p_err:
+	if (laser_af)
+		kfree(laser_af);
+
+	if (subdev_laser_af)
+		kfree(subdev_laser_af);
+
 	return ret;
 }
 

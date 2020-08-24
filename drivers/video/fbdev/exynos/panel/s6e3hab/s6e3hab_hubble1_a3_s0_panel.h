@@ -29,7 +29,9 @@
 #include "s6e3hab_hubble_panel_poc.h"
 #endif
 #include "s6e3hab_hubble1_a3_s0_panel_dimming.h"
+#ifdef CONFIG_SUPPORT_HMD
 #include "s6e3hab_hubble1_a3_s0_panel_hmd_dimming.h"
+#endif
 #ifdef CONFIG_SUPPORT_AOD_BL
 #include "s6e3hab_hubble1_a3_s0_panel_aod_dimming.h"
 #endif
@@ -55,8 +57,7 @@
 #endif
 
 #ifdef CONFIG_SUPPORT_MAFPC
-#include "s6e3hab_mafpc_data.h"
-#include "s6e3hab_mafpc_scale_factor.h"
+#include "s6e3hab_hubble_mafpc_panel.h"
 #endif
 #undef __pn_name__
 #define __pn_name__	hubble1_a3_s0
@@ -85,41 +86,41 @@ static struct seqinfo hubble1_a3_s0_seqtbl[MAX_PANEL_SEQ];
 /* ============================== [S6E3HAB MAPPING TABLE] ============================== */
 /* ===================================================================================== */
 #ifdef CONFIG_SUPPORT_HMD
-static u8 hubble1_a3_s0_hmd_gamma_table[MAX_S6E3HAB_VRR][S6E3HAB_HMD_NR_LUMINANCE][S6E3HAB_GAMMA_CMD_CNT - 1];
-static u8 hubble1_a3_s0_hmd_aor_table[MAX_S6E3HAB_VRR][S6E3HAB_HMD_NR_LUMINANCE][2] = {
-	[S6E3HAB_VRR_60_NORMAL] = {
+static u8 hubble1_a3_s0_hmd_gamma_table[MAX_S6E3HAB_VRR_DIM][S6E3HAB_HMD_NR_LUMINANCE][S6E3HAB_GAMMA_CMD_CNT - 1];
+static u8 hubble1_a3_s0_hmd_aor_table[MAX_S6E3HAB_VRR_DIM][S6E3HAB_HMD_NR_LUMINANCE][2] = {
+	[S6E3HAB_VRR_DIM_60NS] = {
 		{ 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 },
 		{ 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 },
 		{ 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 },
 		{ 0x09, 0x93 }, { 0x08, 0x61 }, { 0x08, 0x61 }, { 0x08, 0x61 }, { 0x08, 0x61 }, { 0x08, 0x61 }, { 0x08, 0x61 },
 	},
-	[S6E3HAB_VRR_60_HS] = {
+	[S6E3HAB_VRR_DIM_60HS] = {
 		{ 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 },
 		{ 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 },
 		{ 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 },
 		{ 0x09, 0x93 }, { 0x08, 0x61 }, { 0x08, 0x61 }, { 0x08, 0x61 }, { 0x08, 0x61 }, { 0x08, 0x61 }, { 0x08, 0x61 },
 	},
-	[S6E3HAB_VRR_120_HS] = {
+	[S6E3HAB_VRR_DIM_120HS] = {
 		{ 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 },
 		{ 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 },
 		{ 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 }, { 0x09, 0x93 },
 		{ 0x09, 0x93 }, { 0x08, 0x61 }, { 0x08, 0x61 }, { 0x08, 0x61 }, { 0x08, 0x61 }, { 0x08, 0x61 }, { 0x08, 0x61 },
 	},
 };
-static u8 hubble1_a3_s0_hmd_elvss_table[MAX_S6E3HAB_VRR][S6E3HAB_HMD_NR_LUMINANCE][1] = {
-	[S6E3HAB_VRR_60_NORMAL] = {
+static u8 hubble1_a3_s0_hmd_elvss_table[MAX_S6E3HAB_VRR_DIM][S6E3HAB_HMD_NR_LUMINANCE][1] = {
+	[S6E3HAB_VRR_DIM_60NS] = {
 		{ 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 },
 		{ 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 },
 		{ 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 },
 		{ 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 },
 	},
-	[S6E3HAB_VRR_60_HS] = {
+	[S6E3HAB_VRR_DIM_60HS] = {
 		{ 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 },
 		{ 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 },
 		{ 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 },
 		{ 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 },
 	},
-	[S6E3HAB_VRR_120_HS] = {
+	[S6E3HAB_VRR_DIM_120HS] = {
 		{ 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 },
 		{ 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 },
 		{ 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 }, { 0x16 },
@@ -128,10 +129,10 @@ static u8 hubble1_a3_s0_hmd_elvss_table[MAX_S6E3HAB_VRR][S6E3HAB_HMD_NR_LUMINANC
 };
 #endif /* CONFIG_SUPPORT_HMD */
 
-static u8 hubble1_a3_s0_gamma_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][S6E3HAB_GAMMA_CMD_CNT - 1];
+static u8 hubble1_a3_s0_gamma_table[MAX_S6E3HAB_VRR_DIM][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][S6E3HAB_GAMMA_CMD_CNT - 1];
 
-static u8 hubble1_a3_s0_poc_comp_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][2] = {
-	[S6E3HAB_VRR_60_NORMAL] = {
+static u8 hubble1_a3_s0_poc_comp_table[MAX_S6E3HAB_VRR_DIM][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][2] = {
+	[S6E3HAB_VRR_DIM_60NS] = {
 		{ 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A },
 		{ 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1B }, { 0x53, 0x1B }, { 0x53, 0x1C }, { 0x53, 0x1D }, { 0x53, 0x1D }, { 0x53, 0x1E },
 		{ 0x53, 0x1F }, { 0x53, 0x1F }, { 0x53, 0x20 }, { 0x53, 0x21 }, { 0x53, 0x22 }, { 0x53, 0x23 }, { 0x53, 0x24 }, { 0x53, 0x25 }, { 0x53, 0x26 }, { 0x53, 0x27 },
@@ -144,7 +145,7 @@ static u8 hubble1_a3_s0_poc_comp_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_
 		{ 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF },
 		{ 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF },
 	},
-	[S6E3HAB_VRR_60_HS] = {
+	[S6E3HAB_VRR_DIM_60HS] = {
 		{ 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A },
 		{ 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1B }, { 0x53, 0x1B }, { 0x53, 0x1C }, { 0x53, 0x1D }, { 0x53, 0x1D }, { 0x53, 0x1E },
 		{ 0x53, 0x1F }, { 0x53, 0x1F }, { 0x53, 0x20 }, { 0x53, 0x21 }, { 0x53, 0x22 }, { 0x53, 0x23 }, { 0x53, 0x24 }, { 0x53, 0x25 }, { 0x53, 0x26 }, { 0x53, 0x27 },
@@ -157,7 +158,7 @@ static u8 hubble1_a3_s0_poc_comp_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_
 		{ 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF },
 		{ 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF }, { 0x53, 0xFF },
 	},
-	[S6E3HAB_VRR_120_HS] = {
+	[S6E3HAB_VRR_DIM_120HS] = {
 		{ 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A },
 		{ 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1A }, { 0x53, 0x1B }, { 0x53, 0x1B }, { 0x53, 0x1C }, { 0x53, 0x1D }, { 0x53, 0x1D }, { 0x53, 0x1E },
 		{ 0x53, 0x1F }, { 0x53, 0x1F }, { 0x53, 0x20 }, { 0x53, 0x21 }, { 0x53, 0x22 }, { 0x53, 0x23 }, { 0x53, 0x24 }, { 0x53, 0x25 }, { 0x53, 0x26 }, { 0x53, 0x27 },
@@ -186,8 +187,8 @@ static u8 hubble1_a3_s0_dbv_table[S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][2] = {
 	{ 0x07, 0xFF }, { 0x07, 0xFF }, { 0x07, 0xFF }, { 0x07, 0xFF }, { 0x07, 0xFF }, { 0x07, 0xFF },
 };
 
-static u8 hubble1_a3_s0_aor_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][2] = {
-	[S6E3HAB_VRR_60_NORMAL] = {
+static u8 hubble1_a3_s0_aor_table[MAX_S6E3HAB_VRR_DIM][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][2] = {
+	[S6E3HAB_VRR_DIM_60NS] = {
 		{ 0x0C, 0x65 },	{ 0x0C, 0x45 },	{ 0x0C, 0x27 },	{ 0x0C, 0x11 },	{ 0x0B, 0xF1 },	{ 0x0B, 0xD3 },	{ 0x0B, 0xB5 },	{ 0x0B, 0x99 },	{ 0x0B, 0x75 },	{ 0x0B, 0x57 },
 		{ 0x0B, 0x39 },	{ 0x0B, 0x1F },	{ 0x0B, 0x01 },	{ 0x0A, 0xE1 },	{ 0x0A, 0xC2 },	{ 0x0A, 0xA4 },	{ 0x0A, 0x65 },	{ 0x0A, 0x44 },	{ 0x0A, 0x21 },	{ 0x0A, 0x06 },
 		{ 0x09, 0xC3 },	{ 0x09, 0xA5 },	{ 0x09, 0x64 },	{ 0x09, 0x20 },	{ 0x09, 0x02 },	{ 0x08, 0xB7 },	{ 0x08, 0x68 },	{ 0x07, 0xF5 },	{ 0x07, 0xAF },	{ 0x07, 0x5C },
@@ -200,7 +201,7 @@ static u8 hubble1_a3_s0_aor_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_LUMIN
 		{ 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 },
 		{ 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 },
 	},
-	[S6E3HAB_VRR_60_HS] = {
+	[S6E3HAB_VRR_DIM_60HS] = {
 		{ 0x0C, 0x59 }, { 0x0C, 0x3A }, { 0x0C, 0x1C }, { 0x0B, 0xFE }, { 0x0B, 0xDF }, { 0x0B, 0xC1 }, { 0x0B, 0xA3 }, { 0x0B, 0x85 }, { 0x0B, 0x63 }, { 0x0B, 0x47 },
 		{ 0x0B, 0x29 }, { 0x0B, 0x09 }, { 0x0A, 0xEB }, { 0x0A, 0xC9 }, { 0x0A, 0xAB }, { 0x0A, 0x8C }, { 0x0A, 0x50 }, { 0x0A, 0x2D }, { 0x0A, 0x0B }, { 0x09, 0xEB },
 		{ 0x09, 0xB0 }, { 0x09, 0x91 }, { 0x09, 0x4E }, { 0x09, 0x17 }, { 0x08, 0xEF }, { 0x08, 0xA1 }, { 0x08, 0x59 }, { 0x07, 0xE9 },	{ 0x07, 0x99 },	{ 0x07, 0x49 },
@@ -213,7 +214,7 @@ static u8 hubble1_a3_s0_aor_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_LUMIN
 		{ 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 },
 		{ 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 }, { 0x01, 0xE4 },
 	},
-	[S6E3HAB_VRR_120_HS] = {
+	[S6E3HAB_VRR_DIM_120HS] = {
 		{ 0x0C, 0x59 },	{ 0x0C, 0x3A }, { 0x0C, 0x1C }, { 0x0B, 0xFE },	{ 0x0B, 0xDF },	{ 0x0B, 0xC1 },	{ 0x0B, 0xA3 }, { 0x0B, 0x85 },	{ 0x0B, 0x63 },	{ 0x0B, 0x47 },
 		{ 0x0B, 0x29 },	{ 0x0B, 0x09 },	{ 0x0A, 0xEB },	{ 0x0A, 0xC9 },	{ 0x0A, 0xAB }, { 0x0A, 0x8C },	{ 0x0A, 0x50 },	{ 0x0A, 0x2D },	{ 0x0A, 0x0B },	{ 0x09, 0xEB },
 		{ 0x09, 0xB0 }, { 0x09, 0x91 },	{ 0x09, 0x4E },	{ 0x09, 0x17 },	{ 0x08, 0xEF },	{ 0x08, 0xA1 },	{ 0x08, 0x59 },	{ 0x07, 0xE9 },	{ 0x07, 0x99 },	{ 0x07, 0x49 },
@@ -229,8 +230,8 @@ static u8 hubble1_a3_s0_aor_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_LUMIN
 };
 
 static u8 hubble1_a3_s0_mps_table[][1] = { { 0xCC }, { 0xDC } };
-static u8 hubble1_a3_s0_elvss_table[MAX_S6E3HAB_VRR][3][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][1] = {
-	[S6E3HAB_VRR_60_NORMAL] = {
+static u8 hubble1_a3_s0_elvss_table[MAX_S6E3HAB_VRR_DIM][3][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][1] = {
+	[S6E3HAB_VRR_DIM_60NS] = {
 		{
 			/* OVER_ZERO */
 			{ 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x18 }, { 0x18 },
@@ -274,7 +275,7 @@ static u8 hubble1_a3_s0_elvss_table[MAX_S6E3HAB_VRR][3][S6E3HAB_HUBBLE_TOTAL_NR_
 			{ 0x1C }, { 0x1A }, { 0x19 }, { 0x18 }, { 0x17 }, { 0x16 },
 		},
 	},
-	[S6E3HAB_VRR_60_HS] = {
+	[S6E3HAB_VRR_DIM_60HS] = {
 		{
 			/* OVER_ZERO */
 			{ 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x18 }, { 0x18 },
@@ -318,7 +319,7 @@ static u8 hubble1_a3_s0_elvss_table[MAX_S6E3HAB_VRR][3][S6E3HAB_HUBBLE_TOTAL_NR_
 			{ 0x1C }, { 0x1A }, { 0x19 }, { 0x18 }, { 0x17 }, { 0x16 },
 		},
 	},
-	[S6E3HAB_VRR_120_HS] = {
+	[S6E3HAB_VRR_DIM_120HS] = {
 		{
 			/* OVER_ZERO */
 			{ 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x17 }, { 0x18 }, { 0x18 },
@@ -366,8 +367,8 @@ static u8 hubble1_a3_s0_elvss_table[MAX_S6E3HAB_VRR][3][S6E3HAB_HUBBLE_TOTAL_NR_
 
 };
 
-static u8 hubble1_a3_s0_elvss_temp_table[MAX_S6E3HAB_VRR][3][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][1] = {
-	[S6E3HAB_VRR_60_NORMAL] = {
+static u8 hubble1_a3_s0_elvss_temp_table[MAX_S6E3HAB_VRR_DIM][3][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][1] = {
+	[S6E3HAB_VRR_DIM_60NS] = {
 		{
 			/* OVER_ZERO */
 			{ 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 },
@@ -411,7 +412,7 @@ static u8 hubble1_a3_s0_elvss_temp_table[MAX_S6E3HAB_VRR][3][S6E3HAB_HUBBLE_TOTA
 			{ 0x0 }, { 0x0 },
 		},
 	},
-	[S6E3HAB_VRR_60_HS] = {
+	[S6E3HAB_VRR_DIM_60HS] = {
 		{
 			/* OVER_ZERO */
 			{ 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 },
@@ -455,7 +456,7 @@ static u8 hubble1_a3_s0_elvss_temp_table[MAX_S6E3HAB_VRR][3][S6E3HAB_HUBBLE_TOTA
 			{ 0x0 }, { 0x0 },
 		},
 	},
-	[S6E3HAB_VRR_120_HS] = {
+	[S6E3HAB_VRR_DIM_120HS] = {
 		{
 			/* OVER_ZERO */
 			{ 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 }, { 0x0 },
@@ -501,8 +502,8 @@ static u8 hubble1_a3_s0_elvss_temp_table[MAX_S6E3HAB_VRR][3][S6E3HAB_HUBBLE_TOTA
 	}
 };
 
-static u8 hubble1_a3_s0_vint_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][1] = {
-	[S6E3HAB_VRR_60_NORMAL] = {
+static u8 hubble1_a3_s0_vint_table[MAX_S6E3HAB_VRR_DIM][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][1] = {
+	[S6E3HAB_VRR_DIM_60NS] = {
 		{ 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 },
 		{ 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 },
 		{ 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 },
@@ -515,7 +516,7 @@ static u8 hubble1_a3_s0_vint_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_LUMI
 		{ 0x23 }, { 0x24 }, { 0x25 }, { 0x26 }, { 0x27 }, { 0x28 }, { 0x29 }, { 0x2A }, { 0x2B }, { 0x2C },
 		{ 0x2D }, { 0x2E }, { 0x2F }, { 0x30 }, { 0x31 }, { 0x32 },
 	},
-	[S6E3HAB_VRR_60_HS] = {
+	[S6E3HAB_VRR_DIM_60HS] = {
 		{ 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 },
 		{ 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 },
 		{ 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 },
@@ -528,7 +529,7 @@ static u8 hubble1_a3_s0_vint_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_LUMI
 		{ 0x23 }, { 0x24 }, { 0x25 }, { 0x26 }, { 0x27 }, { 0x28 }, { 0x29 }, { 0x2A }, { 0x2B }, { 0x2C },
 		{ 0x2D }, { 0x2E }, { 0x2F }, { 0x30 }, { 0x31 }, { 0x32 },
 	},
-	[S6E3HAB_VRR_120_HS] = {
+	[S6E3HAB_VRR_DIM_120HS] = {
 		{ 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 },
 		{ 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 },
 		{ 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 }, { 0x23 },
@@ -579,8 +580,8 @@ static u8 hubble1_a3_s0_irc_mode_table[][4] = {
 	{ 0x25, 0xD1, 0x02, 0x2D },	/* flat gamma */
 };
 
-static u8 hubble1_a3_s0_irc_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][S6E3HAB_IRC_VALUE_LEN] = {
-	[S6E3HAB_VRR_60_NORMAL] = {
+static u8 hubble1_a3_s0_irc_table[MAX_S6E3HAB_VRR_DIM][S6E3HAB_HUBBLE_TOTAL_NR_LUMINANCE][S6E3HAB_IRC_VALUE_LEN] = {
+	[S6E3HAB_VRR_DIM_60NS] = {
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0xC7, 0xA4, 0x18 },
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x12, 0xC7, 0xA4, 0x18 },
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x12, 0xC7, 0xA4, 0x18 },
@@ -673,7 +674,7 @@ static u8 hubble1_a3_s0_irc_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_LUMIN
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x0E, 0x0E, 0x0E, 0x37, 0x37, 0x37, 0x4A, 0x4A, 0x4A, 0x58, 0x58, 0x58, 0x5C, 0x5C, 0x5C, 0x12, 0xC7, 0xA4, 0x18 },
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x0E, 0x0E, 0x0E, 0x37, 0x37, 0x37, 0x49, 0x49, 0x49, 0x57, 0x57, 0x57, 0x5B, 0x5B, 0x5B, 0x12, 0xC7, 0xA4, 0x18 },
 	},
-	[S6E3HAB_VRR_60_HS] = {
+	[S6E3HAB_VRR_DIM_60HS] = {
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0xC7, 0xA4, 0x18 },
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x12, 0xC7, 0xA4, 0x18 },
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x12, 0xC7, 0xA4, 0x18 },
@@ -766,7 +767,7 @@ static u8 hubble1_a3_s0_irc_table[MAX_S6E3HAB_VRR][S6E3HAB_HUBBLE_TOTAL_NR_LUMIN
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x0E, 0x0E, 0x0E, 0x37, 0x37, 0x37, 0x4A, 0x4A, 0x4A, 0x58, 0x58, 0x58, 0x5C, 0x5C, 0x5C, 0x12, 0xC7, 0xA4, 0x18 },
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x0E, 0x0E, 0x0E, 0x37, 0x37, 0x37, 0x49, 0x49, 0x49, 0x57, 0x57, 0x57, 0x5B, 0x5B, 0x5B, 0x12, 0xC7, 0xA4, 0x18 },
 	},
-	[S6E3HAB_VRR_120_HS] = {
+	[S6E3HAB_VRR_DIM_120HS] = {
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0xC7, 0xA4, 0x18 },
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x12, 0xC7, 0xA4, 0x18 },
 		{ 0x27, 0x65, 0xFF, 0x01, 0x00, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x8E, 0x97, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x12, 0xC7, 0xA4, 0x18 },
@@ -953,10 +954,12 @@ static u8 hubble1_a3_s0_paset_table[][MAX_S6E3HAB_SCALER][4] = {
 	}
 };
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 hubble1_a3_s0_ssd_improve_table[][1] = {
 	[S6E3HAB_VRR_FPS_60] = { 0x45 },
 	[S6E3HAB_VRR_FPS_120] = { 0x46 },
 };
+#endif
 
 static u8 hubble1_a3_s0_aid_table[MAX_S6E3HAB_AID_CYCLE][1] = {
 	[S6E3HAB_AID_2_CYCLE] = { 0x40 },
@@ -964,7 +967,7 @@ static u8 hubble1_a3_s0_aid_table[MAX_S6E3HAB_AID_CYCLE][1] = {
 };
 
 static u8 hubble1_a3_s0_osc_table[][1] = {
-	[S6E3HAB_VRR_MODE_NORMAL] = { 0xC2 },
+	[S6E3HAB_VRR_MODE_NS] = { 0xC2 },
 	[S6E3HAB_VRR_MODE_HS] = { 0xC0 },
 };
 
@@ -979,31 +982,29 @@ static u8 hubble1_a3_s0_src_amp_table[][1] = {
 };
 
 static u8 hubble1_a3_s0_ltps_0_table[][1] = {
-	[S6E3HAB_VRR_MODE_NORMAL] = { 0x9D },
+	[S6E3HAB_VRR_MODE_NS] = { 0x9D },
 	[S6E3HAB_VRR_MODE_HS] = { 0x85 },
 };
 
 static u8 hubble1_a3_s0_osc_86_4m_ltps_1_table[][8] = {
-	[S6E3HAB_VRR_MODE_NORMAL] = { 0x0F, 0x54, 0x00, 0x00, 0x00, 0x40, 0x0F, 0x54 },
+	[S6E3HAB_VRR_MODE_NS] = { 0x0F, 0x54, 0x00, 0x00, 0x00, 0x40, 0x0F, 0x54 },
 	[S6E3HAB_VRR_MODE_HS] = { 0x15, 0x4A, 0x00, 0x00, 0x00, 0x40, 0x15, 0x4A },
 };
 
 static u8 hubble1_a3_s0_osc_86_4m_ltps_2_table[][8] = {
-	[S6E3HAB_VRR_MODE_NORMAL] = { 0x0B, 0x2F, 0x00, 0x00, 0x00, 0xD8, 0x0B, 0x2F },
+	[S6E3HAB_VRR_MODE_NS] = { 0x0B, 0x2F, 0x00, 0x00, 0x00, 0xD8, 0x0B, 0x2F },
 	[S6E3HAB_VRR_MODE_HS] = { 0x16, 0x19, 0x00, 0x00, 0x00, 0xD8, 0x16, 0x19 },
 };
 
 static u8 hubble1_a3_s0_osc_96_5m_ltps_1_table[][8] = {
-	[S6E3HAB_VRR_MODE_NORMAL] = { 0x10, 0x5E, 0x00, 0x00, 0x00, 0x40, 0x10, 0x5E },
+	[S6E3HAB_VRR_MODE_NS] = { 0x10, 0x5E, 0x00, 0x00, 0x00, 0x40, 0x10, 0x5E },
 	[S6E3HAB_VRR_MODE_HS] = { 0x17, 0x53, 0x00, 0x00, 0x00, 0x40, 0x17, 0x53 },
 };
 
 static u8 hubble1_a3_s0_osc_96_5m_ltps_2_table[][8] = {
-	[S6E3HAB_VRR_MODE_NORMAL] = { 0x0C, 0x32, 0x00, 0x00, 0x00, 0xD8, 0x0C, 0x32 },
+	[S6E3HAB_VRR_MODE_NS] = { 0x0C, 0x32, 0x00, 0x00, 0x00, 0xD8, 0x0C, 0x32 },
 	[S6E3HAB_VRR_MODE_HS] = { 0x18, 0x1C, 0x00, 0x00, 0x00, 0xD8, 0x18, 0x1C },
 };
-
-static u8 hubble1_a3_s0_mtp_table[1][S6E3HAB_MTP_LEN];
 
 static u8 hubble1_a3_s0_fps_table[][1] = {
 	[S6E3HAB_VRR_FPS_60] = { 0x00 },
@@ -1055,10 +1056,12 @@ static u8 hubble1_a3_s0_lpm_off_table[][4][1] = {
 	}
 };
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 hubble1_a3_s0_lpm_dyn_vlin_table[][1] = {
 	{ 0x0E },	/* < OPR 2.5 % */
 	{ 0x07 },	/* >= OPR 2.5 % */
 };
+#endif
 
 static u8 hubble1_a3_s0_dia_onoff_table[][1] = {
 	{ 0x01 }, /* dia off */
@@ -1127,12 +1130,13 @@ static u8 hubble1_a3_s0_96_5m_default_dyn_ffc[][21] = {
 	{0x34, 0x46, 0x34, 0x46, 0x09, 0x00, 0x1E, 0xAF, 0x24, 0xD2, 0x0A, 0x77, 0x10, 0x00, 0x33, 0x00, 0xFF, 0x01, 0x8B, 0x08, 0x00},
 };
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 hubble1_a3_s0_default_dyn_ffc[][4] = {
 	{0x2F, 0xCB, 0x2F, 0xCB}, /* 1157 */
 
 	{0x2F, 0xCB, 0x2F, 0xCB}, /* 1157 */
 };
-
+#endif
 
 static u8 hubble1_a3_s0_ddi_osc_clk_tune1[][2] = {
 	/* OSC 96.5 */
@@ -1236,7 +1240,7 @@ static u8 hubble1_a3_s0_ddi_osc_94_5m_ltps_comp_tbl2[][45] = {
 #endif
 
 static u8 hubble1_a3_s0_hbm_cycle_table[][1] = {
-	[S6E3HAB_VRR_MODE_NORMAL] = { 0x21 },
+	[S6E3HAB_VRR_MODE_NS] = { 0x21 },
 	[S6E3HAB_VRR_MODE_HS] = { 0x11 },
 };
 
@@ -1269,11 +1273,15 @@ static struct maptbl hubble1_a3_s0_maptbl[MAX_MAPTBL] = {
 	[HMD_ELVSS_MAPTBL] = DEFINE_3D_MAPTBL(hubble1_a3_s0_hmd_elvss_table, init_common_table, getidx_hmd_dimming_maptbl, copy_common_maptbl),
 #endif /* CONFIG_SUPPORT_HMD */
 	[DSC_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_dsc_table, init_common_table, getidx_dsc_table, copy_common_maptbl),
+#ifdef CONFIG_SUPPORT_DSU
 	[PPS_MAPTBL] = DEFINE_3D_MAPTBL(hubble1_a3_s0_pps_table, init_common_table, getidx_resolution_table, copy_common_maptbl),
 	[SCALER_MAPTBL] = DEFINE_3D_MAPTBL(hubble1_a3_s0_scaler_table, init_common_table, getidx_resolution_table, copy_common_maptbl),
 	[CASET_MAPTBL] = DEFINE_3D_MAPTBL(hubble1_a3_s0_caset_table, init_common_table, getidx_resolution_table, copy_common_maptbl),
 	[PASET_MAPTBL] = DEFINE_3D_MAPTBL(hubble1_a3_s0_paset_table, init_common_table, getidx_resolution_table, copy_common_maptbl),
+#endif
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 	[SSD_IMPROVE_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_ssd_improve_table, init_common_table, getidx_vrr_fps_table, copy_common_maptbl),
+#endif
 	[AID_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_aid_table, init_common_table, getidx_vrr_aid_cycle_table, copy_common_maptbl),
 	[OSC_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_osc_table, init_common_table, getidx_vrr_mode_table, copy_common_maptbl),
 	[VFP_NM_MAPTBL] = DEFINE_0D_MAPTBL(hubble1_a3_s0_vfp_nm_table, init_common_table, NULL, copy_vfp_nm_maptbl),
@@ -1285,11 +1293,12 @@ static struct maptbl hubble1_a3_s0_maptbl[MAX_MAPTBL] = {
 	[OSC_86_4M_LTPS_2_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_osc_86_4m_ltps_2_table, init_common_table, getidx_vrr_mode_table, copy_common_maptbl),
 	[OSC_96_5M_LTPS_1_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_osc_96_5m_ltps_1_table, init_common_table, getidx_vrr_mode_table, copy_common_maptbl),
 	[OSC_96_5M_LTPS_2_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_osc_96_5m_ltps_2_table, init_common_table, getidx_vrr_mode_table, copy_common_maptbl),
-	[MTP_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_mtp_table, init_mtp_table, getidx_common_maptbl, copy_common_maptbl),
 	[FPS_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_fps_table, init_common_table, getidx_vrr_fps_table, copy_common_maptbl),
 	[LPM_NIT_MAPTBL] = DEFINE_3D_MAPTBL(hubble1_a3_s0_lpm_nit_table, init_lpm_table, getidx_lpm_table, copy_common_maptbl),
 	[LPM_MODE_MAPTBL] = DEFINE_3D_MAPTBL(hubble1_a3_s0_lpm_mode_table, init_common_table, getidx_lpm_table, copy_common_maptbl),
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 	[LPM_DYN_VLIN_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_lpm_dyn_vlin_table, init_common_table, getidx_lpm_dyn_vlin_table, copy_common_maptbl),
+#endif
 	[LPM_OFF_MAPTBL] = DEFINE_3D_MAPTBL(hubble1_a3_s0_lpm_off_table, init_common_table, getidx_lpm_table, copy_common_maptbl),
 
 #ifdef CONFIG_SUPPORT_GRAM_CHECKSUM
@@ -1300,7 +1309,6 @@ static struct maptbl hubble1_a3_s0_maptbl[MAX_MAPTBL] = {
 #ifdef CONFIG_DYNAMIC_FREQ
 	[OSC_96_5M_DYN_FFC_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_osc_96_5m_dyn_ffc, init_common_table, getidx_96_5_dyn_ffc_table, copy_common_maptbl),
 	[DYN_FFC_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_dyn_ffc, init_common_table, getidx_86_4_dyn_ffc_table, copy_common_maptbl),
-	//[DEFAULT_FFC_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_default_dyn_ffc, init_common_table, getidx_dyn_ffc_default_table, copy_common_maptbl),
 	[OSC_96_5M_DEFAULT_FFC_MAPTBL] = DEFINE_2D_MAPTBL(hubble1_a3_s0_96_5m_default_dyn_ffc, init_common_table, getidx_96_5_dyn_default_ffc_table, copy_common_maptbl),
 	[DDI_OSC_CLK_TUNE1] = DEFINE_2D_MAPTBL(hubble1_a3_s0_ddi_osc_clk_tune1, init_common_table, getidx_ddi_osc_comp_table, copy_common_maptbl),
 	[DDI_OSC_CLK_TUNE2] = DEFINE_2D_MAPTBL(hubble1_a3_s0_ddi_osc_clk_tune2, init_common_table, getidx_ddi_osc2_comp_table, copy_common_maptbl),
@@ -1357,6 +1365,7 @@ static u8 HUBBLE1_A3_S0_GCT_PPS[] = { 0x9E,
 };
 #endif
 static u8 HUBBLE1_A3_S0_DSC[] = { 0x01 };
+#ifdef CONFIG_SUPPORT_DSU
 static u8 HUBBLE1_A3_S0_PPS[] = {
 	// WQHD : 1440x3200
 	0x11, 0x00, 0x00, 0x89, 0x30, 0x80, 0x0C, 0x80,
@@ -1376,6 +1385,27 @@ static u8 HUBBLE1_A3_S0_PPS[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+#else
+/* todo: c1 fixed to FHD, mres will be update */
+static u8 HUBBLE1_A3_S0_PPS[] = {
+	0x11, 0x00, 0x00, 0x89, 0x30, 0x80, 0x09, 0x60,
+	0x04, 0x38, 0x00, 0x28, 0x02, 0x1C, 0x02, 0x1C,
+	0x02, 0x00, 0x02, 0x0E, 0x00, 0x20, 0x03, 0xDD,
+	0x00, 0x07, 0x00, 0x0C, 0x02, 0x77, 0x02, 0x8B,
+	0x18, 0x00, 0x10, 0xF0, 0x03, 0x0C, 0x20, 0x00,
+	0x06, 0x0B, 0x0B, 0x33, 0x0E, 0x1C, 0x2A, 0x38,
+	0x46, 0x54, 0x62, 0x69, 0x70, 0x77, 0x79, 0x7B,
+	0x7D, 0x7E, 0x01, 0x02, 0x01, 0x00, 0x09, 0x40,
+	0x09, 0xBE, 0x19, 0xFC, 0x19, 0xFA, 0x19, 0xF8,
+	0x1A, 0x38, 0x1A, 0x78, 0x1A, 0xB6, 0x2A, 0xF6,
+	0x2B, 0x34, 0x2B, 0x74, 0x3B, 0x74, 0x6B, 0xF4,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+#endif
 
 static u8 HUBBLE1_A3_S0_MCA_SETGING1[] = {
 	0x96,
@@ -1406,7 +1436,9 @@ static u8 HUBBLE1_A3_S0_DIA_SETTING[] = {
 };
 
 static u8 HUBBLE1_A3_S0_TE_ON[] = { 0x35, 0x00 };
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 HUBBLE1_A3_S0_TE_OFF[] = { 0x34 };
+#endif
 static u8 HUBBLE1_A3_S0_ERR_FG[] = { 0xED, 0x06, 0x4C };
 
 #ifdef CONFIG_DYNAMIC_FREQ
@@ -1421,7 +1453,6 @@ static u8 HUBBLE1_A3_S0_FFC[] = {
 	0xC5,
 	0x11, 0x08, 0x50, 0x2F, 0xCB, 0x2F, 0xCB
 };
-#endif
 
 static u8 HUBBLE1_A3_S0_OSC_96_5M_FFC_DEFAULT[] = {
 	0xC5,
@@ -1433,6 +1464,7 @@ static u8 HUBBLE1_A3_S0_FFC_DEFAULT[] = {
 	0xC5,
 	0x11, 0x08, 0x50, 0x2F, 0xCB, 0x2F, 0xCB /* 1157 Mbps */
 };
+#endif
 
 static u8 HUBBLE1_A3_S0_TSP_HSYNC[] = {
 	0xB9,
@@ -1469,77 +1501,19 @@ static u8 HUBBLE1_A3_S0_HBM_GAMMA[S6E3HAB_GAMMA_CMD_CNT] = {
 	0x00, 0x00, 0x00,
 };
 
-static u8 HUBBLE1_A3_S0_GAMMA_BLACK[S6E3HAB_GAMMA_CMD_CNT] = {
-	S6E3HAB_GAMMA_REG,
-	0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-};
-
-static u8 HUBBLE1_A3_S0_HBM_GAMMA_BLACK[S6E3HAB_GAMMA_CMD_CNT] = {
-	S6E3HAB_HBM_GAMMA_REG,
-	0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-};
-
-static u8 HUBBLE1_A3_S0_MTP[S6E3HAB_MTP_LEN + 1] = {
-	S6E3HAB_MTP_REG,
-	0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-};
-
-static u8 HUBBLE1_A3_S0_MTP_BLACK[S6E3HAB_MTP_LEN + 1] = {
-	S6E3HAB_MTP_REG,
-	0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00,
-};
-
 static u8 HUBBLE1_A3_S0_HBM_CYCLE[] = { 0xB3, 0x21 };
 static u8 HUBBLE1_A3_S0_HBM_ONOFF[] = { 0x53, 0x00 };
 static u8 HUBBLE1_A3_S0_HBM_AOR[] = { 0xB1, 0x00, 0x00, 0x00, 0x00 };
 
 static u8 HUBBLE1_A3_S0_DBV[] = { 0x6A, 0x07, 0xFF, 0x01 };
 static u8 HUBBLE1_A3_S0_AOR[] = { 0xB1, 0x00, 0x18 };
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 HUBBLE1_A3_S0_POC_COMP1[] = {
 	0xB1,
 	0x01, 0xAF, 0x00, 0x54, 0x68, 0xCC, 0x78, 0x30, 0xCC, 0x64, 0xFF
 };
 static u8 HUBBLE1_A3_S0_POC_COMP2[] = { 0x96, 0x53, 0xFF };
+#endif
 
 static u8 HUBBLE1_A3_S0_TSET_MPS_ELVSS[] = {
 	0xB5,
@@ -1575,7 +1549,9 @@ static u8 HUBBLE1_A3_S0_IRC_ON[] = { S6E3HAB_IRC_REG, 0x27 };
 static u8 HUBBLE1_A3_S0_IRC_OFF[] = { S6E3HAB_IRC_REG, 0x00 };
 #endif
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 HUBBLE1_A3_S0_GAMMA_MODE1[] = { 0xB1, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00 };
+#endif
 #ifdef CONFIG_SUPPORT_DDI_CMDLOG
 static u8 HUBBLE1_A3_S0_CMDLOG_ENABLE[] = { 0xF7, 0x80 };
 static u8 HUBBLE1_A3_S0_CMDLOG_DISABLE[] = { 0xF7, 0x00 };
@@ -1585,13 +1561,22 @@ static u8 HUBBLE1_A3_S0_GAMMA_UPDATE_ENABLE[] = { 0xF7, 0x0F };
 #endif
 static u8 HUBBLE1_A3_S0_ACL_ONOFF[] = { 0x55, 0x00 };
 static u8 HUBBLE1_A3_S0_ACL_CONTROL[] = { 0xB4, 0x00, 0x44, 0x80, 0x65, 0x26, 0x00 };
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 HUBBLE1_A3_S0_ACL_DIM_FRM[] = { 0xB4, 0x20 };
+#endif
 
 static u8 HUBBLE1_A3_S0_DIA_ONOFF[] = { 0x91, 0x00 };
 
+#ifdef CONFIG_SUPPORT_DSU
 static u8 HUBBLE1_A3_S0_SCALER[] = { 0xBA, 0x01, 0x26, 0x08, 0x08, 0xF3};
 static u8 HUBBLE1_A3_S0_CASET[] = { 0x2A, 0x00, 0x00, 0x05, 0x9F };
 static u8 HUBBLE1_A3_S0_PASET[] = { 0x2B, 0x00, 0x00, 0x0C, 0x7F };
+#else
+/* todo: c1 fixed to FHD, mres will be update */
+static u8 HUBBLE1_A3_S0_SCALER[] = { 0xBA, 0x02, 0x26, 0x08, 0x08, 0xF3 };
+static u8 HUBBLE1_A3_S0_CASET[] = { 0x2A, 0x00, 0x00, 0x04, 0x37 };
+static u8 HUBBLE1_A3_S0_PASET[] = { 0x2B, 0x00, 0x00, 0x09, 0x5F };
+#endif
 
 static u8 HUBBLE1_A3_S0_LPM_AOR[] =  { 0xB1, 0x0C, 0x65 }; /*AOR 98.4*/
 static u8 HUBBLE1_A3_S0_LPM_NIT[] = {0xBB, 0x09, 0x0C, 0x00, 0x18, 0x0C, 0x43, 0x00};
@@ -1602,8 +1587,10 @@ static u8 HUBBLE1_A3_S0_ASWIRE[] = { 0xB5, 0x00};
 
 static u8 HUBBLE1_A3_S0_AVC2_ON[] = { 0xF4, 0xCA };
 static u8 HUBBLE1_A3_S0_AVC2_OFF[] = { 0xF4, 0x8A };
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 HUBBLE1_A3_S0_LPM_DYN_VLIN[] = { 0xB5, 0x07 };
 static u8 HUBBLE1_A3_S0_LPM_OFF_DYN_VLIN[] = { 0xB5, 0x38 };
+#endif
 
 static u8 HUBBLE1_A3_S0_EXIT_ALPM[] = {0x53, 0x00};
 
@@ -1773,12 +1760,14 @@ static u8 HUBBLE1_A3_S0_GAMMA_INTER_CONTROL2[] = {
 	0x80
 };
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 HUBBLE1_A3_S0_STM_ENABLE[] = {
 	0x86,
 	0x01, 0x08, 0x10, 0x21, 0x11, 0x42, 0x01, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 static u8 HUBBLE1_A3_S0_STM_DISABLE[] = { 0x86, 0x00 };
+#endif
 
 #ifdef CONFIG_SUPPORT_DYNAMIC_HLPM
 static u8 HUBBLE1_A3_S0_DYNAMIC_HLPM_ENABLE[] = {
@@ -1846,10 +1835,11 @@ static DEFINE_STATIC_PACKET(hubble1_a3_s0_sleep_out, DSI_PKT_TYPE_WR, HUBBLE1_A3
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_sleep_in, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_SLEEP_IN, 0);
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_display_on, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_DISPLAY_ON, 0);
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_display_off, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_DISPLAY_OFF, 0);
-static DEFINE_PKTUI(hubble1_a3_s0_exit_alpm, &hubble1_a3_s0_maptbl[HBM_ONOFF_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_exit_alpm, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_EXIT_ALPM, 0);
+static DEFINE_STATIC_PACKET(hubble1_a3_s0_exit_alpm, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_EXIT_ALPM, 0);
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_te_off, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_TE_OFF, 0);
+#endif
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_te_on, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_TE_ON, 0);
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_err_fg, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_ERR_FG, 0);
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_mca_setting1, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_MCA_SETGING1, 0xA9);
@@ -1890,9 +1880,11 @@ static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_ddi_osc_tune2, DSI_PKT_TYPE_WR, HUBB
 
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_tsp_hsync, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_TSP_HSYNC, 0);
 
-static u8 HUBBLE1_A3_S0_SSD_IMROVE[] = { 0xEF, 0x45, };
+#if defined(__PANEL_NOT_USED_VARIABLE__)
+static u8 HUBBLE1_A3_S0_SSD_IMPROVE[] = { 0xEF, 0x45, };
 static DEFINE_PKTUI(hubble1_a3_s0_ssd_improve, &hubble1_a3_s0_maptbl[SSD_IMPROVE_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_ssd_improve, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_SSD_IMROVE, 0x0C);
+static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_ssd_improve, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_SSD_IMPROVE, 0x0C);
+#endif
 
 static u8 HUBBLE1_A3_S0_AID[] = { 0xB1, 0x80, };
 static DEFINE_PKTUI(hubble1_a3_s0_aid, &hubble1_a3_s0_maptbl[AID_MAPTBL], 1);
@@ -1938,14 +1930,6 @@ static u8 HUBBLE1_A3_S0_OSC_96_5M_LTPS_2[] = { 0xCB, 0x00, 0x00, 0x00, 0x00, 0x0
 static DEFINE_PKTUI(hubble1_a3_s0_osc_96_5m_ltps_2, &hubble1_a3_s0_maptbl[OSC_96_5M_LTPS_2_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_osc_96_5m_ltps_2, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_OSC_96_5M_LTPS_2, 0x8E);
 
-static u8 HUBBLE1_A3_S0_LTPS_1_OSC_96_5M[] = { 0xCB, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-static DEFINE_PKTUI(hubble1_a3_s0_ltps_1_osc_96_5m, &hubble1_a3_s0_maptbl[OSC_96_5M_LTPS_1_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_ltps_1_osc_96_5m, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_LTPS_1_OSC_96_5M, 0x54);
-
-static u8 HUBBLE1_A3_S0_LTPS_2_OSC_96_5M[] = { 0xCB, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-static DEFINE_PKTUI(hubble1_a3_s0_ltps_2_osc_96_5m, &hubble1_a3_s0_maptbl[OSC_96_5M_LTPS_2_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_ltps_2_osc_96_5m, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_LTPS_2_OSC_96_5M, 0x8E);
-
 static u8 HUBBLE1_A3_S0_FPS[] = { 0x60, 0x00, };
 static DEFINE_PKTUI(hubble1_a3_s0_fps, &hubble1_a3_s0_maptbl[FPS_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_fps, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_FPS, 0);
@@ -1953,15 +1937,21 @@ static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_fps, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_
 static DEFINE_PKTUI(hubble1_a3_s0_dsc, &hubble1_a3_s0_maptbl[DSC_MAPTBL], 0);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_dsc, DSI_PKT_TYPE_COMP, HUBBLE1_A3_S0_DSC, 0);
 
+#ifdef CONFIG_SUPPORT_DSU
 static DEFINE_PKTUI(hubble1_a3_s0_pps, &hubble1_a3_s0_maptbl[PPS_MAPTBL], 0);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_pps, DSI_PKT_TYPE_PPS, HUBBLE1_A3_S0_PPS, 0);
-
 static DEFINE_PKTUI(hubble1_a3_s0_scaler, &hubble1_a3_s0_maptbl[SCALER_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_scaler, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_SCALER, 0);
 static DEFINE_PKTUI(hubble1_a3_s0_caset, &hubble1_a3_s0_maptbl[CASET_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_caset, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_CASET, 0);
 static DEFINE_PKTUI(hubble1_a3_s0_paset, &hubble1_a3_s0_maptbl[PASET_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_paset, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_PASET, 0);
+#else
+static DEFINE_STATIC_PACKET(hubble1_a3_s0_pps, DSI_PKT_TYPE_PPS, HUBBLE1_A3_S0_PPS, 0);
+static DEFINE_STATIC_PACKET(hubble1_a3_s0_scaler, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_SCALER, 0);
+static DEFINE_STATIC_PACKET(hubble1_a3_s0_caset, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_CASET, 0);
+static DEFINE_STATIC_PACKET(hubble1_a3_s0_paset, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_PASET, 0);
+#endif
 
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_lpm_aor, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_LPM_AOR, 0);
 static DEFINE_PKTUI(hubble1_a3_s0_lpm_off_nit, &hubble1_a3_s0_maptbl[LPM_OFF_MAPTBL], 1);
@@ -1972,9 +1962,11 @@ static DEFINE_STATIC_PACKET(hubble1_a3_s0_aswire, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_avs_on, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_AVS_ON, 0x28);
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_avc2_on, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_AVC2_ON, 0x09);
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_avc2_off, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_AVC2_OFF, 0x09);
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_PKTUI(hubble1_a3_s0_lpm_dyn_vlin, &hubble1_a3_s0_maptbl[LPM_DYN_VLIN_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_lpm_dyn_vlin, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_LPM_DYN_VLIN, 0x20);
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_lpm_off_dyn_vlin, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_LPM_OFF_DYN_VLIN, 0x1D);
+#endif
 static DEFINE_PKTUI(hubble1_a3_s0_lpm_mode, &hubble1_a3_s0_maptbl[LPM_MODE_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_lpm_mode, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_LPM_MODE, 0);
 
@@ -2003,10 +1995,14 @@ static DEFINE_STATIC_PACKET(hubble1_a3_s0_ccd_test_enable, DSI_PKT_TYPE_WR, HUBB
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_ccd_test_disable, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_CCD_DISABLE, 0);
 #endif
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_stm_enable, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_STM_ENABLE, 0);
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_stm_disable, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_STM_DISABLE, 0);
+#endif
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_gamma_mode1, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_GAMMA_MODE1, 0x95);
+#endif
 
 #ifdef CONFIG_SUPPORT_ISC_TUNE_TEST
 static DEFINE_PKTUI(hubble1_a3_s0_isc_threshold, &hubble1_a3_s0_maptbl[ISC_THRESHOLD_MAPTBL], 1);
@@ -2034,17 +2030,14 @@ static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_hbm_aor, DSI_PKT_TYPE_WR, HUBBLE1_A3
 
 static DEFINE_PKTUI(hubble1_a3_s0_gamma, &hubble1_a3_s0_maptbl[GAMMA_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_gamma, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_GAMMA, 0);
-static DEFINE_STATIC_PACKET(hubble1_a3_s0_gamma_black, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_GAMMA_BLACK, 0);
-static DEFINE_STATIC_PACKET(hubble1_a3_s0_hbm_gamma_black, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_HBM_GAMMA_BLACK, S6E3HAB_HBM_GAMMA_OFS);
-static DEFINE_PKTUI(hubble1_a3_s0_mtp, &hubble1_a3_s0_maptbl[MTP_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_mtp, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_MTP, 0);
-static DEFINE_STATIC_PACKET(hubble1_a3_s0_mtp_black, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_MTP_BLACK, 0);
 static DEFINE_PKTUI(hubble1_a3_s0_aor, &hubble1_a3_s0_maptbl[AOR_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_aor, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_AOR, 0);
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_poc_comp1, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_POC_COMP1, 0x06);
 static DEFINE_PKTUI(hubble1_a3_s0_poc_comp2, &hubble1_a3_s0_maptbl[POC_COMP_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_poc_comp2, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_POC_COMP2, 0x02);
+#endif
 
 static DEFINE_PKTUI(hubble1_a3_s0_dbv, &hubble1_a3_s0_maptbl[DBV_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_dbv, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_DBV, 0);
@@ -2227,7 +2220,9 @@ static DECLARE_PKTUI(hubble1_a3_s0_acl_control) = {
 	{ .offset = 6, .maptbl = &hubble1_a3_s0_maptbl[ACL_OPR_MAPTBL] },
 };
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_acl_control, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_ACL_CONTROL, 0);
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_acl_dim_frm, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_ACL_DIM_FRM, 0xF);
+#endif
 
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_isc, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_ISC, 0x08);
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_isc_lpm, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_ISC_LPM, 0x10);
@@ -2320,16 +2315,17 @@ static DEFINE_PANEL_MDELAY(hubble1_a3_s0_wait_5msec, 5);
 static DEFINE_PANEL_MDELAY(hubble1_a3_s0_wait_sleep_out_20msec, 20);
 static DEFINE_PANEL_MDELAY(hubble1_a3_s0_wait_sleep_out_10msec, 10);
 static DEFINE_PANEL_MDELAY(hubble1_a3_s0_wait_ltps_set, 10);
-static DEFINE_PANEL_MDELAY(hubble1_a3_s0_wait_mca, 130);
+#ifdef CONFIG_SUPPORT_AFC
 static DEFINE_PANEL_MDELAY(hubble1_a3_s0_wait_afc_off, 20);
+#endif
 static DEFINE_PANEL_MDELAY(hubble1_a3_s0_wait_sleep_in, 120);
 static DEFINE_PANEL_UDELAY(hubble1_a3_s0_wait_1_frame_in_60hz, 16700);
-static DEFINE_PANEL_UDELAY(hubble1_a3_s0_wait_1_frame_in_30hz, 33400);
 static DEFINE_PANEL_MDELAY(hubble1_a3_s0_wait_100msec, 100);
 static DEFINE_PANEL_MDELAY(hubble1_a3_s0_wait_124msec, 124);
-static DEFINE_PANEL_FRAME_DELAY(hubble1_a3_s0_wait_1_frame, 1);
 static DEFINE_PANEL_VSYNC_DELAY(hubble1_a3_s0_wait_1_vsync, 1);
+#ifdef CONFIG_SUPPORT_MAFPC
 static DEFINE_PANEL_UDELAY(hubble1_a3_s0_wait_1usec, 1);
+#endif
 
 #ifdef CONFIG_SUPPORT_GRAM_CHECKSUM
 static DEFINE_PANEL_MDELAY(hubble1_a3_s0_wait_120msec, 120);
@@ -2368,8 +2364,8 @@ static u8 HUBBLE1_A3_S0_DEFAULT_SR_PATH[] = {
 };
 static DEFINE_STATIC_PACKET(hubble1_a3_s0_default_sr_path, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_DEFAULT_SR_PATH, 0);
 
-
-static DEFINE_STATIC_PACKET(hubble1_mafpc_default_img, DSI_PKT_TYPE_SR_FAST, S6E3FAB_MAFPC_DEFAULT_IMG, 0);
+static DEFINE_STATIC_PACKET_WITH_OPTION(hubble1_mafpc_default_img, DSI_PKT_TYPE_SR_FAST,
+	S6E3HAB_HUBBLE_MAFPC_DEFAULT_IMG, 0, PKT_OPTION_SR_ALIGN_12);
 
 static u8 HUBBLE1_A3_S0_MAFPC_ENABLE[] = {
 	0x87,
@@ -2380,20 +2376,8 @@ static u8 HUBBLE1_A3_S0_MAFPC_ENABLE[] = {
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	0xff, 0xf0, 0xf0, 0xf0,
 };
-#if 0
-static DEFINE_STATIC_PACKET(hubble1_a3_s0_mafpc_enable, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_MAFPC_ENABLE, 0);
-#else
 static DEFINE_PKTUI(hubble1_a3_s0_mafpc_enable, &hubble1_a3_s0_maptbl[MAFPC_ENA_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_mafpc_enable, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_MAFPC_ENABLE, 0);
-#endif
-
-static u8 HUBBLE1_A3_S0_MAFPC_SCALE[] = {
-	0x87,
-	0xFF, 0xFF, 0xFF,
-};
-static DEFINE_PKTUI(hubble1_a3_s0_mafpc_scale, &hubble1_a3_s0_maptbl[MAFPC_SCALE_MAPTBL], 1);
-static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_mafpc_scale, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_MAFPC_SCALE, 0x08);
-
 
 static u8 HUBBLE1_A3_S0_MAFPC_DISABLE[] = {
 	0x87, 0x00,
@@ -2472,7 +2456,6 @@ static void *hubble1_a3_s0_mafpc_image_cmdtbl[] = {
 static void *hubble1_a3_s0_mafpc_on_cmdtbl[] = {
 	&KEYINFO(hubble1_a3_s0_level2_key_enable),
 	&PKTINFO(hubble1_a3_s0_mafpc_enable),
-	&PKTINFO(hubble1_a3_s0_mafpc_scale),
 	&KEYINFO(hubble1_a3_s0_level2_key_disable),
 };
 
@@ -2506,10 +2489,12 @@ static void *hubble1_a3_s0_mafpc_check_cmdtbl[] = {
 	&KEYINFO(hubble1_a3_s0_level1_key_disable),
 };
 
-static DEFINE_STATIC_PACKET(hubble1_a3_s0_mafpc_scale_factor, DSI_PKT_TYPE_SR_FAST, S6E3FAB_MAFPC_DEFAULT_SCALE_FACTOR, 0);
-static void *hubble1_a3_s0_mafpc_scale_cmdtbl[] = {
-	&PKTINFO(hubble1_a3_s0_mafpc_scale_factor),
+static u8 HUBBLE1_A3_S0_MAFPC_SCALE[] = {
+	0x87,
+	0xFF, 0xFF, 0xFF,
 };
+static DEFINE_PKTUI(hubble1_a3_s0_mafpc_scale, &hubble1_a3_s0_maptbl[MAFPC_SCALE_MAPTBL], 1);
+static DEFINE_VARIABLE_PACKET(hubble1_a3_s0_mafpc_scale, DSI_PKT_TYPE_WR, HUBBLE1_A3_S0_MAFPC_SCALE, 0x08);
 
 static DEFINE_PANEL_TIMER_MDELAY(hubble1_a3_s0_mafpc_delay, 130);
 static DEFINE_PANEL_TIMER_BEGIN(hubble1_a3_s0_mafpc_delay,
@@ -2576,9 +2561,11 @@ static void *hubble1_a3_s0_preliminary_osc_96_5m_init_cmdtbl[] = {
 	&KEYINFO(hubble1_a3_s0_level2_key_enable),
 	&PKTINFO(hubble1_a3_s0_err_fg),
 	&KEYINFO(hubble1_a3_s0_level3_key_enable),
+#ifdef CONFIG_DYNAMIC_FREQ
 	&PKTINFO(hubble1_a3_s0_osc_96_5m_ffc_default),
 	&PKTINFO(hubble1_a3_s0_ddi_osc_tune1),
 	&PKTINFO(hubble1_a3_s0_ddi_osc_tune2),
+#endif
 	&KEYINFO(hubble1_a3_s0_level3_key_disable),
 	&PKTINFO(hubble1_a3_s0_tsp_hsync),
 	&PKTINFO(hubble1_a3_s0_isc),
@@ -2647,7 +2634,9 @@ static void *hubble1_a3_s0_preliminary_init_cmdtbl[] = {
 	&KEYINFO(hubble1_a3_s0_level2_key_enable),
 	&PKTINFO(hubble1_a3_s0_err_fg),
 	&KEYINFO(hubble1_a3_s0_level3_key_enable),
+#ifdef CONFIG_DYNAMIC_FREQ
 	&PKTINFO(hubble1_a3_s0_ffc_default),
+#endif
 	&KEYINFO(hubble1_a3_s0_level3_key_disable),
 	&PKTINFO(hubble1_a3_s0_tsp_hsync),
 	&PKTINFO(hubble1_a3_s0_isc),
@@ -2716,9 +2705,11 @@ static void *hubble1_a3_s0_osc_96_5m_init_cmdtbl[] = {
 	&KEYINFO(hubble1_a3_s0_level2_key_enable),
 	&PKTINFO(hubble1_a3_s0_err_fg),
 	&KEYINFO(hubble1_a3_s0_level3_key_enable),
+#ifdef CONFIG_DYNAMIC_FREQ
 	&PKTINFO(hubble1_a3_s0_osc_96_5m_ffc_default),
 	&PKTINFO(hubble1_a3_s0_ddi_osc_tune1),
 	&PKTINFO(hubble1_a3_s0_ddi_osc_tune2),
+#endif
 	&KEYINFO(hubble1_a3_s0_level3_key_disable),
 	&PKTINFO(hubble1_a3_s0_tsp_hsync),
 	&PKTINFO(hubble1_a3_s0_isc),
@@ -2787,7 +2778,9 @@ static void *hubble1_a3_s0_init_cmdtbl[] = {
 	&KEYINFO(hubble1_a3_s0_level2_key_enable),
 	&PKTINFO(hubble1_a3_s0_err_fg),
 	&KEYINFO(hubble1_a3_s0_level3_key_enable),
+#ifdef CONFIG_DYNAMIC_FREQ
 	&PKTINFO(hubble1_a3_s0_ffc_default),
+#endif
 	&KEYINFO(hubble1_a3_s0_level3_key_disable),
 	&PKTINFO(hubble1_a3_s0_tsp_hsync),
 	&PKTINFO(hubble1_a3_s0_isc),
@@ -2900,29 +2893,6 @@ static void *hubble1_a3_s0_dim_flash_res_init_cmdtbl[] = {
 };
 #endif
 
-static void *hubble1_a3_s0_set_bl_black_param_cmdtbl[] = {
-	&PKTINFO(hubble1_a3_s0_mtp_black),
-	&PKTINFO(hubble1_a3_s0_gamma_black),
-	&PKTINFO(hubble1_a3_s0_hbm_cycle),
-	&PKTINFO(hubble1_a3_s0_hbm_gamma_black),
-	&PKTINFO(hubble1_a3_s0_hbm_aor),
-	&PKTINFO(hubble1_a3_s0_aor),
-	&PKTINFO(hubble1_a3_s0_aid),
-	&PKTINFO(hubble1_a3_s0_dbv),
-	&PKTINFO(hubble1_a3_s0_vgh_vint),
-	&PKTINFO(hubble1_a3_s0_vint_vrr_120hz),
-	&PKTINFO(hubble1_a3_s0_acl_control),
-	&PKTINFO(hubble1_a3_s0_acl_onoff),
-	&PKTINFO(hubble1_a3_s0_irc_value),
-	&PKTINFO(hubble1_a3_s0_irc_on),
-	&PKTINFO(hubble1_a3_s0_tset_mps_elvss),
-	&PKTINFO(hubble1_a3_s0_elvss_temp),
-	&PKTINFO(hubble1_a3_s0_hbm_onoff),
-};
-
-static DEFINE_SEQINFO(hubble1_a3_s0_set_bl_black_param_seq,
-		hubble1_a3_s0_set_bl_black_param_cmdtbl);
-
 static void *hubble1_a3_s0_set_bl_param_cmdtbl[] = {
 	&PKTINFO(hubble1_a3_s0_hbm_cycle),
 	&PKTINFO(hubble1_a3_s0_hbm_gamma),
@@ -2977,17 +2947,25 @@ static void *hubble1_a3_s0_preliminary_set_fps_cmdtbl[] = {
 	&KEYINFO(hubble1_a3_s0_level2_key_disable),
 };
 
-static void *hubble1_a3_s0_preliminary_set_black_and_fps_cmdtbl[] = {
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+static void *hubble1_a3_s0_preliminary_display_mode_cmdtbl[] = {
+	&KEYINFO(hubble1_a3_s0_level1_key_enable),
 	&KEYINFO(hubble1_a3_s0_level2_key_enable),
-	&SEQINFO(hubble1_a3_s0_set_bl_black_param_seq),
+	&SEQINFO(hubble1_a3_s0_set_bl_param_seq),
+	&DLYINFO(hubble1_a3_s0_wait_1_vsync),
+#ifdef CONFIG_SUPPORT_DSU
+	&PKTINFO(hubble1_a3_s0_dsc),
+	&PKTINFO(hubble1_a3_s0_pps),
+	&PKTINFO(hubble1_a3_s0_caset),
+	&PKTINFO(hubble1_a3_s0_paset),
+	&PKTINFO(hubble1_a3_s0_scaler),
+#endif
 	&SEQINFO(hubble1_a3_s0_preliminary_set_fps_param_seq),
 	&PKTINFO(hubble1_a3_s0_gamma_update_enable),
-	&DLYINFO(hubble1_a3_s0_wait_1_frame),
-	&PKTINFO(hubble1_a3_s0_mtp),
-	&SEQINFO(hubble1_a3_s0_set_bl_param_seq),
-	&PKTINFO(hubble1_a3_s0_gamma_update_enable),
 	&KEYINFO(hubble1_a3_s0_level2_key_disable),
+	&KEYINFO(hubble1_a3_s0_level1_key_disable),
 };
+#endif
 
 static void *hubble1_a3_s0_osc_86_4m_set_fps_param_cmdtbl[] = {
 	/* fps & osc setting */
@@ -3014,17 +2992,25 @@ static void *hubble1_a3_s0_osc_86_4m_set_fps_cmdtbl[] = {
 	&KEYINFO(hubble1_a3_s0_level2_key_disable),
 };
 
-static void *hubble1_a3_s0_osc_86_4m_set_black_and_fps_cmdtbl[] = {
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+static void *hubble1_a3_s0_osc_86_4m_display_mode_cmdtbl[] = {
+	&KEYINFO(hubble1_a3_s0_level1_key_enable),
 	&KEYINFO(hubble1_a3_s0_level2_key_enable),
-	&SEQINFO(hubble1_a3_s0_set_bl_black_param_seq),
+	&SEQINFO(hubble1_a3_s0_set_bl_param_seq),
+	&DLYINFO(hubble1_a3_s0_wait_1_vsync),
+#ifdef CONFIG_SUPPORT_DSU
+	&PKTINFO(hubble1_a3_s0_dsc),
+	&PKTINFO(hubble1_a3_s0_pps),
+	&PKTINFO(hubble1_a3_s0_caset),
+	&PKTINFO(hubble1_a3_s0_paset),
+	&PKTINFO(hubble1_a3_s0_scaler),
+#endif
 	&SEQINFO(hubble1_a3_s0_osc_86_4m_set_fps_param_seq),
 	&PKTINFO(hubble1_a3_s0_gamma_update_enable),
-	&DLYINFO(hubble1_a3_s0_wait_1_frame),
-	&PKTINFO(hubble1_a3_s0_mtp),
-	&SEQINFO(hubble1_a3_s0_set_bl_param_seq),
-	&PKTINFO(hubble1_a3_s0_gamma_update_enable),
 	&KEYINFO(hubble1_a3_s0_level2_key_disable),
+	&KEYINFO(hubble1_a3_s0_level1_key_disable),
 };
+#endif
 
 static void *hubble1_a3_s0_osc_96_5m_set_fps_param_cmdtbl[] = {
 	/* fps & osc setting */
@@ -3051,20 +3037,27 @@ static void *hubble1_a3_s0_osc_96_5m_set_fps_cmdtbl[] = {
 	&KEYINFO(hubble1_a3_s0_level2_key_disable),
 };
 
-static void *hubble1_a3_s0_osc_96_5m_set_black_and_fps_cmdtbl[] = {
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+static void *hubble1_a3_s0_osc_96_5m_display_mode_cmdtbl[] = {
+	&KEYINFO(hubble1_a3_s0_level1_key_enable),
 	&KEYINFO(hubble1_a3_s0_level2_key_enable),
-	&SEQINFO(hubble1_a3_s0_set_bl_black_param_seq),
+	&SEQINFO(hubble1_a3_s0_set_bl_param_seq),
+	&DLYINFO(hubble1_a3_s0_wait_1_vsync),
+#ifdef CONFIG_SUPPORT_DSU
+	&PKTINFO(hubble1_a3_s0_dsc),
+	&PKTINFO(hubble1_a3_s0_pps),
+	&PKTINFO(hubble1_a3_s0_caset),
+	&PKTINFO(hubble1_a3_s0_paset),
+	&PKTINFO(hubble1_a3_s0_scaler),
+#endif
 	&SEQINFO(hubble1_a3_s0_osc_96_5m_set_fps_param_seq),
 	&PKTINFO(hubble1_a3_s0_gamma_update_enable),
-	&DLYINFO(hubble1_a3_s0_wait_1_frame),
-	&PKTINFO(hubble1_a3_s0_mtp),
-	&SEQINFO(hubble1_a3_s0_set_bl_param_seq),
-	&PKTINFO(hubble1_a3_s0_gamma_update_enable),
 	&KEYINFO(hubble1_a3_s0_level2_key_disable),
+	&KEYINFO(hubble1_a3_s0_level1_key_disable),
 };
+#endif
 
 #ifdef CONFIG_SUPPORT_HMD
-
 static void *hubble1_a3_s0_hmd_on_cmdtbl[] = {
 	&KEYINFO(hubble1_a3_s0_level2_key_enable),
 	&PKTINFO(hubble1_a3_s0_hmd_on_aor),
@@ -3104,7 +3097,6 @@ static void *hubble1_a3_s0_display_on_cmdtbl[] = {
 #ifdef CONFIG_SUPPORT_MAFPC
 	&KEYINFO(hubble1_a3_s0_level2_key_enable),
 	&PKTINFO(hubble1_a3_s0_mafpc_enable),
-	&PKTINFO(hubble1_a3_s0_mafpc_scale),
 	&KEYINFO(hubble1_a3_s0_level2_key_disable),
 #endif
 	&KEYINFO(hubble1_a3_s0_level1_key_enable),
@@ -3712,7 +3704,9 @@ static struct seqinfo hubble1_a3_s0_preliminary_osc_96_5m_seqtbl[MAX_PANEL_SEQ] 
 	[PANEL_DSU_SEQ] = SEQINFO_INIT("dsu-mode-seq", hubble1_a3_s0_dsu_mode_cmdtbl),
 #endif
 	[PANEL_FPS_SEQ] = SEQINFO_INIT("set-fps-seq", hubble1_a3_s0_preliminary_set_fps_cmdtbl),
-	[PANEL_BLACK_AND_FPS_SEQ] = SEQINFO_INIT("set-black-and-fps-seq", hubble1_a3_s0_preliminary_set_black_and_fps_cmdtbl),
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	[PANEL_DISPLAY_MODE_SEQ] = SEQINFO_INIT("display-mode-seq", hubble1_a3_s0_preliminary_display_mode_cmdtbl),
+#endif
 	[PANEL_MCD_ON_SEQ] = SEQINFO_INIT("mcd-on-seq", hubble1_a3_s0_mcd_on_cmdtbl),
 	[PANEL_MCD_OFF_SEQ] = SEQINFO_INIT("mcd-off-seq", hubble1_a3_s0_mcd_off_cmdtbl),
 	[PANEL_MCD_RS_ON_SEQ] = SEQINFO_INIT("mcd-rs-on-seq", hubble1_a3_s0_mcd_rs_on_cmdtbl),
@@ -3748,7 +3742,6 @@ static struct seqinfo hubble1_a3_s0_preliminary_osc_96_5m_seqtbl[MAX_PANEL_SEQ] 
 	[PANEL_MAFPC_ON_SEQ] = SEQINFO_INIT("mafpc-on-seq", hubble1_a3_s0_mafpc_on_cmdtbl),
 	[PANEL_MAFPC_OFF_SEQ] = SEQINFO_INIT("mafpc-off-seq", hubble1_a3_s0_mafpc_off_cmdtbl),
 	[PANEL_MAFPC_FAC_CHECKSUM] = SEQINFO_INIT("mafpc-check-seq", hubble1_a3_s0_mafpc_check_cmdtbl),
-	[PANEL_MAFPC_SCALE_FACTOR] = SEQINFO_INIT("mafpc-scale-seq", hubble1_a3_s0_mafpc_scale_cmdtbl),
 #endif
 #ifdef CONFIG_SUPPORT_ISC_TUNE_TEST
 	[PANEL_ISC_THRESHOLD_SEQ] = SEQINFO_INIT("isc-threshold-seq", hubble1_a3_s0_isc_threshold_cmdtbl),
@@ -3789,7 +3782,9 @@ static struct seqinfo hubble1_a3_s0_preliminary_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_DSU_SEQ] = SEQINFO_INIT("dsu-mode-seq", hubble1_a3_s0_dsu_mode_cmdtbl),
 #endif
 	[PANEL_FPS_SEQ] = SEQINFO_INIT("set-fps-seq", hubble1_a3_s0_preliminary_set_fps_cmdtbl),
-	[PANEL_BLACK_AND_FPS_SEQ] = SEQINFO_INIT("set-black-and-fps-seq", hubble1_a3_s0_preliminary_set_black_and_fps_cmdtbl),
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	[PANEL_DISPLAY_MODE_SEQ] = SEQINFO_INIT("display-mode-seq", hubble1_a3_s0_preliminary_display_mode_cmdtbl),
+#endif
 	[PANEL_MCD_ON_SEQ] = SEQINFO_INIT("mcd-on-seq", hubble1_a3_s0_mcd_on_cmdtbl),
 	[PANEL_MCD_OFF_SEQ] = SEQINFO_INIT("mcd-off-seq", hubble1_a3_s0_mcd_off_cmdtbl),
 	[PANEL_MCD_RS_ON_SEQ] = SEQINFO_INIT("mcd-rs-on-seq", hubble1_a3_s0_mcd_rs_on_cmdtbl),
@@ -3825,7 +3820,6 @@ static struct seqinfo hubble1_a3_s0_preliminary_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_MAFPC_ON_SEQ] = SEQINFO_INIT("mafpc-on-seq", hubble1_a3_s0_mafpc_on_cmdtbl),
 	[PANEL_MAFPC_OFF_SEQ] = SEQINFO_INIT("mafpc-off-seq", hubble1_a3_s0_mafpc_off_cmdtbl),
 	[PANEL_MAFPC_FAC_CHECKSUM] = SEQINFO_INIT("mafpc-check-seq", hubble1_a3_s0_mafpc_check_cmdtbl),
-	[PANEL_MAFPC_SCALE_FACTOR] = SEQINFO_INIT("mafpc-scale-seq", hubble1_a3_s0_mafpc_scale_cmdtbl),
 #endif
 #ifdef CONFIG_SUPPORT_ISC_TUNE_TEST
 	[PANEL_ISC_THRESHOLD_SEQ] = SEQINFO_INIT("isc-threshold-seq", hubble1_a3_s0_isc_threshold_cmdtbl),
@@ -3865,7 +3859,9 @@ static struct seqinfo hubble1_a3_s0_osc_96_5m_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_DSU_SEQ] = SEQINFO_INIT("dsu-mode-seq", hubble1_a3_s0_dsu_mode_cmdtbl),
 #endif
 	[PANEL_FPS_SEQ] = SEQINFO_INIT("set-fps-seq", hubble1_a3_s0_osc_96_5m_set_fps_cmdtbl),
-	[PANEL_BLACK_AND_FPS_SEQ] = SEQINFO_INIT("set-black-and-fps-seq", hubble1_a3_s0_osc_96_5m_set_black_and_fps_cmdtbl),
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	[PANEL_DISPLAY_MODE_SEQ] = SEQINFO_INIT("display-mode-seq", hubble1_a3_s0_osc_96_5m_display_mode_cmdtbl),
+#endif
 	[PANEL_MCD_ON_SEQ] = SEQINFO_INIT("mcd-on-seq", hubble1_a3_s0_mcd_on_cmdtbl),
 	[PANEL_MCD_OFF_SEQ] = SEQINFO_INIT("mcd-off-seq", hubble1_a3_s0_mcd_off_cmdtbl),
 	[PANEL_MCD_RS_ON_SEQ] = SEQINFO_INIT("mcd-rs-on-seq", hubble1_a3_s0_mcd_rs_on_cmdtbl),
@@ -3901,7 +3897,6 @@ static struct seqinfo hubble1_a3_s0_osc_96_5m_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_MAFPC_ON_SEQ] = SEQINFO_INIT("mafpc-on-seq", hubble1_a3_s0_mafpc_on_cmdtbl),
 	[PANEL_MAFPC_OFF_SEQ] = SEQINFO_INIT("mafpc-off-seq", hubble1_a3_s0_mafpc_off_cmdtbl),
 	[PANEL_MAFPC_FAC_CHECKSUM] = SEQINFO_INIT("mafpc-check-seq", hubble1_a3_s0_mafpc_check_cmdtbl),
-	[PANEL_MAFPC_SCALE_FACTOR] = SEQINFO_INIT("mafpc-scale-seq", hubble1_a3_s0_mafpc_scale_cmdtbl),
 #endif
 #ifdef CONFIG_SUPPORT_ISC_TUNE_TEST
 	[PANEL_ISC_THRESHOLD_SEQ] = SEQINFO_INIT("isc-threshold-seq", hubble1_a3_s0_isc_threshold_cmdtbl),
@@ -3943,7 +3938,9 @@ static struct seqinfo hubble1_a3_s0_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_DSU_SEQ] = SEQINFO_INIT("dsu-mode-seq", hubble1_a3_s0_dsu_mode_cmdtbl),
 #endif
 	[PANEL_FPS_SEQ] = SEQINFO_INIT("set-fps-seq", hubble1_a3_s0_osc_86_4m_set_fps_cmdtbl),
-	[PANEL_BLACK_AND_FPS_SEQ] = SEQINFO_INIT("set-black-and-fps-seq", hubble1_a3_s0_osc_86_4m_set_black_and_fps_cmdtbl),
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	[PANEL_DISPLAY_MODE_SEQ] = SEQINFO_INIT("display-mode-seq", hubble1_a3_s0_osc_86_4m_display_mode_cmdtbl),
+#endif
 	[PANEL_MCD_ON_SEQ] = SEQINFO_INIT("mcd-on-seq", hubble1_a3_s0_mcd_on_cmdtbl),
 	[PANEL_MCD_OFF_SEQ] = SEQINFO_INIT("mcd-off-seq", hubble1_a3_s0_mcd_off_cmdtbl),
 	[PANEL_MCD_RS_ON_SEQ] = SEQINFO_INIT("mcd-rs-on-seq", hubble1_a3_s0_mcd_rs_on_cmdtbl),
@@ -3979,7 +3976,6 @@ static struct seqinfo hubble1_a3_s0_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_MAFPC_ON_SEQ] = SEQINFO_INIT("mafpc-on-seq", hubble1_a3_s0_mafpc_on_cmdtbl),
 	[PANEL_MAFPC_OFF_SEQ] = SEQINFO_INIT("mafpc-off-seq", hubble1_a3_s0_mafpc_off_cmdtbl),
 	[PANEL_MAFPC_FAC_CHECKSUM] = SEQINFO_INIT("mafpc-check-seq", hubble1_a3_s0_mafpc_check_cmdtbl),
-	[PANEL_MAFPC_SCALE_FACTOR] = SEQINFO_INIT("mafpc-scale-seq", hubble1_a3_s0_mafpc_scale_cmdtbl),
 #endif
 
 #ifdef CONFIG_SUPPORT_ISC_TUNE_TEST
@@ -4016,11 +4012,17 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_preliminary_osc_96_5m_panel_info 
 	.ddi_props = {
 		.gpara = (DDI_SUPPORT_WRITE_GPARA | DDI_SUPPORT_POINT_GPARA),
 		.err_fg_recovery = true,
+		.support_vrr = true,
 	},
+#ifdef CONFIG_SUPPORT_DSU
 	.mres = {
 		.nr_resol = ARRAY_SIZE(s6e3hab_hubble_preliminary_resol),
 		.resol = s6e3hab_hubble_preliminary_resol,
 	},
+#endif
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	.common_panel_modes = &s6e3hab_hubble_preliminary_display_modes,
+#endif
 	.vrrtbl = s6e3hab_hubble_preliminary_vrrtbl,
 	.nr_vrrtbl = ARRAY_SIZE(s6e3hab_hubble_preliminary_vrrtbl),
 	.maptbl = hubble1_a3_s0_maptbl,
@@ -4037,12 +4039,12 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_preliminary_osc_96_5m_panel_info 
 	.mdnie_tune = &s6e3hab_hubble1_a3_s0_mdnie_tune,
 #endif
 	.panel_dim_info = {
-		&s6e3hab_hubble1_a3_s0_panel_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_DISP] = &s6e3hab_hubble1_a3_s0_panel_dimming_info,
 #ifdef CONFIG_SUPPORT_HMD
-		&s6e3hab_hubble1_a3_s0_panel_hmd_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_HMD] = &s6e3hab_hubble1_a3_s0_panel_hmd_dimming_info,
 #endif
 #ifdef CONFIG_SUPPORT_AOD_BL
-		&s6e3hab_hubble1_a3_s0_panel_aod_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_AOD] = &s6e3hab_hubble1_a3_s0_panel_aod_dimming_info,
 #endif
 	},
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
@@ -4064,6 +4066,9 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_preliminary_osc_96_5m_panel_info 
 #ifdef CONFIG_SUPPORT_DISPLAY_PROFILER
 	.profile_tune = &hab_profiler_tune,
 #endif
+#ifdef CONFIG_SUPPORT_MAFPC
+	.mafpc_info = &s6e3hab_hubble_mafpc,
+#endif
 };
 
 struct common_panel_info s6e3hab_hubble1_a3_s0_preliminary_panel_info = {
@@ -4076,11 +4081,17 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_preliminary_panel_info = {
 	.ddi_props = {
 		.gpara = (DDI_SUPPORT_WRITE_GPARA | DDI_SUPPORT_POINT_GPARA),
 		.err_fg_recovery = true,
+		.support_vrr = true,
 	},
+#ifdef CONFIG_SUPPORT_DSU
 	.mres = {
 		.nr_resol = ARRAY_SIZE(s6e3hab_hubble_preliminary_resol),
 		.resol = s6e3hab_hubble_preliminary_resol,
 	},
+#endif
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	.common_panel_modes = &s6e3hab_hubble_preliminary_display_modes,
+#endif
 	.vrrtbl = s6e3hab_hubble_preliminary_vrrtbl,
 	.nr_vrrtbl = ARRAY_SIZE(s6e3hab_hubble_preliminary_vrrtbl),
 	.maptbl = hubble1_a3_s0_maptbl,
@@ -4097,12 +4108,12 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_preliminary_panel_info = {
 	.mdnie_tune = &s6e3hab_hubble1_a3_s0_mdnie_tune,
 #endif
 	.panel_dim_info = {
-		&s6e3hab_hubble1_a3_s0_panel_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_DISP] = &s6e3hab_hubble1_a3_s0_panel_dimming_info,
 #ifdef CONFIG_SUPPORT_HMD
-		&s6e3hab_hubble1_a3_s0_panel_hmd_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_HMD] = &s6e3hab_hubble1_a3_s0_panel_hmd_dimming_info,
 #endif
 #ifdef CONFIG_SUPPORT_AOD_BL
-		&s6e3hab_hubble1_a3_s0_panel_aod_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_AOD] = &s6e3hab_hubble1_a3_s0_panel_aod_dimming_info,
 #endif
 	},
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
@@ -4124,6 +4135,9 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_preliminary_panel_info = {
 #ifdef CONFIG_SUPPORT_DISPLAY_PROFILER
 	.profile_tune = &hab_profiler_tune,
 #endif
+#ifdef CONFIG_SUPPORT_MAFPC
+	.mafpc_info = &s6e3hab_hubble_mafpc,
+#endif
 };
 
 struct common_panel_info s6e3hab_hubble1_a3_s0_default_osc_96_5m_panel_info = {
@@ -4136,11 +4150,17 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_default_osc_96_5m_panel_info = {
 	.ddi_props = {
 		.gpara = (DDI_SUPPORT_WRITE_GPARA | DDI_SUPPORT_POINT_GPARA),
 		.err_fg_recovery = true,
+		.support_vrr = true,
 	},
+#ifdef CONFIG_SUPPORT_DSU
 	.mres = {
 		.nr_resol = ARRAY_SIZE(s6e3hab_hubble_default_resol),
 		.resol = s6e3hab_hubble_default_resol,
 	},
+#endif
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	.common_panel_modes = &s6e3hab_hubble_display_modes,
+#endif
 	.vrrtbl = s6e3hab_hubble_default_vrrtbl,
 	.nr_vrrtbl = ARRAY_SIZE(s6e3hab_hubble_default_vrrtbl),
 	.maptbl = hubble1_a3_s0_maptbl,
@@ -4157,12 +4177,12 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_default_osc_96_5m_panel_info = {
 	.mdnie_tune = &s6e3hab_hubble1_a3_s0_mdnie_tune,
 #endif
 	.panel_dim_info = {
-		&s6e3hab_hubble1_a3_s0_panel_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_DISP] = &s6e3hab_hubble1_a3_s0_panel_dimming_info,
 #ifdef CONFIG_SUPPORT_HMD
-		&s6e3hab_hubble1_a3_s0_panel_hmd_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_HMD] = &s6e3hab_hubble1_a3_s0_panel_hmd_dimming_info,
 #endif
 #ifdef CONFIG_SUPPORT_AOD_BL
-		&s6e3hab_hubble1_a3_s0_panel_aod_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_AOD] = &s6e3hab_hubble1_a3_s0_panel_aod_dimming_info,
 #endif
 	},
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
@@ -4183,6 +4203,9 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_default_osc_96_5m_panel_info = {
 #endif
 #ifdef CONFIG_SUPPORT_DISPLAY_PROFILER
 	.profile_tune = &hab_profiler_tune,
+#endif
+#ifdef CONFIG_SUPPORT_MAFPC
+	.mafpc_info = &s6e3hab_hubble_mafpc,
 #endif
 };
 
@@ -4196,11 +4219,17 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_default_panel_info = {
 	.ddi_props = {
 		.gpara = (DDI_SUPPORT_WRITE_GPARA | DDI_SUPPORT_POINT_GPARA),
 		.err_fg_recovery = false,
+		.support_vrr = true,
 	},
+#ifdef CONFIG_SUPPORT_DSU
 	.mres = {
 		.nr_resol = ARRAY_SIZE(s6e3hab_hubble_default_resol),
 		.resol = s6e3hab_hubble_default_resol,
 	},
+#endif
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	.common_panel_modes = &s6e3hab_hubble_display_modes,
+#endif
 	.vrrtbl = s6e3hab_hubble_default_vrrtbl,
 	.nr_vrrtbl = ARRAY_SIZE(s6e3hab_hubble_default_vrrtbl),
 	.maptbl = hubble1_a3_s0_maptbl,
@@ -4217,12 +4246,12 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_default_panel_info = {
 	.mdnie_tune = &s6e3hab_hubble1_a3_s0_mdnie_tune,
 #endif
 	.panel_dim_info = {
-		&s6e3hab_hubble1_a3_s0_panel_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_DISP] = &s6e3hab_hubble1_a3_s0_panel_dimming_info,
 #ifdef CONFIG_SUPPORT_HMD
-		&s6e3hab_hubble1_a3_s0_panel_hmd_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_HMD] = &s6e3hab_hubble1_a3_s0_panel_hmd_dimming_info,
 #endif
 #ifdef CONFIG_SUPPORT_AOD_BL
-		&s6e3hab_hubble1_a3_s0_panel_aod_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_AOD] = &s6e3hab_hubble1_a3_s0_panel_aod_dimming_info,
 #endif
 	},
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
@@ -4244,6 +4273,9 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_default_panel_info = {
 #ifdef CONFIG_SUPPORT_DISPLAY_PROFILER
 	.profile_tune = &hab_profiler_tune,
 #endif
+#ifdef CONFIG_SUPPORT_MAFPC
+	.mafpc_info = &s6e3hab_hubble_mafpc,
+#endif
 };
 
 struct common_panel_info s6e3hab_hubble1_a3_s0_default_osc_96_5m_rev03_panel_info = {
@@ -4256,11 +4288,17 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_default_osc_96_5m_rev03_panel_inf
 	.ddi_props = {
 		.gpara = (DDI_SUPPORT_WRITE_GPARA | DDI_SUPPORT_POINT_GPARA),
 		.err_fg_recovery = true,
+		.support_vrr = true,
 	},
+#ifdef CONFIG_SUPPORT_DSU
 	.mres = {
-		.nr_resol = ARRAY_SIZE(s6e3hab_hubble_default_rev03_resol),
-		.resol = s6e3hab_hubble_default_rev03_resol,
+		.nr_resol = ARRAY_SIZE(s6e3hab_hubble_rev03_resol),
+		.resol = s6e3hab_hubble_rev03_resol,
 	},
+#endif
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	.common_panel_modes = &s6e3hab_hubble_rev03_display_modes,
+#endif
 	.vrrtbl = s6e3hab_hubble_default_vrrtbl,
 	.nr_vrrtbl = ARRAY_SIZE(s6e3hab_hubble_default_vrrtbl),
 	.maptbl = hubble1_a3_s0_maptbl,
@@ -4277,12 +4315,12 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_default_osc_96_5m_rev03_panel_inf
 	.mdnie_tune = &s6e3hab_hubble1_a3_s0_mdnie_tune,
 #endif
 	.panel_dim_info = {
-		&s6e3hab_hubble1_a3_s0_panel_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_DISP] = &s6e3hab_hubble1_a3_s0_panel_dimming_info,
 #ifdef CONFIG_SUPPORT_HMD
-		&s6e3hab_hubble1_a3_s0_panel_hmd_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_HMD] = &s6e3hab_hubble1_a3_s0_panel_hmd_dimming_info,
 #endif
 #ifdef CONFIG_SUPPORT_AOD_BL
-		&s6e3hab_hubble1_a3_s0_panel_aod_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_AOD] = &s6e3hab_hubble1_a3_s0_panel_aod_dimming_info,
 #endif
 	},
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
@@ -4304,6 +4342,9 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_default_osc_96_5m_rev03_panel_inf
 #ifdef CONFIG_SUPPORT_DISPLAY_PROFILER
 	.profile_tune = &hab_profiler_tune,
 #endif
+#ifdef CONFIG_SUPPORT_MAFPC
+	.mafpc_info = &s6e3hab_hubble_mafpc,
+#endif
 };
 
 struct common_panel_info s6e3hab_hubble1_a3_s0_default_rev03_panel_info = {
@@ -4316,11 +4357,17 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_default_rev03_panel_info = {
 	.ddi_props = {
 		.gpara = (DDI_SUPPORT_WRITE_GPARA | DDI_SUPPORT_POINT_GPARA),
 		.err_fg_recovery = false,
+		.support_vrr = true,
 	},
+#ifdef CONFIG_SUPPORT_DSU
 	.mres = {
-		.nr_resol = ARRAY_SIZE(s6e3hab_hubble_default_rev03_resol),
-		.resol = s6e3hab_hubble_default_rev03_resol,
+		.nr_resol = ARRAY_SIZE(s6e3hab_hubble_rev03_resol),
+		.resol = s6e3hab_hubble_rev03_resol,
 	},
+#endif
+#if defined(CONFIG_PANEL_DISPLAY_MODE)
+	.common_panel_modes = &s6e3hab_hubble_rev03_display_modes,
+#endif
 	.vrrtbl = s6e3hab_hubble_default_vrrtbl,
 	.nr_vrrtbl = ARRAY_SIZE(s6e3hab_hubble_default_vrrtbl),
 	.maptbl = hubble1_a3_s0_maptbl,
@@ -4337,12 +4384,12 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_default_rev03_panel_info = {
 	.mdnie_tune = &s6e3hab_hubble1_a3_s0_mdnie_tune,
 #endif
 	.panel_dim_info = {
-		&s6e3hab_hubble1_a3_s0_panel_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_DISP] = &s6e3hab_hubble1_a3_s0_panel_dimming_info,
 #ifdef CONFIG_SUPPORT_HMD
-		&s6e3hab_hubble1_a3_s0_panel_hmd_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_HMD] = &s6e3hab_hubble1_a3_s0_panel_hmd_dimming_info,
 #endif
 #ifdef CONFIG_SUPPORT_AOD_BL
-		&s6e3hab_hubble1_a3_s0_panel_aod_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_AOD] = &s6e3hab_hubble1_a3_s0_panel_aod_dimming_info,
 #endif
 	},
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
@@ -4363,6 +4410,9 @@ struct common_panel_info s6e3hab_hubble1_a3_s0_default_rev03_panel_info = {
 #endif
 #ifdef CONFIG_SUPPORT_DISPLAY_PROFILER
 	.profile_tune = &hab_profiler_tune,
+#endif
+#ifdef CONFIG_SUPPORT_MAFPC
+	.mafpc_info = &s6e3hab_hubble_mafpc,
 #endif
 };
 

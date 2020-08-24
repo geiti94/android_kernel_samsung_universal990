@@ -24,6 +24,7 @@
 #include "npu-log.h"
 #include "npu-interface.h"
 
+
 /* Non-printable character to mark the last dump postion is overwritten or not */
 const char NPU_LOG_DUMP_MARK = (char)0x01;
 
@@ -83,7 +84,7 @@ const char LOG_LEVEL_MARK[NPU_LOG_INVALID] = {
 int npu_store_log(npu_log_level_e loglevel, const char *fmt, ...)
 {
 	int		ret;
-	size_t		pr_size;
+	int		pr_size;
 	size_t		wr_len = 0;
 	size_t		remain;
 	unsigned long	intr_flags;
@@ -168,7 +169,7 @@ start:
 	goto unlock_exit;
 
 err_exit:
-	pr_err("Log store error : remain: %zu wr_len: %zu pr_size : %zu ret :%d\n",
+	pr_err("Log store error : remain: %zu wr_len: %zu pr_size : %d ret :%d\n",
 		remain, wr_len, pr_size, ret);
 
 unlock_exit:

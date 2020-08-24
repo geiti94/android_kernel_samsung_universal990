@@ -114,6 +114,16 @@ config ARM_EXYNOS_DEVFREQ
 	help
 	  This adds the DEVFREQ driver for Exynos series common bus.
 
+config ARM_EXYNOS_DEVFREQ_DISABLE_BOOT_LOCK
+	bool "disable boot qos lock of ARM Exynos Memory Bus DEVFREQ driver"
+	depends on ARM_EXYNOS_DEVFREQ && SEC_FACTORY
+	default n
+	help
+	  This feature disables the bus qos lock in
+	  exynos devfreq driver during boot
+	  This feature support flexable boot.
+	  The config creates a lot of clk when device boot up.
+
 config ARM_EXYNOS_DEVFREQ_DEBUG
 	bool "ARM Exynos DEVFREQ sysfs for Debug"
 	depends on ARM_EXYNOS_DEVFREQ

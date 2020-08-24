@@ -785,9 +785,11 @@ static void __init dbg_snapshot_fixmap(void)
 	/* output the information of debug-snapshot */
 	dbg_snapshot_output();
 
+#ifdef CONFIG_SEC_DEBUG_LAST_KMSG
 	secdbg_lkmg_store(dss_items[DSS_ITEM_KERNEL_ID].head_ptr,
 			dss_items[DSS_ITEM_KERNEL_ID].curr_ptr,
 			dss_items[DSS_ITEM_KERNEL_ID].entry.size);
+#endif
 }
 
 static int dbg_snapshot_init_dt_parse(struct device_node *np)
@@ -847,8 +849,12 @@ static int __init dbg_snapshot_init_dt(void)
 
 static int __init dbg_snapshot_init_value(void)
 {
-	if (dss_dpm.enabled_dump_mode)
+	dss_desc.debug_level = dbg_snapshot_get_debug_level_reg();
+
+	if (dss_dpm.enabled_dump_mode && dss_desc.debug_level)
 		dbg_snapshot_scratch_reg(DSS_SIGN_SCRATCH);
+	else
+		dbg_snapshot_scratch_reg(DSS_SIGN_RESET);
 
 	dbg_snapshot_set_sjtag_status();
 

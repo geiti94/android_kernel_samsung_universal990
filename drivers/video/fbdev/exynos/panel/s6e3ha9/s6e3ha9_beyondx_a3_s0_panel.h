@@ -25,9 +25,15 @@
 #include "s6e3ha9_beyond_panel_poc.h"
 #endif
 #include "s6e3ha9_beyondx_a3_s0_panel_dimming.h"
+#ifdef CONFIG_SUPPORT_HMD
 #include "s6e3ha9_beyondx_a3_s0_panel_hmd_dimming.h"
+#endif
 #ifdef CONFIG_SUPPORT_AOD_BL
 #include "s6e3ha9_beyondx_a3_s0_panel_aod_dimming.h"
+#endif
+
+#ifdef CONFIG_ACTIVE_CLOCK
+#include "../active_clk_img_white.h"
 #endif
 
 #ifdef CONFIG_EXTEND_LIVE_CLOCK
@@ -35,8 +41,18 @@
 #include "../aod/aod_drv.h"
 #endif
 
+#ifdef CONFIG_DYNAMIC_FREQ
+#include "davinci2_df_tbl.h"
+#endif
+#ifdef CONFIG_SUPPORT_DISPLAY_PROFILER
+#include "s6e3ha9_profiler_panel.h"
+#include "../display_profiler/display_profiler.h"
+#endif
+
 #include "s6e3ha9_beyond_irc.h"
+#ifdef CONFIG_SUPPORT_DSU
 #include "s6e3ha9_beyond_resol.h"
+#endif
 
 #undef __pn_name__
 #define __pn_name__	beyondx_a3_s0
@@ -624,6 +640,16 @@ static u8 beyondx_a3_s0_gram_inv_img_pattern_table[][1] = {
 };
 #endif
 
+#ifdef CONFIG_DYNAMIC_FREQ
+static u8 beyondx_a3_s0_dyn_ffc_table[][5] = {
+	{0x0D, 0x10, 0xB4, 0x3E, 0x0C},	//897
+	{0x0D, 0x10, 0xB4, 0x3D, 0x9A},	//903.5
+	{0x0D, 0x10, 0xB4, 0x3D, 0x29},	//910
+	{0x0D, 0x10, 0xB4, 0x3B, 0xE1},	//929.5
+};
+#endif
+
+
 static struct maptbl beyondx_a3_s0_maptbl[MAX_MAPTBL] = {
 	[GAMMA_MAPTBL] = DEFINE_2D_MAPTBL(beyondx_a3_s0_gamma_table, init_gamma_table, getidx_dimming_maptbl, copy_gamma_maptbl),
 	[AOR_MAPTBL] = DEFINE_2D_MAPTBL(beyondx_a3_s0_aor_table, init_aor_table, getidx_dimming_maptbl, copy_aor_maptbl),
@@ -655,6 +681,11 @@ static struct maptbl beyondx_a3_s0_maptbl[MAX_MAPTBL] = {
 	[LPM_MODE_MAPTBL] = DEFINE_3D_MAPTBL(beyondx_a3_s0_lpm_mode_table, init_common_table, getidx_lpm_table, copy_common_maptbl),
 	[LPM_DYN_VLIN_MAPTBL] = DEFINE_2D_MAPTBL(beyondx_a3_s0_lpm_dyn_vlin_table, init_common_table, getidx_lpm_dyn_vlin_table, copy_common_maptbl),
 	[LPM_OFF_MAPTBL] = DEFINE_3D_MAPTBL(beyondx_a3_s0_lpm_off_table, init_common_table, getidx_lpm_table, copy_common_maptbl),
+#ifdef CONFIG_ACTIVE_CLOCK
+	[ACTIVE_CLK_CTRL_MAPTBL] = DEFINE_0D_MAPTBL(beyondx_a3_s0_self_clk_ctrl_table, init_common_table, NULL, copy_self_clk_maptbl),
+	[ACTIVE_CLK_SELF_DRAWER] = DEFINE_0D_MAPTBL(beyondx_a3_s0_self_drawer, init_common_table, NULL, copy_self_drawer),
+	[ACTIVE_CLK_CTRL_UPDATE_MAPTBL] = DEFINE_0D_MAPTBL(beyondx_a3_s0_self_clk_update_table, init_common_table, NULL, copy_self_clk_update_maptbl),
+#endif
 #ifdef CONFIG_SUPPORT_GRAM_CHECKSUM
 	[VDDM_MAPTBL] = DEFINE_2D_MAPTBL(beyondx_a3_s0_vddm_table, init_common_table, s6e3ha9_getidx_vddm_table, copy_common_maptbl),
 	[GRAM_IMG_MAPTBL] = DEFINE_2D_MAPTBL(beyondx_a3_s0_gram_img_pattern_table, init_common_table, s6e3ha9_getidx_gram_img_pattern_table, copy_common_maptbl),
@@ -664,6 +695,9 @@ static struct maptbl beyondx_a3_s0_maptbl[MAX_MAPTBL] = {
 #ifdef CONFIG_SUPPORT_ISC_TUNE_TEST
 	[ISC_THRESHOLD_MAPTBL] = DEFINE_0D_MAPTBL(beyondx_a3_s0_isc_thresh_hold_table, init_common_table, NULL, copy_isc_threshold_maptbl),
 	[STM_TUNE_MAPTBL] = DEFINE_0D_MAPTBL(beyondx_a3_s0_stm_tune_table, init_stm_tune, NULL, copy_stm_tune_maptbl),
+#endif
+#ifdef CONFIG_DYNAMIC_FREQ
+	[DYN_FFC_MAPTBL] = DEFINE_2D_MAPTBL(beyondx_a3_s0_dyn_ffc_table, init_common_table, getidx_dyn_ffc_table, copy_common_maptbl),
 #endif
 	[GAMMA_INTER_CONTROL_MAPTBL] = DEFINE_0D_MAPTBL(beyondx_a3_s0_gamma_inter_table, init_common_table, NULL, copy_gamma_inter_control_maptbl),
 	[POC_COMP_MAPTBL] = DEFINE_2D_MAPTBL(beyondx_a3_s0_poc_comp_table, init_common_table, getidx_dimming_maptbl, copy_common_maptbl),
@@ -744,6 +778,45 @@ static u8 BEYONDX_A3_S0_PPS[] = {
 static u8 BEYONDX_A3_S0_SET_AREA[] = {
 	0x1A, 0x1F, 0x00, 0x00, 0x00, 0x00,
 };
+
+#ifdef CONFIG_ACTIVE_CLOCK
+static u8 BEYONDX_A3_S0_ENABLE_ACTIVE_CLK[] = {
+	0xE3,
+	0x00, 0x00, 0x00, 0x08, 0x11, 0x00, 0x00, 0x00,
+	0x03, 0x01, 0x00, 0x00, 0x00, 0x00, 0x80, 0x0A,
+	0x0B, 0x00, 0x00, 0x02, 0xD0, 0x02, 0xC3, 0x3C,
+	0x13, 0x00, 0x3C, 0x13, 0x00, 0x3C, 0x13, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+static u8 BEYONDX_A3_S0_UPDATE_ACTIVE_CLK[] = {
+	0xE3,
+	0x00, 0x00, 0x00, 0x08, 0x11, 0x00, 0x00, 0x00,
+	0x03, 0x01,
+};
+static u8 BEYONDX_A3_S0_DISABLE_ACTIVE_CLK[] = {
+	0xE3,
+	0x00, 0x00
+};
+static u8 BEYONDX_A3_S0_SET_SELF_DRAWER[] = {
+	0xE2,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x02, 0xCF, 0x02, 0x97, 0x05, 0xA0, 0x0B,
+	0x90, 0x01, 0x07, 0xF0, 0xF0, 0xF0, 0x00, 0x00, 0x00,
+	0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+};
+
+static u8 BEYONDX_A3_S0_DISABLE_SELF_DRAWER[] = {
+	0xE2,
+	0x00, 0x00
+};
+#endif
 
 static u8 BEYONDX_A3_S0_TE_ON[] = { 0x35, 0x00 };
 static u8 BEYONDX_A3_S0_TE_OFF[] = { 0x34 };
@@ -933,7 +1006,9 @@ static u8 BEYONDX_A3_S0_STM_ENABLE[] = {
 	0x01, 0x08, 0x10, 0x21, 0x11, 0x42, 0x01, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static u8 BEYONDX_A3_S0_STM_DISABLE[] = { 0x86, 0x00 };
+#endif
 
 #ifdef CONFIG_SUPPORT_DYNAMIC_HLPM
 static u8 BEYONDX_A3_S0_DYNAMIC_HLPM_ENABLE[] = {
@@ -998,7 +1073,13 @@ static DEFINE_STATIC_PACKET(beyondx_a3_s0_exit_alpm, DSI_PKT_TYPE_WR, BEYONDX_A3
 static DEFINE_STATIC_PACKET(beyondx_a3_s0_te_off, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_TE_OFF, 0);
 static DEFINE_STATIC_PACKET(beyondx_a3_s0_te_on, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_TE_ON, 0);
 static DEFINE_STATIC_PACKET(beyondx_a3_s0_err_fg, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_ERR_FG, 0);
+#ifdef CONFIG_DYNAMIC_FREQ
+static DEFINE_PKTUI(beyondx_a3_s0_ffc, &beyondx_a3_s0_maptbl[DYN_FFC_MAPTBL], 1);
+static DEFINE_VARIABLE_PACKET(beyondx_a3_s0_ffc, DSI_PKT_TYPE_WR_NO_WAKE, BEYONDX_A3_S0_FFC, 0);
+#else
 static DEFINE_STATIC_PACKET(beyondx_a3_s0_ffc, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_FFC, 0);
+#endif
+
 static DEFINE_STATIC_PACKET(beyondx_a3_s0_tsp_hsync, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_TSP_HSYNC, 0);
 
 static DEFINE_PKTUI(beyondx_a3_s0_dsc, &beyondx_a3_s0_maptbl[DSC_MAPTBL], 0);
@@ -1028,6 +1109,18 @@ static DEFINE_STATIC_PACKET(beyondx_a3_s0_lpm_off_dyn_vlin, DSI_PKT_TYPE_WR, BEY
 static DEFINE_PKTUI(beyondx_a3_s0_lpm_mode, &beyondx_a3_s0_maptbl[LPM_MODE_MAPTBL], 1);
 static DEFINE_VARIABLE_PACKET(beyondx_a3_s0_lpm_mode, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_LPM_MODE, 0);
 
+#ifdef CONFIG_ACTIVE_CLOCK
+static DEFINE_PKTUI(beyondx_a3_s0_enable_active_clk, &beyondx_a3_s0_maptbl[ACTIVE_CLK_CTRL_MAPTBL], 1);
+static DEFINE_VARIABLE_PACKET(beyondx_a3_s0_enable_active_clk, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_ENABLE_ACTIVE_CLK, 0);
+static DEFINE_PKTUI(beyondx_a3_s0_set_self_drawer, &beyondx_a3_s0_maptbl[ACTIVE_CLK_SELF_DRAWER], 1);
+static DEFINE_VARIABLE_PACKET(beyondx_a3_s0_set_self_drawer, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_SET_SELF_DRAWER, 0);
+static DEFINE_PKTUI(beyondx_a3_s0_update_active_clk, &beyondx_a3_s0_maptbl[ACTIVE_CLK_CTRL_UPDATE_MAPTBL], 1);
+static DEFINE_VARIABLE_PACKET(beyondx_a3_s0_update_active_clk, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_UPDATE_ACTIVE_CLK, 0);
+static DEFINE_STATIC_PACKET(beyondx_a3_s0_disable_self_drawer, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_DISABLE_SELF_DRAWER, 0);
+static DEFINE_STATIC_PACKET(beyondx_a3_s0_disable_active_clk, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_DISABLE_ACTIVE_CLK, 0);
+static DEFINE_STATIC_PACKET(beyondx_a3_s0_active_clk_img_pkt, DSI_PKT_TYPE_WR_SR, live_clock_image, 0);
+#endif
+
 #ifdef CONFIG_SUPPORT_GRAM_CHECKSUM
 static DEFINE_STATIC_PACKET(beyondx_a3_s0_sw_reset, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_SW_RESET, 0);
 static DEFINE_STATIC_PACKET(beyondx_a3_s0_gct_dsc, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_GCT_DSC, 0);
@@ -1053,7 +1146,9 @@ static DEFINE_STATIC_PACKET(beyondx_a3_s0_ccd_test_disable, DSI_PKT_TYPE_WR, BEY
 #endif
 
 static DEFINE_STATIC_PACKET(beyondx_a3_s0_stm_enable, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_STM_ENABLE, 0);
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static DEFINE_STATIC_PACKET(beyondx_a3_s0_stm_disable, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_STM_DISABLE, 0);
+#endif
 
 static DEFINE_STATIC_PACKET(beyondx_a3_s0_gamma_mode1, DSI_PKT_TYPE_WR, BEYONDX_A3_S0_GAMMA_MODE1, 0x95);
 
@@ -1264,7 +1359,9 @@ static DEFINE_STATIC_PACKET(beyondx_a3_s0_grayspot_off_02, DSI_PKT_TYPE_WR, BEYO
 static DEFINE_PANEL_MDELAY(beyondx_a3_s0_wait_1msec, 1);
 static DEFINE_PANEL_MDELAY(beyondx_a3_s0_wait_5msec, 5);
 static DEFINE_PANEL_MDELAY(beyondx_a3_s0_wait_sleep_out, 10);
+#ifdef CONFIG_SUPPORT_AFC
 static DEFINE_PANEL_MDELAY(beyondx_a3_s0_wait_afc_off, 20);
+#endif
 static DEFINE_PANEL_MDELAY(beyondx_a3_s0_wait_sleep_in, 120);
 static DEFINE_PANEL_UDELAY(beyondx_a3_s0_wait_1_frame_in_60hz, 16700);
 static DEFINE_PANEL_UDELAY(beyondx_a3_s0_wait_1_frame_in_30hz, 33400);
@@ -1482,6 +1579,10 @@ static void *beyondx_a3_s0_alpm_enter_delay_cmdtbl[] = {
 
 static void *beyondx_a3_s0_alpm_exit_cmdtbl[] = {
 	&KEYINFO(beyondx_a3_s0_level2_key_enable),
+#ifdef CONFIG_ACTIVE_CLOCK
+	&PKTINFO(beyondx_a3_s0_disable_active_clk),
+	&PKTINFO(beyondx_a3_s0_disable_self_drawer),
+#endif
 	&PKTINFO(beyondx_a3_s0_lpm_off_nit),
 	&PKTINFO(beyondx_a3_s0_avc2_on),
 	&PKTINFO(beyondx_a3_s0_exit_alpm),
@@ -1491,6 +1592,12 @@ static void *beyondx_a3_s0_alpm_exit_cmdtbl[] = {
 static void *beyondx_a3_s0_gamma_inter_control_cmdtbl[] = {
 	&KEYINFO(beyondx_a3_s0_level2_key_enable),
 	&PKTINFO(beyondx_a3_s0_gamma_inter_control),
+	&KEYINFO(beyondx_a3_s0_level2_key_disable),
+};
+
+static void *beyondx_a3_s0_check_condition_cmdtbl[] = {
+	&KEYINFO(beyondx_a3_s0_level2_key_enable),
+	&s6e3ha9_dmptbl[DUMP_RDDPM],
 	&KEYINFO(beyondx_a3_s0_level2_key_disable),
 };
 
@@ -1770,6 +1877,28 @@ static void *beyondx_a3_s0_grayspot_off_cmdtbl[] = {
 };
 #endif
 
+#ifdef CONFIG_ACTIVE_CLOCK
+static void *beyondx_a3_s0_active_clk_img_cmdtbl[] = {
+	&PKTINFO(beyondx_a3_s0_active_clk_img_pkt),
+};
+
+static void *beyondx_a3_s0_active_clk_ctrl_cmdtbl[] = {
+	&KEYINFO(beyondx_a3_s0_level2_key_enable),
+	&PKTINFO(beyondx_a3_s0_enable_active_clk),
+	&PKTINFO(beyondx_a3_s0_set_self_drawer),
+	&KEYINFO(beyondx_a3_s0_level2_key_disable),
+};
+
+static void *beyondx_a3_s0_active_clk_update_cmdtbl[] = {
+	&KEYINFO(beyondx_a3_s0_level2_key_enable),
+	&PKTINFO(beyondx_a3_s0_enable_active_clk),
+	&PKTINFO(beyondx_a3_s0_set_self_drawer),
+	&DLYINFO(beyondx_a3_s0_wait_1_frame_in_30hz),
+	&PKTINFO(beyondx_a3_s0_update_active_clk),
+	&KEYINFO(beyondx_a3_s0_level2_key_disable),
+};
+#endif
+
 #ifdef CONFIG_SUPPORT_ISC_DEFECT
 static u8 BEYONDX_A3_S0_ISC_IPOFF_SEQ_01[] = {
 	0xF5, 0x80
@@ -1929,6 +2058,21 @@ static void *beyondx_a3_s0_dummy_cmdtbl[] = {
  	&PKTINFO(beyondx_a3_s0_te_off),
 };
 
+
+#ifdef CONFIG_DYNAMIC_FREQ
+static DEFINE_STATIC_PACKET(bx_no_wake_level2_key_enable, DSI_PKT_TYPE_WR_NO_WAKE, BEYONDX_A3_S0_KEY2_ENABLE, 0);
+static DEFINE_PANEL_KEY(bx_no_wake_level2_key_enable, CMD_LEVEL_2, KEY_ENABLE, &PKTINFO(bx_no_wake_level2_key_enable));
+
+static DEFINE_STATIC_PACKET(bx_no_wake_level2_key_disable, DSI_PKT_TYPE_WR_NO_WAKE, BEYONDX_A3_S0_KEY2_DISABLE, 0);
+static DEFINE_PANEL_KEY(bx_no_wake_level2_key_disable, CMD_LEVEL_2, KEY_DISABLE, &PKTINFO(bx_no_wake_level2_key_disable));
+
+static void *beyondx_a3_s0_dynamic_ffc_cmdtbl[] = {
+	&KEYINFO(bx_no_wake_level2_key_enable),
+	&PKTINFO(beyondx_a3_s0_ffc),
+	&KEYINFO(bx_no_wake_level2_key_disable),
+};
+#endif
+
 static struct seqinfo beyondx_a3_s0_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_INIT_SEQ] = SEQINFO_INIT("init-seq", beyondx_a3_s0_init_cmdtbl),
 	[PANEL_RES_INIT_SEQ] = SEQINFO_INIT("resource-init-seq", beyondx_a3_s0_res_init_cmdtbl),
@@ -1959,6 +2103,11 @@ static struct seqinfo beyondx_a3_s0_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_MST_ON_SEQ] = SEQINFO_INIT("mst-on-seq", beyondx_a3_s0_mst_on_cmdtbl),
 	[PANEL_MST_OFF_SEQ] = SEQINFO_INIT("mst-off-seq", beyondx_a3_s0_mst_off_cmdtbl),
 #endif
+#ifdef CONFIG_ACTIVE_CLOCK
+	[PANEL_ACTIVE_CLK_IMG_SEQ] = SEQINFO_INIT("active-clk-img-seq", beyondx_a3_s0_active_clk_img_cmdtbl),
+	[PANEL_ACTIVE_CLK_CTRL_SEQ] = SEQINFO_INIT("active-clk-ctrl-seq", beyondx_a3_s0_active_clk_ctrl_cmdtbl),
+	[PANEL_ACTIVE_CLK_UPDATE_SEQ] = SEQINFO_INIT("active-clk-update-seq", beyondx_a3_s0_active_clk_update_cmdtbl),
+#endif
 #ifdef CONFIG_SUPPORT_GRAM_CHECKSUM
 	[PANEL_GCT_ENTER_SEQ] = SEQINFO_INIT("gct-enter-seq", beyondx_a3_s0_gct_enter_cmdtbl),
 	[PANEL_GCT_VDDM_SEQ] = SEQINFO_INIT("gct-vddm-seq", beyondx_a3_s0_gct_vddm_cmdtbl),
@@ -1988,10 +2137,22 @@ static struct seqinfo beyondx_a3_s0_seqtbl[MAX_PANEL_SEQ] = {
 	[PANEL_ISC_THRESHOLD_SEQ] = SEQINFO_INIT("isc-threshold-seq", beyondx_a3_s0_isc_threshold_cmdtbl),
 	[PANEL_STM_TUNE_SEQ] = SEQINFO_INIT("stm-tune-seq", beyondx_a3_s0_stm_tune_cmdtbl),
 #endif
+#ifdef CONFIG_DYNAMIC_FREQ
+	[PANEL_DYNAMIC_FFC_SEQ] = SEQINFO_INIT("dynamic-ffc-seq", beyondx_a3_s0_dynamic_ffc_cmdtbl),
+#endif
+
 	[PANEL_GAMMA_INTER_CONTROL_SEQ] = SEQINFO_INIT("gamma-control-seq", beyondx_a3_s0_gamma_inter_control_cmdtbl),
+	[PANEL_CHECK_CONDITION_SEQ] = SEQINFO_INIT("check-condition-seq", beyondx_a3_s0_check_condition_cmdtbl),
 	[PANEL_DUMP_SEQ] = SEQINFO_INIT("dump-seq", beyondx_a3_s0_dump_cmdtbl),
 	[PANEL_DUMMY_SEQ] = SEQINFO_INIT("dummy-seq", beyondx_a3_s0_dummy_cmdtbl),
 };
+
+#ifdef CONFIG_SUPPORT_POC_SPI
+struct spi_data s6e3ha9_beyond_spi_data = {
+	.spi_addr = 0x0,
+	.speed_hz = 10000000
+};
+#endif
 
 struct common_panel_info s6e3ha9_beyondx_a3_s0_utype_panel_info = {
 	.ldi_name = "s6e3ha9",
@@ -2003,10 +2164,12 @@ struct common_panel_info s6e3ha9_beyondx_a3_s0_utype_panel_info = {
 	.ddi_props = {
 		.gpara = (DDI_SUPPORT_WRITE_GPARA | DDI_SUPPORT_POINT_GPARA),
 	},
+#ifdef CONFIG_SUPPORT_DSU
 	.mres = {
 		.nr_resol = ARRAY_SIZE(s6e3ha9_beyond_resol),
 		.resol = s6e3ha9_beyond_resol,
 	},
+#endif
 	.maptbl = beyondx_a3_s0_maptbl,
 	.nr_maptbl = ARRAY_SIZE(beyondx_a3_s0_maptbl),
 	.seqtbl = beyondx_a3_s0_seqtbl,
@@ -2021,10 +2184,12 @@ struct common_panel_info s6e3ha9_beyondx_a3_s0_utype_panel_info = {
 	.mdnie_tune = &s6e3ha9_beyondx_a3_s0_mdnie_tune,
 #endif
 	.panel_dim_info = {
-		&s6e3ha9_beyondx_a3_s0_panel_dimming_info,
-		&s6e3ha9_beyondx_a3_s0_panel_hmd_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_DISP] = &s6e3ha9_beyondx_a3_s0_panel_dimming_info,
+#ifdef CONFIG_SUPPORT_HMD
+		[PANEL_BL_SUBDEV_TYPE_HMD] = &s6e3ha9_beyondx_a3_s0_panel_hmd_dimming_info,
+#endif
 #ifdef CONFIG_SUPPORT_AOD_BL
-		&s6e3ha9_beyondx_a3_s0_panel_aod_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_AOD] = &s6e3ha9_beyondx_a3_s0_panel_aod_dimming_info,
 #endif
 	},
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
@@ -2035,6 +2200,12 @@ struct common_panel_info s6e3ha9_beyondx_a3_s0_utype_panel_info = {
 #endif
 #ifdef CONFIG_SUPPORT_DDI_FLASH
 	.poc_data = &s6e3ha9_beyond_poc_data,
+#endif
+#ifdef CONFIG_SUPPORT_POC_SPI
+	.spi_data = &s6e3ha9_beyond_spi_data,
+#endif
+#ifdef CONFIG_SUPPORT_DISPLAY_PROFILER
+	.profile_tune = &ha9_profiler_tune,
 #endif
 };
 
@@ -2048,6 +2219,12 @@ struct common_panel_info s6e3ha9_beyondx_a3_s0_default_panel_info = {
 	.ddi_props = {
 		.gpara = (DDI_SUPPORT_WRITE_GPARA | DDI_SUPPORT_POINT_GPARA),
 	},
+#ifdef CONFIG_SUPPORT_DSU
+	.mres = {
+		.nr_resol = ARRAY_SIZE(s6e3ha9_beyond_resol),
+		.resol = s6e3ha9_beyond_resol,
+	},
+#endif
 	.maptbl = beyondx_a3_s0_maptbl,
 	.nr_maptbl = ARRAY_SIZE(beyondx_a3_s0_maptbl),
 	.seqtbl = beyondx_a3_s0_seqtbl,
@@ -2062,10 +2239,12 @@ struct common_panel_info s6e3ha9_beyondx_a3_s0_default_panel_info = {
 	.mdnie_tune = &s6e3ha9_beyondx_a3_s0_mdnie_tune,
 #endif
 	.panel_dim_info = {
-		&s6e3ha9_beyondx_a3_s0_panel_dimming_info,
-		&s6e3ha9_beyondx_a3_s0_panel_hmd_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_DISP] = &s6e3ha9_beyondx_a3_s0_panel_dimming_info,
+#ifdef CONFIG_SUPPORT_HMD
+		[PANEL_BL_SUBDEV_TYPE_HMD] = &s6e3ha9_beyondx_a3_s0_panel_hmd_dimming_info,
+#endif
 #ifdef CONFIG_SUPPORT_AOD_BL
-		&s6e3ha9_beyondx_a3_s0_panel_aod_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_AOD] = &s6e3ha9_beyondx_a3_s0_panel_aod_dimming_info,
 #endif
 	},
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
@@ -2077,6 +2256,16 @@ struct common_panel_info s6e3ha9_beyondx_a3_s0_default_panel_info = {
 #ifdef CONFIG_SUPPORT_DDI_FLASH
 	.poc_data = &s6e3ha9_beyond_poc_data,
 #endif
+#ifdef CONFIG_SUPPORT_POC_SPI
+	.spi_data = &s6e3ha9_beyond_spi_data,
+#endif
+#ifdef CONFIG_DYNAMIC_FREQ
+	.df_freq_tbl = d2_dynamic_freq_set,
+#endif
+#ifdef CONFIG_SUPPORT_DISPLAY_PROFILER
+	.profile_tune = &ha9_profiler_tune,
+#endif
+
 };
 
 static int __init s6e3ha9_beyondx_a3_s0_panel_init(void)

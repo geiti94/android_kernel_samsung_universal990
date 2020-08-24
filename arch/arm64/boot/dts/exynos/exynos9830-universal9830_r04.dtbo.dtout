@@ -1,4 +1,4 @@
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3179.5-18: Warning (reg_format): /fragment@44/__overlay__/slot@0:reg: property has invalid length (4 bytes) (#address-cells == 2, #size-cells == 1)
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3180.5-18: Warning (reg_format): /fragment@44/__overlay__/slot@0:reg: property has invalid length (4 bytes) (#address-cells == 2, #size-cells == 1)
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dtbo: Warning (pci_device_bus_num): Failed prerequisite 'reg_format'
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dtbo: Warning (simple_bus_reg): Failed prerequisite 'reg_format'
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dtbo: Warning (i2c_bus_reg): Failed prerequisite 'reg_format'
@@ -171,8 +171,8 @@ arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:2666.7-26: Warning (
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:2673.7-37: Warning (sound_dai_property): /fragment@model/__overlay__/sound/fwd/cpu:sound-dai: cell 1 is not a phandle reference
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:2673.7-37: Warning (sound_dai_property): /fragment@model/__overlay__/sound/fwd/cpu:sound-dai: property size (8) too small for cell size 1
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:2677.7-26: Warning (sound_dai_property): /fragment@model/__overlay__/sound/fwd/codec:sound-dai: cell 0 is not a phandle reference
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:4604.8-32: Warning (sound_dai_property): /__local_fixups__/fragment@model/__overlay__/sound/uaif2/codec:sound-dai: cell 1 is not a phandle reference
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:4603.13-4605.9: Warning (sound_dai_property): /__local_fixups__/fragment@model/__overlay__/sound/uaif2/codec: Missing property '#sound-dai-cells' in node /fragment@11/__overlay__/max77705-irq or bad phandle (referred from sound-dai[1])
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:4605.8-32: Warning (sound_dai_property): /__local_fixups__/fragment@model/__overlay__/sound/uaif2/codec:sound-dai: cell 1 is not a phandle reference
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:4604.13-4606.9: Warning (sound_dai_property): /__local_fixups__/fragment@model/__overlay__/sound/uaif2/codec: Missing property '#sound-dai-cells' in node /fragment@11/__overlay__/max77705-irq or bad phandle (referred from sound-dai[1])
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:81.5-47: Warning (gpios_property): /fragment@3/__overlay__/s2mps19mfd@00:s2mps19,irq-gpio: cell 1 is not a phandle reference
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:75.18-492.6: Warning (gpios_property): /fragment@3/__overlay__/s2mps19mfd@00: Missing property '#gpio-cells' in node /fragment@0/__overlay__/m-pmic-irq or bad phandle (referred from s2mps19,irq-gpio[1])
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:87.5-36: Warning (gpios_property): /fragment@3/__overlay__/s2mps19mfd@00:gpios: cell 1 is not a phandle reference
@@ -189,21 +189,21 @@ arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:1404.6-37: Warning (
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:1401.14-1406.7: Warning (gpios_property): /fragment@model/__overlay__/gpio_keys/button@4: Missing property '#gpio-cells' in node /fragment@1/__overlay__/sub-pmic-irq or bad phandle (referred from gpios[1])
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:1689.5-35: Warning (gpios_property): /fragment@model/__overlay__/fixedregulator@1:gpio: cell 1 is not a phandle reference
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:1684.21-1693.6: Warning (gpios_property): /fragment@model/__overlay__/fixedregulator@1: Missing property '#gpio-cells' in node /fragment@0/__overlay__/m-pmic-irq or bad phandle (referred from gpio[1])
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3090.5-42: Warning (gpios_property): /fragment@42/__overlay__/cs35l40@40:reset-gpios: cell 1 is not a phandle reference
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3082.15-3100.6: Warning (gpios_property): /fragment@42/__overlay__/cs35l40@40: Missing property '#gpio-cells' in node /fragment@0/__overlay__/dp-pmic-irq or bad phandle (referred from reset-gpios[1])
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3110.5-42: Warning (gpios_property): /fragment@42/__overlay__/cs35l40@41:reset-gpios: cell 1 is not a phandle reference
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3102.15-3119.6: Warning (gpios_property): /fragment@42/__overlay__/cs35l40@41: Missing property '#gpio-cells' in node /fragment@1/__overlay__/sub-pmic-irq or bad phandle (referred from reset-gpios[1])
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3890.4-35: Warning (gpios_property): /fragment@51/__overlay__:gpios: cell 1 is not a phandle reference
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3889.15-3891.5: Warning (gpios_property): /fragment@51/__overlay__: Missing property '#gpio-cells' in node /fragment@1/__overlay__/sub-pmic-irq or bad phandle (referred from gpios[1])
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3956.5-36: Warning (gpios_property): /fragment@56/__overlay__/cs35l40@40:reset-gpios: cell 0 is not a phandle reference
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3961.5-36: Warning (gpios_property): /fragment@56/__overlay__/cs35l40@41:reset-gpios: cell 0 is not a phandle reference
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3975.4-44: Warning (gpios_property): /fragment@57/__overlay__:pcie,wlan-gpio: cell 1 is not a phandle reference
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3969.15-3976.5: Warning (gpios_property): /fragment@57/__overlay__: Missing property '#gpio-cells' in node /fragment@1/__overlay__/sub-pmic-irq or bad phandle (referred from pcie,wlan-gpio[1])
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3091.5-42: Warning (gpios_property): /fragment@42/__overlay__/cs35l40@40:reset-gpios: cell 1 is not a phandle reference
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3083.15-3101.6: Warning (gpios_property): /fragment@42/__overlay__/cs35l40@40: Missing property '#gpio-cells' in node /fragment@0/__overlay__/dp-pmic-irq or bad phandle (referred from reset-gpios[1])
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3111.5-42: Warning (gpios_property): /fragment@42/__overlay__/cs35l40@41:reset-gpios: cell 1 is not a phandle reference
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3103.15-3120.6: Warning (gpios_property): /fragment@42/__overlay__/cs35l40@41: Missing property '#gpio-cells' in node /fragment@1/__overlay__/sub-pmic-irq or bad phandle (referred from reset-gpios[1])
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3891.4-35: Warning (gpios_property): /fragment@51/__overlay__:gpios: cell 1 is not a phandle reference
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3890.15-3892.5: Warning (gpios_property): /fragment@51/__overlay__: Missing property '#gpio-cells' in node /fragment@1/__overlay__/sub-pmic-irq or bad phandle (referred from gpios[1])
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3957.5-36: Warning (gpios_property): /fragment@56/__overlay__/cs35l40@40:reset-gpios: cell 0 is not a phandle reference
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3962.5-36: Warning (gpios_property): /fragment@56/__overlay__/cs35l40@41:reset-gpios: cell 0 is not a phandle reference
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3976.4-44: Warning (gpios_property): /fragment@57/__overlay__:pcie,wlan-gpio: cell 1 is not a phandle reference
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3970.15-3977.5: Warning (gpios_property): /fragment@57/__overlay__: Missing property '#gpio-cells' in node /fragment@1/__overlay__/sub-pmic-irq or bad phandle (referred from pcie,wlan-gpio[1])
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:84.5-37: Warning (interrupts_property): /fragment@3/__overlay__/s2mps19mfd@00:interrupt-parent: Invalid phandle
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:75.18-492.6: Warning (interrupts_property): /fragment@3/__overlay__/s2mps19mfd@00: Missing interrupt-parent
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:513.5-37: Warning (interrupts_property): /fragment@4/__overlay__/s2mps22mfd@00:interrupt-parent: Invalid phandle
 arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:504.18-622.6: Warning (interrupts_property): /fragment@4/__overlay__/s2mps22mfd@00: Missing interrupt-parent
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3086.5-37: Warning (interrupts_property): /fragment@42/__overlay__/cs35l40@40:interrupt-parent: Invalid phandle
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3082.15-3100.6: Warning (interrupts_property): /fragment@42/__overlay__/cs35l40@40: Missing interrupt-parent
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3106.5-37: Warning (interrupts_property): /fragment@42/__overlay__/cs35l40@41:interrupt-parent: Invalid phandle
-arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3102.15-3119.6: Warning (interrupts_property): /fragment@42/__overlay__/cs35l40@41: Missing interrupt-parent
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3087.5-37: Warning (interrupts_property): /fragment@42/__overlay__/cs35l40@40:interrupt-parent: Invalid phandle
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3083.15-3101.6: Warning (interrupts_property): /fragment@42/__overlay__/cs35l40@40: Missing interrupt-parent
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3107.5-37: Warning (interrupts_property): /fragment@42/__overlay__/cs35l40@41:interrupt-parent: Invalid phandle
+arch/arm64/boot/dts/exynos/exynos9830-universal9830_r04.dts:3103.15-3120.6: Warning (interrupts_property): /fragment@42/__overlay__/cs35l40@41: Missing interrupt-parent

@@ -676,6 +676,7 @@ static int event_seq_show(struct seq_file *file, void *unused)
 static ssize_t event_seq_write(struct file *file, const char __user *buffer, size_t count, loff_t *off)
 {
 	char buf[128];
+	count = (count > 128)? 128 : count;
 	if (copy_from_user(buf, buffer, count) != 0)
 		return -EFAULT;
 	sscanf(buf, "%x %x %x %x %x %x %x",

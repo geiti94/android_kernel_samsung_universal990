@@ -67,6 +67,18 @@ extern unsigned int abox_get_requiring_mif_freq_in_khz(void);
 extern unsigned int abox_get_requiring_aud_freq_in_khz(void);
 
 /**
+ * Get routing path
+ * @return		routing path. See below.
+ *	0: Receiver
+ *	1: Speaker
+ *	2: Headset (3.5pi)
+ *	3: Bluetooth
+ *	4: USB
+ *	5: Call forwarding
+ */
+extern unsigned int abox_get_routing_path(void);
+
+/**
  * Start abox IPC
  * @param[in]	dev		pointer to abox device
  * @param[in]	hw_irq		hardware IRQ number

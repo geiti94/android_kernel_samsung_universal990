@@ -17,11 +17,11 @@ config COMPANION_DCDC_USE
         help
           Use companion DCDC regulator.
 config SENSOR_RETENTION_USE
-	bool "Use sensor retention"
-	depends on VENDER_MCD
-	default n
-	help
-	  Use sensor retention.
+        bool "Use sensor retention"
+        depends on VENDER_MCD
+        default n
+        help
+          Use sensor retention.
 config OIS_USE
         bool "Use ois"
         depends on VENDER_MCD
@@ -95,26 +95,44 @@ config CAMERA_CIS_TOF_BUCK_USE
         help
           Use isl91128.
 config CAMERA_USE_MCU
-	bool "Use Camera mcu"
-	depends on VENDER_MCD
-	default n
-	help
+        bool "Use Camera mcu"
+        depends on VENDER_MCD
+        default n
+        help
           Use Camera MCU.
 config SENSORCORE_MCU_CONTROL
-	bool "Use sensor core mcu control"
-	depends on VENDER_MCD
-	default n
-	help
+        bool "Use sensor core mcu control"
+        depends on VENDER_MCD
+        default n
+        help
           Use sensor control mcu.
 config CAMERA_USE_INTERNAL_MCU
-	bool "Use internal MCU for OIS"
-	depends on VENDER_MCD
-	default n
-	help
-	  Use internal MCU for OIS.
+        bool "Use internal MCU for OIS"
+        depends on VENDER_MCD
+        default n
+        help
+          Use internal MCU for OIS.
+config CAMERA_CNT_V01
+        bool "This camera is cnt_v01"
+        depends on VENDER_MCD
+        default n
+        help
+          This camera is cnt_v01.
 config CAMERA_CNT_V02
         bool "This camera is cnt_v02"
         depends on VENDER_MCD
         default n
         help
           This camera is cnt_v02.
+config USE_OIS_TAMODE_CONTROL
+	bool "Use ois TAMODE control"
+        depends on VENDER_MCD
+        default n
+        help
+          Use ois TAMODE control.
+config CAMERA_RST_V08
+        bool "This camera is rst_v08"
+        depends on VENDER_MCD
+        default n
+        help
+          This camera is rst_v08.

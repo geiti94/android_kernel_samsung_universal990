@@ -139,7 +139,9 @@ asmlinkage void dbg_snapshot_do_dpm(struct pt_regs *regs)
 {
 	unsigned long tsk_stk = (unsigned long)current->stack;
 	unsigned long irq_stk = (unsigned long)this_cpu_read(irq_stack_ptr);
+#ifdef CONFIG_VMAP_STACK
 	unsigned long ovf_stk = (unsigned long)this_cpu_ptr(overflow_stack);
+#endif
 	unsigned int esr = read_sysreg(esr_el1);
 	unsigned long far = read_sysreg(far_el1);
 	unsigned int val = 0;
@@ -198,12 +200,15 @@ asmlinkage void dbg_snapshot_do_dpm(struct pt_regs *regs)
 				tsk_stk, tsk_stk + THREAD_SIZE);
 			pr_emerg("IRQ stack:      [0x%016lx..0x%016lx]\n",
 				irq_stk, irq_stk + THREAD_SIZE);
+#ifdef CONFIG_VMAP_STACK
 			pr_emerg("Overflow stack: [0x%016lx..0x%016lx]\n",
 				ovf_stk, ovf_stk + OVERFLOW_STACK_SIZE);
+#endif
 		}
 		dbg_snapshot_do_dpm_policy(policy);
 	}
 }
+
 static const char *enabled = "enabled";
 static const char *disabled = "disabled";
 

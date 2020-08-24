@@ -53,6 +53,35 @@ static irqreturn_t exynos_tzasc_irq_handler(int irq, void *dev_id)
 	return IRQ_WAKE_THREAD;
 }
 
+static void exynos_tzasc_print_fail_id(uint32_t fail_id)
+{
+	uint32_t id = (fail_id >> 11) & 0x1f;
+
+	switch (id) {
+	case 0x11:
+	case 0x12:
+	case 0x19:
+	case 0x1A:
+		pr_info("Master of FAIL_ID : G3D\n");
+		break;
+	case 0x10:
+	case 0x13:
+		pr_info("Master of FAIL_ID : DSU\n");
+		break;
+	case 0x18:
+	case 0x1B:
+		pr_info("Master of FAIL_ID : BIG_CL\n");
+		break;
+	case 0x00:
+	case 0x01:
+		pr_info("Master of FAIL_ID : PERI\n");
+		break;
+	default:
+		pr_info("Master of FAIL_ID : UNKNOWN\n");
+		break;
+	}
+}
+
 static irqreturn_t exynos_tzasc_irq_handler_thread(int irq, void *dev_id)
 {
 	struct tzasc_info_data *data = dev_id;
@@ -138,6 +167,10 @@ static irqreturn_t exynos_tzasc_irq_handler_thread(int irq, void *dev_id)
 			data->fail_info[i].tzasc_fail_ctrl);
 		pr_info("FAIL_ID : %#x\n",
 			data->fail_info[i].tzasc_fail_id);
+
+		/* print which master made this TZASC FAIL */
+		exynos_tzasc_print_fail_id(data->fail_info[i].tzasc_fail_id);
+
 		pr_info("INT_STATUS : %#x\n",
 			data->fail_info[i].tzasc_intr_stat);
 

@@ -67,6 +67,3 @@ obj-$(CONFIG_TZDEV)		+= tzdev/
 obj-$(CONFIG_SAMSUNG_TUI)	+= tui/
 
 obj-$(CONFIG_DEV_RIL_BRIDGE) += dev_ril_bridge.o
-
-# TZIC
-obj-y				+= tzic64.o

@@ -178,7 +178,9 @@ static ssize_t adc_val_power_show(struct device *dev,
 	s2m_adc_read_data(dev, -1);
 
 	return snprintf(buf, PAGE_SIZE,
-			"CH0[%x]:%d uW (%d), CH1[%x]:%d uW (%d), CH2[%x]:%d uW (%d), CH3[%x]:%d uW (%d)\nCH4[%x]:%d uW (%d), CH5[%x]:%d uW (%d), CH6[%x]:%d uW (%d), CH7[%x]:%d uW (%d)\n",
+			"CH0[0x%02hhx]:%d uW (%d), CH1[0x%02hhx]:%d uW (%d), CH2[0x%02hhx]:%d uW (%d), "
+			"CH3[0x%02hhx]:%d uW (%d)\nCH4[0x%02hhx]:%d uW (%d), CH5[0x%02hhx]:%d uW (%d), "
+			"CH6[0x%02hhx]:%d uW (%d), CH7[0x%02hhx]:%d uW (%d)\n",
 			adc_meter->adc_reg[0],
 			((adc_meter->power_val[0] >> 8) * get_coeff_p(dev, adc_meter->adc_reg[0])),
 			adc_meter->power_val[0],
@@ -218,7 +220,9 @@ static ssize_t adc_val_current_show(struct device *dev,
 	s2m_adc_read_data(dev, -1);
 
 	return snprintf(buf, PAGE_SIZE,
-			"CH0[%x]:%d uA (%d), CH1[%x]:%d uA (%d), CH2[%x]:%d uA (%d), CH3[%x]:%d uA (%d)\nCH4[%x]:%d uA (%d), CH5[%x]:%d uA (%d), CH6[%x]:%d uA (%d), CH7[%x]:%d uA (%d)\n",
+			"CH0[0x%02hhx]:%d uA (%d), CH1[0x%02hhx]:%d uA (%d), CH2[0x%02hhx]:%d uA (%d), "
+			"CH3[0x%02hhx]:%d uA (%d)\nCH4[0x%02hhx]:%d uA (%d), CH5[0x%02hhx]:%d uA (%d), "
+			"CH6[0x%02hhx]:%d uA (%d), CH7[0x%02hhx]:%d uA (%d)\n",
 			adc_meter->adc_reg[0],
 			adc_meter->current_val[0] * get_coeff_c(dev, adc_meter->adc_reg[0]) / 1000,
 			adc_meter->current_val[0],
@@ -258,9 +262,9 @@ static ssize_t adc_en_show(struct device *dev, struct device_attribute *attr, ch
 	s2mps19_read_reg(adc_meter->i2c, S2MPS19_REG_ADC_CTRL3, &adc_ctrl3);
 
 	if (adc_ctrl3 & ADC_EN_MASK)
-		return snprintf(buf, PAGE_SIZE, "ADC enable (%x)\n", adc_ctrl3);
+		return snprintf(buf, PAGE_SIZE, "ADC enable (0x%02hhx)\n", adc_ctrl3);
 	else
-		return snprintf(buf, PAGE_SIZE, "ADC disable (%x)\n", adc_ctrl3);
+		return snprintf(buf, PAGE_SIZE, "ADC disable (0x%02hhx)\n", adc_ctrl3);
 }
 
 static ssize_t adc_en_store(struct device *dev, struct device_attribute *attr,
@@ -348,7 +352,7 @@ static ssize_t adc_sync_mode_show(struct device *dev,
 				"ASYNC_MODE (%d)\n", adc_meter->adc_sync_mode);
 	default:
 		return snprintf(buf, PAGE_SIZE,
-				"error (%x)\n", adc_meter->adc_sync_mode);
+				"error (0x%02hhx)\n", adc_meter->adc_sync_mode);
 	}
 }
 
@@ -461,49 +465,49 @@ static ssize_t adc_val_7_show(struct device *dev,
 static ssize_t adc_reg_0_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "0x%2x\n", adc_meter->adc_reg[0]);
+	return snprintf(buf, PAGE_SIZE, "0x%02hhx\n", adc_meter->adc_reg[0]);
 }
 
 static ssize_t adc_reg_1_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "0x%2x\n", adc_meter->adc_reg[1]);
+	return snprintf(buf, PAGE_SIZE, "0x%02hhx\n", adc_meter->adc_reg[1]);
 }
 
 static ssize_t adc_reg_2_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "0x%2x\n", adc_meter->adc_reg[2]);
+	return snprintf(buf, PAGE_SIZE, "0x%02hhx\n", adc_meter->adc_reg[2]);
 }
 
 static ssize_t adc_reg_3_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "0x%2x\n", adc_meter->adc_reg[3]);
+	return snprintf(buf, PAGE_SIZE, "0x%02hhx\n", adc_meter->adc_reg[3]);
 }
 
 static ssize_t adc_reg_4_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "0x%2x\n", adc_meter->adc_reg[4]);
+	return snprintf(buf, PAGE_SIZE, "0x%02hhx\n", adc_meter->adc_reg[4]);
 }
 
 static ssize_t adc_reg_5_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "0x%2x\n", adc_meter->adc_reg[5]);
+	return snprintf(buf, PAGE_SIZE, "0x%02hhx\n", adc_meter->adc_reg[5]);
 }
 
 static ssize_t adc_reg_6_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "0x%2x\n", adc_meter->adc_reg[6]);
+	return snprintf(buf, PAGE_SIZE, "0x%02hhx\n", adc_meter->adc_reg[6]);
 }
 
 static ssize_t adc_reg_7_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "0x%2x\n", adc_meter->adc_reg[7]);
+	return snprintf(buf, PAGE_SIZE, "0x%02hhx\n", adc_meter->adc_reg[7]);
 }
 
 static void adc_reg_update(struct device *dev)
@@ -627,7 +631,7 @@ static void adc_ctrl1_update(struct device *dev)
 
 static ssize_t adc_ctrl1_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "0x%2x\n", adc_meter->adc_ctrl1);
+	return snprintf(buf, PAGE_SIZE, "0x%02hhx\n", adc_meter->adc_ctrl1);
 }
 
 static ssize_t adc_ctrl1_store(struct device *dev, struct device_attribute *attr,

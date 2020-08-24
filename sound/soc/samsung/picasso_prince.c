@@ -1,5 +1,5 @@
 /*
- *  Driver for Prince AMPs on Picasso
+ *  picasso_prince.c -- Machine Driver for Prince AMPs on Picasso
  *
  *  Copyright 2013 Wolfson Microelectronics
  *  Copyright 2016 Cirrus Logic
@@ -19,6 +19,7 @@
 #include <linux/of.h>
 #include <linux/clk.h>
 #include <linux/slab.h>
+#include <linux/wakelock.h>
 
 #include <soc/samsung/exynos-pmu.h>
 #include <sound/samsung/abox.h>
@@ -104,6 +105,9 @@ struct picasso_drvdata {
 	int left_amp_dai;
 	int right_amp_dai;
 	struct clk *clk[MADERA_MAX_CLOCKS];
+
+	struct wake_lock wake_lock;
+	int wake_lock_switch;
 };
 
 static struct picasso_drvdata picasso_prince_drvdata;
@@ -692,6 +696,7 @@ static const struct snd_soc_dapm_widget picasso_supply_widgets[] = {
 static int picasso_probe(struct snd_soc_card *card)
 {
 	int i;
+	struct picasso_drvdata *drvdata = card->drvdata;
 
 	for (i = 0; i < ARRAY_SIZE(picasso_supply_widgets); i++) {
 		const struct snd_soc_dapm_widget *w;
@@ -712,8 +717,22 @@ static int picasso_probe(struct snd_soc_card *card)
 		}
 	}
 
+	wake_lock_init(&drvdata->wake_lock, WAKE_LOCK_SUSPEND,
+				"picasso-sound");
+	drvdata->wake_lock_switch = 0;
+
 	return 0;
 }
+
+static int picasso_remove(struct snd_soc_card *card)
+{
+	struct picasso_drvdata *drvdata = card->drvdata;
+
+	wake_lock_destroy(&drvdata->wake_lock);
+
+	return 0;
+}
+
 
 static struct snd_soc_pcm_stream prince_amp_params[] = {
 	{
@@ -733,7 +752,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
 	},
@@ -744,7 +764,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
 	},
@@ -755,7 +776,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
 	},
@@ -766,7 +788,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
 	},
@@ -777,7 +800,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
 	},
@@ -788,7 +812,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
 	},
@@ -799,7 +824,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
 	},
@@ -810,7 +836,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
 	},
@@ -821,7 +848,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
 	},
@@ -832,7 +860,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
 	},
@@ -843,7 +872,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
 	},
@@ -854,7 +884,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &rdma_ops,
 		.dpcm_playback = 1,
 	},
@@ -865,7 +896,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &wdma_ops,
 		.dpcm_capture = 1,
 	},
@@ -876,7 +908,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &wdma_ops,
 		.dpcm_capture = 1,
 	},
@@ -887,7 +920,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &wdma_ops,
 		.dpcm_capture = 1,
 	},
@@ -898,7 +932,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &wdma_ops,
 		.dpcm_capture = 1,
 	},
@@ -909,7 +944,8 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.dynamic = 1,
 		.ignore_suspend = 1,
-		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE, SND_SOC_DPCM_TRIGGER_PRE_POST},
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST_PRE,
+			SND_SOC_DPCM_TRIGGER_PRE_POST},
 		.ops = &wdma_ops,
 		.dpcm_capture = 1,
 	},
@@ -952,7 +988,7 @@ static struct snd_soc_dai_link picasso_dai[100] = {
 		.platform_name = "dp_dma:dp_dma@1",
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
-		.ignore_suspend = 1,			
+		.ignore_suspend = 1,
 	},
 #endif
 	{
@@ -1586,7 +1622,7 @@ static int picasso_l_speaker(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMD:
-		cirrus_bd_store_values("");
+		cirrus_bd_store_values("_0");
 		break;
 	}
 
@@ -1602,7 +1638,7 @@ static int picasso_r_speaker(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMD:
-		cirrus_bd_store_values("_r");
+		cirrus_bd_store_values("_1");
 		break;
 	}
 
@@ -1649,6 +1685,34 @@ static int picasso_usb_out(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static int get_sound_wakelock(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	struct picasso_drvdata *drvdata = &picasso_prince_drvdata;
+
+	ucontrol->value.integer.value[0] = drvdata->wake_lock_switch;
+
+	return 0;
+}
+
+static int set_sound_wakelock(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	struct picasso_drvdata *drvdata = &picasso_prince_drvdata;
+
+	drvdata->wake_lock_switch = ucontrol->value.integer.value[0];
+
+	dev_info(drvdata->dev, "%s: %d\n", __func__, drvdata->wake_lock_switch);
+
+	if (drvdata->wake_lock_switch) {
+		wake_lock(&drvdata->wake_lock);
+	} else {
+		wake_unlock(&drvdata->wake_lock);
+	}
+
+	return 0;
+}
+
 static const char * const vts_output_texts[] = {
 	"None",
 	"DMIC1",
@@ -1668,6 +1732,8 @@ static const struct snd_kcontrol_new picasso_controls[] = {
 	SOC_DAPM_PIN_SWITCH("DMIC2"),
 	SOC_DAPM_PIN_SWITCH("DMIC3"),
 	SOC_DAPM_PIN_SWITCH("DMIC4"),
+	SOC_SINGLE_BOOL_EXT("Sound Wakelock",
+			0, get_sound_wakelock, set_sound_wakelock),
 };
 
 static const struct snd_soc_dapm_widget picasso_widgets[] = {
@@ -1689,7 +1755,7 @@ static const struct snd_soc_dapm_widget picasso_widgets[] = {
 	SND_SOC_DAPM_SPK("BLUETOOTH SPK", picasso_btsco_out),
 	SND_SOC_DAPM_MIC("USB MIC", picasso_usb_mic),
 	SND_SOC_DAPM_SPK("USB SPK", picasso_usb_out),
-	SND_SOC_DAPM_SPK("FWD MIC", NULL),
+	SND_SOC_DAPM_MIC("FWD MIC", NULL),
 	SND_SOC_DAPM_SPK("FWD SPK", NULL),
 	SND_SOC_DAPM_OUTPUT("VTS Virtual Output"),
 	SND_SOC_DAPM_MUX("VTS Virtual Output Mux", SND_SOC_NOPM, 0, 0,
@@ -1712,6 +1778,7 @@ static struct snd_soc_card picasso_prince = {
 
 	.probe = picasso_probe,
 	.late_probe = picasso_late_probe,
+	.remove = picasso_remove,
 
 	.controls = picasso_controls,
 	.num_controls = ARRAY_SIZE(picasso_controls),
@@ -1812,7 +1879,9 @@ static int read_cpu(struct device_node *np, struct device *dev,
 	}
 
 	if (dai_link->cpu_dai_name == NULL) {
-		/* Ignoring the return as we don't register DAIs to the platform */
+		/* Ignoring the return
+		 * as we don't register DAIs to the platform
+		 */
 		ret = snd_soc_of_get_dai_name(np, &dai_link->cpu_dai_name);
 		if (ret)
 			goto out;
@@ -2009,7 +2078,8 @@ static int picasso_audio_probe(struct platform_device *pdev)
 	}
 
 	for (i = 0; i < ARRAY_SIZE(codec_conf); i++) {
-		codec_conf[i].of_node = of_parse_phandle(np, "samsung,codec", i);
+		codec_conf[i].of_node = of_parse_phandle(np,
+				"samsung,codec", i);
 		if (!codec_conf[i].of_node)
 			break;
 		ret = of_property_read_string_index(np, "samsung,prefix", i,
@@ -2020,7 +2090,8 @@ static int picasso_audio_probe(struct platform_device *pdev)
 	card->num_configs = i;
 
 	for (i = 0; i < ARRAY_SIZE(aux_dev); i++) {
-		aux_dev[i].codec_of_node = of_parse_phandle(np, "samsung,aux", i);
+		aux_dev[i].codec_of_node = of_parse_phandle(np,
+				"samsung,aux", i);
 		if (!aux_dev[i].codec_of_node)
 			break;
 	}
@@ -2033,9 +2104,15 @@ static int picasso_audio_probe(struct platform_device *pdev)
 
 static int picasso_audio_remove(struct platform_device *pdev)
 {
-	struct snd_soc_card *card = platform_get_drvdata(pdev);
-	struct picasso_drvdata *drvdata = snd_soc_card_get_drvdata(card);
+	struct snd_soc_card *card;
+	struct picasso_drvdata *drvdata;
 	int i;
+
+	card = platform_get_drvdata(pdev);
+	if (!card)
+		return 0;
+
+	drvdata = snd_soc_card_get_drvdata(card);
 
 	for (i = 0; i < MADERA_MAX_CLOCKS; ++i)
 		clk_disable_unprepare(drvdata->clk[i]);

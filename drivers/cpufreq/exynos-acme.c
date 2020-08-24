@@ -23,6 +23,7 @@
 #include <linux/cpu_cooling.h>
 #include <linux/suspend.h>
 #include <linux/ems.h>
+#include <linux/sec_pm_cpufreq.h>
 
 #include <trace/events/power.h>
 
@@ -54,6 +55,31 @@ static unsigned int cpufreq_init_flag;
 
 /* slack timer per cpu */
 static DEFINE_PER_CPU(struct exynos_slack_timer, exynos_slack_timer);
+
+
+#if defined(CONFIG_ARM_EXYNOS_ACME_DISABLE_BOOT_LOCK)
+/*
+ * disable cpu boot qos lock : flexable.cpuboot value is valid ( 0 , 1, 2 )
+ * cpufreq_disable_boot_qos_lock does not apply max lock
+ */
+#define DISABLE_BOOT_QOS_LOCK_MAGIC 12349876
+
+static int cpufreq_disable_boot_qos_lock_magic;
+static int cpufreq_disable_boot_qos_lock_idx;
+
+static int __init get_acme_boot_disable(char *str)
+{
+	int domain_idx;
+
+	if (get_option(&str, &domain_idx)) {
+		cpufreq_disable_boot_qos_lock_idx = domain_idx;
+		cpufreq_disable_boot_qos_lock_magic = DISABLE_BOOT_QOS_LOCK_MAGIC;
+	}
+
+	return 0;
+}
+early_param("flexable.cpuboot", get_acme_boot_disable);
+#endif
 
 /*********************************************************************
  *                          HELPER FUNCTION                          *
@@ -219,6 +245,13 @@ static unsigned int apply_pm_qos(struct exynos_cpufreq_domain *domain,
 	if (qos_min < 0 || qos_max < 0)
 		return target_freq;
 
+	if (qos_min > policy->cpuinfo.max_freq) {
+		qos_min = policy->cpuinfo.max_freq;
+	}
+	if (qos_max < policy->cpuinfo.min_freq) {
+		qos_max = policy->cpuinfo.min_freq;
+	}
+
 	freq = max((unsigned int)qos_min, target_freq);
 	freq = min((unsigned int)qos_max, freq);
 
@@ -362,8 +395,10 @@ static int __exynos_cpufreq_target(struct cpufreq_policy *policy,
 
 	mutex_lock(&domain->lock);
 
-	if (!domain->enabled)
+	if (!domain->enabled) {
+		ret = -EINVAL;
 		goto out;
+	}
 
 	if (domain->old != get_freq(domain)) {
 		pr_err("oops, inconsistency between domain->old:%d, real clk:%d\n",
@@ -746,12 +781,12 @@ static void update_dm_constraint(struct exynos_cpufreq_domain *domain,
 	struct cpufreq_policy *policy;
 	unsigned int policy_min, policy_max;
 	unsigned int pm_qos_min, pm_qos_max;
+	struct cpumask mask;
 
 	if (new_policy) {
 		policy_min = new_policy->min;
 		policy_max = new_policy->max;
 	} else {
-		struct cpumask mask;
 		cpumask_and(&mask, &domain->cpus, cpu_online_mask);
 		if (cpumask_empty(&mask))
 			return;
@@ -766,6 +801,20 @@ static void update_dm_constraint(struct exynos_cpufreq_domain *domain,
 
 	pm_qos_min = pm_qos_request(domain->pm_qos_min_class);
 	pm_qos_max = pm_qos_request(domain->pm_qos_max_class);
+
+	cpumask_and(&mask, &domain->cpus, cpu_online_mask);
+	if (cpumask_empty(&mask))
+		return;
+	policy = cpufreq_cpu_get_raw(cpumask_first(&mask));
+	if(!policy)
+		return;
+
+	if (pm_qos_min > policy->cpuinfo.max_freq) {
+		pm_qos_min = policy->cpuinfo.max_freq;
+	}
+	if (pm_qos_max < policy->cpuinfo.min_freq) {
+		pm_qos_max = policy->cpuinfo.min_freq;
+	}
 
 	policy_update_call_to_DM(domain->dm_type, max(policy_min, pm_qos_min),
 											min(policy_max, pm_qos_max));
@@ -797,6 +846,7 @@ static int exynos_cpufreq_pm_qos_callback(struct notifier_block *nb,
 	struct cpumask mask;
 	int ret;
 	unsigned int next_freq;
+	int qos_max;
 
 	pr_debug("update PM QoS class %d to %ld kHz\n", pm_qos_class, val);
 
@@ -824,7 +874,11 @@ static int exynos_cpufreq_pm_qos_callback(struct notifier_block *nb,
 	if (pm_qos_class == domain->pm_qos_max_class) {
 		rebuild_sched_energy_table(&domain->cpus, val,
 					policy->cpuinfo.max_freq, STATES_PMQOS);
-		domain->qos_max_freq = pm_qos_request(pm_qos_class);
+		qos_max = pm_qos_request(pm_qos_class);
+		if (qos_max < policy->cpuinfo.min_freq) {
+			domain->qos_max_freq = policy->cpuinfo.min_freq;
+		} else
+			domain->qos_max_freq = qos_max;
 	}
 
 	ret = need_update_freq(domain, pm_qos_class, val);
@@ -1193,11 +1247,29 @@ static __init void set_boot_qos(struct exynos_cpufreq_domain *domain)
 	if (!of_property_read_u32(dn, "pm_qos-booting", &val))
 		boot_qos = min(boot_qos, val);
 
+#if defined(CONFIG_ARM_EXYNOS_ACME_DISABLE_BOOT_LOCK)
+	if (cpufreq_disable_boot_qos_lock_magic == DISABLE_BOOT_QOS_LOCK_MAGIC) {
+		pr_info("skip boot cpu[%d] min qos lock\n", domain->id);
+
+		// skip max freq
+		if (domain->id == cpufreq_disable_boot_qos_lock_idx) {
+			pr_info("skip boot cpu[%d] max qos lock\n", domain->id);
+		} else {
+			pm_qos_update_request_timeout(&domain->max_qos_req,
+				boot_qos, 40 * USEC_PER_SEC);
+		}
+	} else {
+		pm_qos_update_request_timeout(&domain->min_qos_req,
+			boot_qos, 40 * USEC_PER_SEC);
+		pm_qos_update_request_timeout(&domain->max_qos_req,
+			boot_qos, 40 * USEC_PER_SEC);
+	}
+#else
 	pm_qos_update_request_timeout(&domain->min_qos_req,
 			boot_qos, 40 * USEC_PER_SEC);
 	pm_qos_update_request_timeout(&domain->max_qos_req,
 			boot_qos, 40 * USEC_PER_SEC);
-
+#endif
 }
 
 static __init int init_pm_qos(struct exynos_cpufreq_domain *domain,
@@ -1374,6 +1446,10 @@ static int init_dm(struct exynos_cpufreq_domain *domain,
 		}
 
 		dm->c.table_length = domain->table_size;
+
+		/* dynamic disable for migov control */
+		if (of_property_read_bool(child, "dynamic-disable"))
+			dm->c.support_dynamic_disable = true;
 
 		ret = register_exynos_dm_constraint_table(domain->dm_type, &dm->c);
 		if (ret)
@@ -1669,6 +1745,7 @@ static int __init exynos_cpufreq_init(void)
 #ifdef CONFIG_CPU_THERMAL
 			exynos_cpufreq_cooling_register(domain->dn, policy);
 #endif
+			sec_pm_cpufreq_register(policy);
 			slack_update_min(policy);
 		}
 		set_boot_qos(domain);

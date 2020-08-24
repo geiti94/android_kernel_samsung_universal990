@@ -1329,15 +1329,9 @@ static u32 S6E3HAB_SCALER_1440[] = {
 	[S6E3HAB_SCALER_x4] = 720,
 };
 
-static u32 S6E3HAB_SCALER_1440x3200[][2] = {
-	[S6E3HAB_SCALER_OFF] = { 1440, 3200 },
-	[S6E3HAB_SCALER_x1_78] = { 1080, 2400 },
-	[S6E3HAB_SCALER_x4] = { 720, 1600 },
-};
-
 /* Variable Refresh Rate */
 enum {
-	S6E3HAB_VRR_MODE_NORMAL,
+	S6E3HAB_VRR_MODE_NS,
 	S6E3HAB_VRR_MODE_HS,
 	MAX_S6E3HAB_VRR_MODE,
 };
@@ -1349,17 +1343,53 @@ enum {
 };
 
 enum {
-	S6E3HAB_VRR_60_NORMAL,
-	S6E3HAB_VRR_60_HS,
-	S6E3HAB_VRR_120_HS,
+	S6E3HAB_RESOL_1440x3200,
+	S6E3HAB_RESOL_1080x2400,
+	S6E3HAB_RESOL_720x1600,
+};
+
+enum {
+	S6E3HAB_DISPLAY_MODE_1440x3200_60NS,
+	S6E3HAB_DISPLAY_MODE_1440x3200_48NS,
+	S6E3HAB_DISPLAY_MODE_1080x2400_120HS,
+	S6E3HAB_DISPLAY_MODE_1080x2400_96HS,
+	S6E3HAB_DISPLAY_MODE_1080x2400_60HS,
+	S6E3HAB_DISPLAY_MODE_1080x2400_60NS,
+	S6E3HAB_DISPLAY_MODE_1080x2400_48NS,
+	S6E3HAB_DISPLAY_MODE_720x1600_120HS,
+	S6E3HAB_DISPLAY_MODE_720x1600_96HS,
+	S6E3HAB_DISPLAY_MODE_720x1600_60HS,
+	S6E3HAB_DISPLAY_MODE_720x1600_60NS,
+	S6E3HAB_DISPLAY_MODE_720x1600_48NS,
+	MAX_S6E3HAB_DISPLAY_MODE,
+};
+
+enum {
+	S6E3HAB_VRR_60NS,				/* TARGET */
+	S6E3HAB_VRR_52NS,				/* BRIDGE of 60 to 48 */
+	S6E3HAB_VRR_48NS,				/* TARGET */
+	S6E3HAB_VRR_120HS,				/* TARGET */
+	S6E3HAB_VRR_120HS_AID_4_CYCLE,	/* BRIDGE of 120 to 60 */
+	S6E3HAB_VRR_112HS,				/* BRIDGE of 120 to 96 */
+	S6E3HAB_VRR_110HS,				/* BRIDGE of 120 to 60 */
+	S6E3HAB_VRR_104HS,				/* BRIDGE of 120 to 96 */
+	S6E3HAB_VRR_100HS,				/* BRIDGE of 120 to 60 */
+	S6E3HAB_VRR_96HS,				/* TARGET */
+	S6E3HAB_VRR_70HS,				/* BRIDGE of 120 to 60 */
+	S6E3HAB_VRR_60HS,				/* TARGET */
 	MAX_S6E3HAB_VRR,
 };
 
-struct panel_vrr S6E3HAB_VRR[] = {
-	[S6E3HAB_VRR_60_NORMAL] = {
-		.def_fps = 60,
-		.min_fps = 48,
-		.max_fps = 60,
+enum {
+	S6E3HAB_VRR_DIM_60NS,
+	S6E3HAB_VRR_DIM_120HS,
+	S6E3HAB_VRR_DIM_60HS,
+	MAX_S6E3HAB_VRR_DIM,
+};
+
+struct panel_vrr S6E3HAB_VRR_DIM[] = {
+	[S6E3HAB_VRR_DIM_60NS] = {
+		.fps = 60,
 		.base_fps = 60,
 		.base_vactive = 3200,
 		.base_vfp = 16,
@@ -1370,10 +1400,8 @@ struct panel_vrr S6E3HAB_VRR[] = {
 		.mode = VRR_NORMAL_MODE,
 		.aid_cycle = VRR_AID_4_CYCLE,
 	},
-	[S6E3HAB_VRR_60_HS] = {
-		.def_fps = 60,
-		.min_fps = 60,
-		.max_fps = 60,
+	[S6E3HAB_VRR_DIM_120HS] = {
+		.fps = 120,
 		.base_fps = 120,
 		.base_vactive = 3200,
 		.base_vfp = 16,
@@ -1384,10 +1412,8 @@ struct panel_vrr S6E3HAB_VRR[] = {
 		.mode = VRR_HS_MODE,
 		.aid_cycle = VRR_AID_2_CYCLE,
 	},
-	[S6E3HAB_VRR_120_HS] = {
-		.def_fps = 120,
-		.min_fps = 61,
-		.max_fps = 120,
+	[S6E3HAB_VRR_DIM_60HS] = {
+		.fps = 60,
 		.base_fps = 120,
 		.base_vactive = 3200,
 		.base_vfp = 16,
@@ -1398,23 +1424,15 @@ struct panel_vrr S6E3HAB_VRR[] = {
 		.mode = VRR_HS_MODE,
 		.aid_cycle = VRR_AID_2_CYCLE,
 	},
-};
-
-static u32 S6E3HAB_VRR_FPS[] = {
-	[S6E3HAB_VRR_FPS_60] = 60,
-	[S6E3HAB_VRR_FPS_120] = 120,
-};
-
-static u32 S6E3HAB_VRR_MODE[] = {
-	[S6E3HAB_VRR_MODE_NORMAL] = VRR_NORMAL_MODE,
-	[S6E3HAB_VRR_MODE_HS] = VRR_HS_MODE,
 };
 
 static int init_common_table(struct maptbl *);
 #ifdef CONFIG_EXYNOS_DECON_MDNIE_LITE
 static int getidx_common_maptbl(struct maptbl *);
 #endif
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static int init_mtp_table(struct maptbl *tbl);
+#endif
 static int init_gamma_table(struct maptbl *);
 static int getidx_dimming_maptbl(struct maptbl *);
 static int getidx_dimming_vrr_maptbl(struct maptbl *tbl);
@@ -1442,14 +1460,18 @@ static int getidx_acl_onoff_table(struct maptbl *);
 static int getidx_dia_onoff_table(struct maptbl *tbl);
 static int getidx_acl_opr_table(struct maptbl *);
 static int getidx_dsc_table(struct maptbl *);
+#ifdef CONFIG_SUPPORT_DSU
 static int getidx_resolution_table(struct maptbl *);
+#endif
 static int getidx_vrr_fps_table(struct maptbl *);
 static int getidx_vrr_aid_cycle_table(struct maptbl *tbl);
 static int getidx_vrr_mode_table(struct maptbl *);
 static int getidx_vrr_async_table(struct maptbl *);
 static int init_lpm_table(struct maptbl *tbl);
 static int getidx_lpm_table(struct maptbl *);
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static int getidx_lpm_dyn_vlin_table(struct maptbl *tbl);
+#endif
 #ifdef CONFIG_EXYNOS_DECON_MDNIE_LITE
 static void copy_dummy_maptbl(struct maptbl *tbl, u8 *dst);
 #endif
@@ -1490,8 +1512,8 @@ static int init_hmd_gamma_table(struct maptbl *);
 static int getidx_hmd_dimming_maptbl(struct maptbl *);
 #endif /* CONFIG_SUPPORT_HMD */
 #ifdef CONFIG_SUPPORT_MAFPC
-void copy_mafpc_enable_maptbl(struct maptbl *tbl, u8 *dst);
-void copy_mafpc_scale_maptbl(struct maptbl *tbl, u8 *dst);
+static void copy_mafpc_enable_maptbl(struct maptbl *tbl, u8 *dst);
+static void copy_mafpc_scale_maptbl(struct maptbl *tbl, u8 *dst);
 #endif
 #ifdef CONFIG_EXYNOS_DECON_MDNIE_LITE
 static int init_color_blind_table(struct maptbl *tbl);

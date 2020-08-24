@@ -53,6 +53,10 @@ static const u32 **sensor_2la_setfiles;
 static const u32 *sensor_2la_setfile_sizes;
 static const struct sensor_pll_info_compact **sensor_2la_pllinfos;
 static u32 sensor_2la_max_setfile_num;
+static const u32 *sensor_2la_dualsync_slave;
+static u32 sensor_2la_dualsync_slave_size;
+static const u32 *sensor_2la_dualsync_single;
+static u32 sensor_2la_dualsync_single_size;
 
 /* For Recovery */
 static u32 sensor_2la_frame_duration_backup;
@@ -543,9 +547,6 @@ int sensor_2la_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 	struct is_module_enum *module;
 	struct is_device_sensor_peri *sensor_peri = NULL;
 	struct sensor_open_extended *ext_info = NULL;
-	struct is_device_sensor *device;
-	u32 ex_mode;
-#ifdef CONFIG_SEC_FACTORY
 	struct is_core *core = NULL;
 
 	core = (struct is_core *)dev_get_drvdata(is_dev);
@@ -553,19 +554,12 @@ int sensor_2la_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 		err("core device is null");
 		return -EINVAL;
 	}
-#endif
 
 	WARN_ON(!subdev);
 
 	cis = (struct is_cis *)v4l2_get_subdevdata(subdev);
 	WARN_ON(!cis);
 	WARN_ON(!cis->cis_data);
-
-	device = (struct is_device_sensor *)v4l2_get_subdev_hostdata(subdev);
-	if (unlikely(!device)) {
-		err("device sensor is null");
-		return -EINVAL;
-	}
 
 	if (mode >= sensor_2la_max_setfile_num) {
 		err("invalid mode(%d)!!", mode);
@@ -591,29 +585,6 @@ int sensor_2la_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 							sensor_2la_setfile_sizes[mode]);
 	if (ret < 0) {
 		err("sensor_2la_set_registers fail!!");
-		goto p_err_i2c_unlock;
-	}
-
-	info("[%s] mode changed(%d)\n", __func__, mode);
-
-	/* dual sync for live focus */
-	ex_mode = is_sensor_g_ex_mode(device);
-	if (ex_mode == EX_LIVEFOCUS
-#ifdef CONFIG_SEC_FACTORY
-		|| test_bit(IS_SENSOR_OPEN, &(core->sensor[0].state))
-#endif
-		) {
-		info("[%s]dual sync slave mode\n", __func__);
-		ret = sensor_cis_set_registers(subdev, sensor_2la_cis_dual_slave_settings, sensor_2la_cis_dual_slave_settings_size);
-		cis->cis_data->dual_slave = true;
-	} else {
-		info("[%s]dual sync single mode\n", __func__);
-		ret = sensor_cis_set_registers(subdev, sensor_2la_cis_dual_single_settings, sensor_2la_cis_dual_single_settings_size);
-		cis->cis_data->dual_slave = false;
-	}
-
-	if (ret < 0) {
-		err("dual sync setting fail!!");
 		goto p_err_i2c_unlock;
 	}
 
@@ -874,13 +845,28 @@ int sensor_2la_cis_stream_on(struct v4l2_subdev *subdev)
 #endif
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
+
 	ret = sensor_2la_cis_group_param_hold_func(subdev, 0x01);
 	if (ret < 0)
 		err("group_param_hold_func failed at stream on");
 
+	if (cis_data->is_data.scene_mode == AA_SCENE_MODE_BOKEH_VIDEO
+		|| cis_data->is_data.scene_mode ==AA_SCENE_MODE_LIVE_OUTFOCUS) {
+		ret = sensor_cis_set_registers(subdev, sensor_2la_dualsync_slave, sensor_2la_dualsync_slave_size);
+		cis->cis_data->dual_slave = true;
+	} else {
+		ret = sensor_cis_set_registers(subdev, sensor_2la_dualsync_single, sensor_2la_dualsync_single_size);
+		cis->cis_data->dual_slave = false;
+	}
+
 	/* Sensor stream on */
-	info("%s\n", __func__);
+	info("%s scene_mode : %d, dual_slave : %d\n", __func__, cis_data->is_data.scene_mode, cis->cis_data->dual_slave);
 	is_sensor_write16(client, 0x0100, 0x0100);
+
+	if (cis->cis_data->dual_slave) {
+		msleep(40);
+		ret = is_sensor_write16(client, 0x0B30, 0x0100);
+	}
 
 	ret = sensor_2la_cis_group_param_hold_func(subdev, 0x00);
 	if (ret < 0)
@@ -1836,7 +1822,7 @@ int sensor_2la_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_param 
 	if (ret < 0)
 		goto p_err_i2c_unlock;
 
-#if 0 // TEMP_2020
+#if 0
 	/* Long digital gain */
 	if (sensor_2la_cis_is_wdr_mode_on(cis_data)) {
 		ret = is_sensor_write16(client, 0x0C80, long_gain);
@@ -2348,6 +2334,10 @@ static int cis_2la_probe(struct i2c_client *client,
 		sensor_2la_setfile_sizes = sensor_2la_setfile_A_sizes;
 		sensor_2la_pllinfos = sensor_2la_pllinfos_A;
 		sensor_2la_max_setfile_num = ARRAY_SIZE(sensor_2la_setfiles_A);
+		sensor_2la_dualsync_slave = sensor_2la_dual_slave_A_settings;
+		sensor_2la_dualsync_slave_size = ARRAY_SIZE(sensor_2la_dual_slave_A_settings);
+		sensor_2la_dualsync_single = sensor_2la_dual_single_A_settings;
+		sensor_2la_dualsync_single_size = ARRAY_SIZE(sensor_2la_dual_single_A_settings);
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
 		sensor_2la_mipi_sensor_mode = sensor_2la_setfile_A_mipi_sensor_mode;
 		sensor_2la_mipi_sensor_mode_size = ARRAY_SIZE(sensor_2la_setfile_A_mipi_sensor_mode);
@@ -2373,6 +2363,10 @@ static int cis_2la_probe(struct i2c_client *client,
 		sensor_2la_setfile_sizes = sensor_2la_setfile_A_sizes;
 		sensor_2la_pllinfos = sensor_2la_pllinfos_A;
 		sensor_2la_max_setfile_num = ARRAY_SIZE(sensor_2la_setfiles_A);
+		sensor_2la_dualsync_slave = sensor_2la_dual_slave_A_settings;
+		sensor_2la_dualsync_slave_size = ARRAY_SIZE(sensor_2la_dual_slave_A_settings);
+		sensor_2la_dualsync_single = sensor_2la_dual_single_A_settings;
+		sensor_2la_dualsync_single_size = ARRAY_SIZE(sensor_2la_dual_single_A_settings);
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
 		sensor_2la_mipi_sensor_mode = sensor_2la_setfile_A_mipi_sensor_mode;
 		sensor_2la_mipi_sensor_mode_size = ARRAY_SIZE(sensor_2la_setfile_A_mipi_sensor_mode);

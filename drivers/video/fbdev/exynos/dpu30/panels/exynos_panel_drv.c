@@ -41,7 +41,7 @@ static int exynos_backlight_get_brightness(struct backlight_device *bl)
 
 static int exynos_backlight_update_status(struct backlight_device *bl)
 {
-	u32 brightness = bl->props.brightness;
+	int brightness = bl->props.brightness;
 	struct dsim_device *dsim;
 	struct exynos_panel_device *panel;
 
@@ -712,7 +712,6 @@ static long exynos_panel_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *a
 
 	panel = container_of(sd, struct exynos_panel_device, sd);
 
-
 	switch (cmd) {
 	case EXYNOS_PANEL_IOC_REGISTER:
 		ret = exynos_panel_register(panel, *(u32 *)arg);
@@ -750,7 +749,7 @@ static long exynos_panel_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *a
 	case EXYNOS_PANEL_IOC_SET_LIGHT:
 		call_panel_ops(panel, set_light, panel, *(int *)arg);
 		break;
-	case EXYNOS_PANEL_IOC_SET_VRRFRESH:
+	case EXYNOS_PANEL_IOC_SET_VREFRESH:
 		call_panel_ops(panel, set_vrefresh, panel, (struct vrr_config_data*)arg);
 		break;
 	default:

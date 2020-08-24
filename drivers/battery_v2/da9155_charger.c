@@ -489,9 +489,9 @@ static int da9155_charger_probe(struct i2c_client *client,
 	charger->prev_cable_type = SEC_BATTERY_CABLE_NONE;
 	sub_charger_cfg.drv_data = charger;
 	charger->psy_chg = power_supply_register(charger->dev, &da9155_charger_power_supply_desc, &sub_charger_cfg);
-	if (ret) {
-		pr_err("%s: Failed to Register psy_chg\n", __func__);
-		ret = -1;
+	if (IS_ERR(charger->psy_chg)) {
+		ret = PTR_ERR(charger->psy_chg);
+		pr_err("%s: Failed to Register psy_chg(%d)\n", __func__, ret);
 		goto err_power_supply_register;
 	}
 

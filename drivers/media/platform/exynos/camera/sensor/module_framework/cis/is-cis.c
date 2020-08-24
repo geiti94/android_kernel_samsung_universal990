@@ -73,15 +73,13 @@ int sensor_cis_set_registers(struct v4l2_subdev *subdev, const u32 *regs, const 
 	cis = (struct is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
 		err("cis is NULL");
-		ret = -EINVAL;
-		goto p_err;
+		return -EINVAL;
 	}
 
 	client = cis->client;
 	if (unlikely(!client)) {
 		err("client is NULL");
-		ret = -EINVAL;
-		goto p_err;
+		return -EINVAL;
 	}
 
 	/* Need to delay for sensor setting */
@@ -175,7 +173,7 @@ int sensor_cis_set_registers_addr8(struct v4l2_subdev *subdev, const u32 *regs, 
 		goto p_err;
 	}
 
-	msleep(3);
+	usleep_range(3000, 3100);
 
 	for (i = 0; i < size; i += I2C_NEXT) {
 		switch (regs[i + I2C_ADDR]) {
@@ -555,7 +553,7 @@ int sensor_cis_wait_streamoff(struct v4l2_subdev *subdev)
 	cis_shared_data *cis_data;
 	u32 wait_cnt = 0, time_out_cnt = 250;
 	u8 sensor_fcount = 0;
-	u32 i2c_fail_cnt = 0;
+	u32 i2c_fail_cnt = 0, i2c_fail_max_cnt = 5;
 
 	FIMC_BUG(!subdev);
 
@@ -599,6 +597,13 @@ int sensor_cis_wait_streamoff(struct v4l2_subdev *subdev)
 			i2c_fail_cnt++;
 			err("i2c transfer fail addr(%x), val(%x), try(%d), ret = %d\n",
 				0x0005, sensor_fcount, i2c_fail_cnt, ret);
+
+			if (i2c_fail_cnt >= i2c_fail_max_cnt) {
+				err("[MOD:D:%d] %s, i2c fail, i2c_fail_cnt(%d) >= i2c_fail_max_cnt(%d), sensor_fcount(%d)",
+						cis->id, __func__, i2c_fail_cnt, i2c_fail_max_cnt, sensor_fcount);
+				ret = -EINVAL;
+				goto p_err;
+			}
 		}
 #if defined(USE_RECOVER_I2C_TRANS)
 		if (i2c_fail_cnt >= USE_RECOVER_I2C_TRANS) {
@@ -677,6 +682,7 @@ p_err:
 int sensor_cis_wait_streamon(struct v4l2_subdev *subdev)
 {
 	int ret = 0;
+	int ret_err = 0;
 	struct is_cis *cis;
 	struct i2c_client *client;
 	cis_shared_data *cis_data;
@@ -712,10 +718,12 @@ int sensor_cis_wait_streamon(struct v4l2_subdev *subdev)
 		goto p_err;
 	}
 
-	if (cis_data->dual_slave == true) {
-		time_out_cnt = time_out_cnt * 6;
-	} else if (cis_data->cur_frame_us_time > 300000 && cis_data->cur_frame_us_time < 2000000) {
+	if (cis_data->cur_frame_us_time > 300000 && cis_data->cur_frame_us_time < 2000000) {
 		time_out_cnt = (cis_data->cur_frame_us_time / CIS_STREAM_ON_WAIT_TIME) + 100; // for Hyperlapse night mode
+	}
+
+	if (cis_data->dual_slave == true || cis_data->highres_capture_mode == true) {
+		time_out_cnt = time_out_cnt * 6;
 	}
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
@@ -750,8 +758,9 @@ int sensor_cis_wait_streamon(struct v4l2_subdev *subdev)
 		}
 #endif
 		if (wait_cnt >= time_out_cnt) {
-			err("[MOD:D:%d] %s, Don't sensor stream on and time out, wait_limit(%d) > time_out(%d), sensor_fcount(%d)",
-				cis->id, __func__, wait_cnt, time_out_cnt, sensor_fcount);
+			err("[MOD:D:%d] %s, stream on wait failed (%d), wait_cnt(%d) > time_out_cnt(%d), framecount(%x), dual_slave(%d), highres(%d)",
+				cis->id, __func__, cis_data->cur_frame_us_time, wait_cnt, time_out_cnt,
+				sensor_fcount, cis_data->dual_slave, cis_data->highres_capture_mode);
 			ret = -EINVAL;
 			goto p_err;
 		}
@@ -764,7 +773,20 @@ int sensor_cis_wait_streamon(struct v4l2_subdev *subdev)
 	/* retention mode CRC wait calculation */
 	usleep_range(1000, 1000);
 #endif
+	return 0;
+
 p_err:
+	CALL_CISOPS(cis, cis_log_status, subdev);
+
+	ret_err = CALL_CISOPS(cis, cis_stream_off, subdev);
+	if (ret_err < 0) {
+		err("[MOD:D:%d] stream off fail", cis->id);
+	} else {
+		ret_err = CALL_CISOPS(cis, cis_wait_streamoff, subdev);
+		if (ret_err < 0)
+			err("[MOD:D:%d] sensor wait stream off fail", cis->id);
+	}
+
 	return ret;
 }
 

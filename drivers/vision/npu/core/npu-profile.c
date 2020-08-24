@@ -58,8 +58,21 @@ struct npu_profile_control *profile_ctl_ref;
 
 #define GET_SYSTEM(pt_profile_ctl)		container_of(pt_profile_ctl, struct npu_system, profile_ctl)
 
+/* Profiling function pointer to quickly skip profile function when disabled */
+static void __profile_point_enabled(
+	const u32 point_id, const u32 uid, const u32 frame_id,
+	const u32 p0, const u32 p1, const u32 p2);
+static void __profile_point_disabled(
+	const u32 point_id, const u32 uid, const u32 frame_id,
+	const u32 p0, const u32 p1, const u32 p2);
+
+static void (*current_profile_func)(
+                const u32 point_id, const u32 uid, const u32 frame_id,
+                const u32 p0, const u32 p1, const u32 p2) = __profile_point_disabled;
+
 
 struct read_pos {
+
 	struct npu_profile_control	*profile_ctl;
 	const char			*data;
 	size_t				size;
@@ -73,6 +86,11 @@ volatile struct {
 	int		sysfs_ok;
 	struct device	*dev;
 } s_profiler_ctl;
+
+static inline int is_s_profile_enabled(void)
+{
+	return (s_profiler_ctl.enabled == 1);
+}
 
 /* Set initial value of profile_data */
 static void init_profile_data(struct npu_profile *profile_data)
@@ -166,6 +184,18 @@ static int dealloc_profile_data(struct npu_profile_control *profile_ctl)
 
 err_exit:
 	return ret;
+}
+
+/* Change profile function pointer based on current status */
+static void update_current_profile_func(void)
+{
+	if (is_s_profile_enabled()
+	    || SKEEPER_COMPARE_STATE(&profile_ctl_ref->statekeeper, NPU_PROFILE_STATE_PWRON_WAITING)
+	    || SKEEPER_COMPARE_STATE(&profile_ctl_ref->statekeeper, NPU_PROFILE_STATE_GATHERING)) {
+		current_profile_func = __profile_point_enabled;
+	} else {
+		current_profile_func = __profile_point_disabled;
+	}
 }
 
 /* Call-back from Protodrv */
@@ -337,6 +367,7 @@ err_exit:
 	npu_profile_clear(profile_ctl);
 
 ok_exit:
+	update_current_profile_func();
 	npu_dbg("complete in npu_profile_stop\n");
 	return ret;
 }
@@ -399,6 +430,7 @@ err_exit:
 not_alloc_err_exit:
 	npu_statekeeper_transition(&profile_ctl->statekeeper, NPU_PROFILE_STATE_NOT_INITIALIZED);
 ok_exit:
+	update_current_profile_func();
 	npu_dbg("complete in npu_profile_start\n");
 	return ret;
 }
@@ -670,7 +702,7 @@ static ssize_t s_profiler_show(struct device *dev, struct device_attribute *attr
 		"Simple profiler state : %s\n"
 		" - echo 0 > s_profiler : Disable simple profiler\n"
 		"   echo 1 > s_profiler : Enable simple profiler\n",
-		(s_profiler_ctl.enabled) ? "Enabled" : "Disabled");
+		(is_s_profile_enabled()) ? "Enabled" : "Disabled");
 	return ret;
 }
 
@@ -693,12 +725,8 @@ static ssize_t s_profiler_store(struct device *dev, struct device_attribute *att
 		break;
 	}
 
+	update_current_profile_func();
 	return len;
-}
-
-static inline int is_s_profile_enabled(void)
-{
-	return (s_profiler_ctl.enabled == 1);
 }
 
 /*
@@ -859,7 +887,32 @@ int npu_profile_release(void)
 	return 0;
 }
 
-static inline void __profile_point(
+/**************************************************************************
+ * Profile operations - Helper for profiling functions
+ */
+
+/* Default operations - Used when npu_profile_set_operation() is not called */
+static u32 default_timestamp(void)
+{
+	return readl(profile_ctl_ref->pwm);
+}
+static struct npu_profile_operation profile_ops = {
+	.timestamp = default_timestamp,
+};
+
+int npu_profile_set_operation(const struct npu_profile_operation *ops)
+{
+	BUG_ON(!ops);
+
+	profile_ops = *ops;
+
+	return 0;
+}
+
+/**************************************************************************
+ * Profiling functions
+ */
+static void __profile_point_enabled(
 	const u32 point_id, const u32 uid, const u32 frame_id,
 	const u32 p0, const u32 p1, const u32 p2)
 {
@@ -901,7 +954,7 @@ static inline void __profile_point(
 	npu_dbg("profiling data is written to (" NPU_KPTR_LOG "), index(%d)\n", pt, write_idx);
 
 	pt->id = point_id;
-	pt->timestamp = readl(profile_ctl_ref->pwm);
+	pt->timestamp = profile_ops.timestamp();
 	pt->session_id = uid;
 	pt->frame_id = frame_id;
 	pt->param[0] = p0;
@@ -909,9 +962,17 @@ static inline void __profile_point(
 	pt->param[2] = p2;
 }
 
+static void __profile_point_disabled(
+	const u32 point_id, const u32 uid, const u32 frame_id,
+	const u32 p0, const u32 p1, const u32 p2)
+{
+	return;
+}
+
+/* Call __profile_point_enabled(..) or __profile_point_disabled(..), depends on value of current_profile_func */
 void profile_point1(const u32 point_id, const u32 uid, const u32 frame_id, const u32 p0)
 {
-	__profile_point(point_id, uid, frame_id, p0, 0, 0);
+	current_profile_func(point_id, uid, frame_id, p0, 0, 0);
 }
 
 void profile_point3(
@@ -919,5 +980,5 @@ void profile_point3(
 	const u32 p0, const u32 p1, const u32 p2)
 
 {
-	__profile_point(point_id, uid, frame_id, p0, p1, p2);
+	current_profile_func(point_id, uid, frame_id, p0, p1, p2);
 }

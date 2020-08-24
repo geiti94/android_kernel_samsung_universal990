@@ -21,6 +21,9 @@
 #ifdef CONFIG_SND_EXYNOS_USB_AUDIO
 #include <linux/usb/exynos_usb_audio.h>
 #endif
+#ifdef CONFIG_USB_DWC3_EXYNOS
+#include <soc/samsung/exynos-cpupm.h>
+#endif
 
 #include "xhci.h"
 #include "xhci-trace.h"
@@ -3940,6 +3943,10 @@ int xhci_store_hw_info(struct usb_hcd *hcd, struct usb_device *udev)
 	hwinfo->out_ctx = virt_dev->out_ctx->dma;
 	hwinfo->erst_addr = entry->seg_addr;
 	hwinfo->speed = udev->speed;
+	if (xhci->quirks & XHCI_USE_URAM_FOR_EXYNOS_AUDIO)
+		hwinfo->use_uram = true;
+	else
+		hwinfo->use_uram = false;
 
 	return 0;
 }
@@ -5314,22 +5321,52 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 }
 EXPORT_SYMBOL_GPL(xhci_gen_setup);
 
+#ifdef CONFIG_USB_DWC3_EXYNOS
+extern int get_idle_ip_index(void);
+#endif
+
 int xhci_wake_lock(struct usb_hcd *hcd, int is_lock) {
 	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+#ifdef CONFIG_USB_DWC3_EXYNOS
+	int idle_ip_index;
+#endif
 
-	if (hcd == xhci->main_hcd) {
-		if (is_lock) {
-			xhci_info(xhci, "%s: WAKE LOCK\n", __func__);
-			xhci->l2_state = 0;
-			wake_lock(xhci->wakelock);
-		} else if (!hcd->driver->hub_check_speed(hcd->shared_hcd)) {
-			xhci_info(xhci, "%s: WAKE UNLOCK\n", __func__);
-			xhci->l2_state = 1;
-			wake_unlock(xhci->wakelock);
-		} else
-			xhci_info(xhci, "%s: wake unlock ignored due to USB3\n", __func__);
-	} else
-		xhci_info(xhci, "%s: %d - no main hcd\n", __func__, is_lock);
+	if (is_lock) {
+		if (hcd == xhci->main_hcd) {
+			xhci_info(xhci, "%s: Main HCD WAKE LOCK\n", __func__);
+			wake_lock(xhci->main_wakelock);
+		} else {
+			xhci_info(xhci, "%s: Shared HCD WAKE LOCK\n", __func__);
+			wake_lock(xhci->shared_wakelock);
+		}
+		/* Add a routine for disable IDLEIP (IP idle) */
+#ifdef CONFIG_USB_DWC3_EXYNOS
+		xhci_info(xhci, "IDLEIP(SICD) disable.\n");
+		idle_ip_index = get_idle_ip_index();
+		exynos_update_ip_idle_status(idle_ip_index, 0);
+#endif
+	} else {
+		if (hcd == xhci->main_hcd) {
+			xhci_info(xhci, "%s: Main HCD WAKE UNLOCK\n", __func__);
+			wake_unlock(xhci->main_wakelock);
+		} else {
+			xhci_info(xhci, "%s: Shared HCD WAKE UNLOCK\n", __func__);
+			wake_unlock(xhci->shared_wakelock);
+		}
+#ifdef CONFIG_USB_DWC3_EXYNOS
+		xhci_info(xhci, "Try to IDLEIP Enable - HS:%d, SS:%d!!!\n",
+				wake_lock_active(xhci->main_wakelock),
+				wake_lock_active(xhci->shared_wakelock));
+
+		/* Add a routine for enable IDLEIP (IP idle) */
+		if (!wake_lock_active(xhci->main_wakelock) &&
+				!wake_lock_active(xhci->shared_wakelock)) {
+			xhci_info(xhci, "IDLEIP(SICD) Enable.\n");
+			idle_ip_index = get_idle_ip_index();
+			exynos_update_ip_idle_status(idle_ip_index, 1);
+		}
+#endif
+	}
 
 	return 0;
 }

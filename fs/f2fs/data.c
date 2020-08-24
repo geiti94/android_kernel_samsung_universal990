@@ -47,7 +47,8 @@ static bool __is_cp_guaranteed(struct page *page)
 			inode->i_ino ==  F2FS_NODE_INO(sbi) ||
 			S_ISDIR(inode->i_mode) ||
 			(S_ISREG(inode->i_mode) &&
-			(f2fs_is_atomic_file(inode) || IS_NOQUOTA(inode))) ||
+			(f2fs_is_atomic_file(inode) || IS_NOQUOTA(inode) ||
+			IS_ATOMIC_WRITTEN_PAGE(page))) ||
 			is_cold_data(page))
 		return true;
 	return false;

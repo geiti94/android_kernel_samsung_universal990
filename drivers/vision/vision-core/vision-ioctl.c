@@ -209,6 +209,8 @@ static int get_vs4l_container64(struct vs4l_container_list *kp, struct vs4l_cont
 	size_t size;
 	struct vs4l_container *kcontainer_ptr;
 	struct vs4l_buffer *kbuffer_ptr = NULL;
+	struct vs4l_profiler *kprofiler;
+	struct vs4l_profiler_node *kprofiler_node;
 
 	if (!access_ok(VERIFY_READ, up, sizeof(struct vs4l_container_list))) {
 		vision_err("access failed from user ptr(%pK)\n", up);
@@ -220,6 +222,56 @@ static int get_vs4l_container64(struct vs4l_container_list *kp, struct vs4l_cont
 	if (ret) {
 		vision_err("copy_from_user failed(%d) from %pK\n", ret, up);
 		goto p_err;
+	}
+
+	/* profiler */
+	if (kp->profiler != NULL) {
+		size = sizeof(struct vs4l_profiler);
+		if (!access_ok(VERIFY_READ, (void __user *)kp->profiler, size)) {
+			vision_err("access to profiler ptr failed (%pK)\n",
+					kp->profiler);
+			ret = -EFAULT;
+			goto p_err;
+		}
+
+		kprofiler = kzalloc(size, GFP_KERNEL);
+		if (!kprofiler) {
+			ret = -ENOMEM;
+			goto p_err_profiler;
+		}
+
+		ret = copy_from_user(kprofiler, (void __user *)kp->profiler, size);
+		if (ret) {
+			vision_err("error from copy_from_user(%d), size(%zu) about profiler\n", ret, size);
+			ret = -EFAULT;
+			goto p_err_profiler;
+		}
+		kp->profiler = kprofiler;
+
+		if (kp->profiler->node != NULL) {
+			// memory allocate for profiler node
+			size = sizeof(struct vs4l_profiler_node);
+			if (!access_ok(VERIFY_READ, (void __user *)kp->profiler->node, size)) {
+				vision_err("access to profiler node ptr failed (%pK)\n",
+						kp->profiler->node);
+				ret = -EFAULT;
+				goto p_err_profiler;
+			}
+
+			kprofiler_node = kzalloc(size, GFP_KERNEL);
+			if (!kp->profiler->node) {
+				ret = -ENOMEM;
+				goto p_err_profiler_node;
+			}
+
+			ret = copy_from_user(kprofiler_node, (void __user *)kp->profiler->node, size);
+			if (ret) {
+				vision_err("error from copy_from_user(%d), size(%zu) about profiler\n", ret, size);
+				ret = -EFAULT;
+				goto p_err_profiler_node;
+			}
+			kp->profiler->node = kprofiler_node;
+		}
 	}
 
 	/* container_list -> (vs4l_container)containers[count] -> (vs4l_buffer)buffers[count] */
@@ -293,6 +345,81 @@ p_err_container:
 	kfree(kcontainer_ptr);
 	kp->containers = NULL;
 
+p_err_profiler_node:
+	kfree(kprofiler_node);
+	kp->profiler->node = NULL;
+	kfree(kprofiler);
+	kp->profiler = NULL;
+
+p_err_profiler:
+	kfree(kprofiler);
+	kp->profiler = NULL;
+
+p_err:
+	vision_err("Return with fail... (%d)\n", ret);
+	return ret;
+}
+
+static int put_vs4l_profiler(struct vs4l_container_list *kp, struct vs4l_container_list *temp, struct vs4l_container_list __user *up)
+{
+	int ret;
+	size_t size;
+	struct vs4l_profiler *kprofiler;
+
+	if (!access_ok(VERIFY_READ, up, sizeof(struct vs4l_container_list))) {
+		vision_err("access failed from user ptr(%pK)\n", up);
+		ret = -EFAULT;
+		goto p_err;
+	}
+
+	ret = copy_from_user(temp, (void __user *)up, sizeof(struct vs4l_container_list));
+	if (ret) {
+		vision_err("copy_from_user failed(%d) from %pK\n", ret, up);
+		goto p_err;
+	}
+
+	size = sizeof(struct vs4l_profiler);
+	if (!access_ok(VERIFY_READ, (void __user *)temp->profiler, size)) {
+		vision_err("access to profiler ptr failed (%pK)\n",
+				temp->profiler);
+		ret = -EFAULT;
+		goto p_err;
+	}
+
+	kprofiler = kzalloc(size, GFP_KERNEL);
+	if (!kprofiler) {
+			ret = -ENOMEM;
+			goto p_err_profiler;
+	}
+
+	ret = copy_from_user(kprofiler, (void __user *)temp->profiler, size);
+	if (ret) {
+		vision_err("error from copy_from_user(%d), size(%zu) about profiler\n", ret, size);
+		ret = -EFAULT;
+		goto p_err_profiler;
+	}
+	temp->profiler = kprofiler;
+
+	if (temp->profiler->node != NULL) {
+		size = sizeof(struct vs4l_profiler_node);
+		if (!access_ok(VERIFY_READ, (void __user *)temp->profiler->node, size)) {
+			vision_err("access to profiler node ptr failed (%pK)\n",
+					temp->profiler->node);
+			ret = -EFAULT;
+			goto p_err_profiler;
+		}
+
+		// copy to user - Firmware duration
+		put_user(kp->profiler->node->duration, &temp->profiler->node->duration);
+		kfree(temp->profiler);
+	}
+
+	return ret;
+
+p_err_profiler:
+	kfree(kprofiler);
+	temp->profiler = NULL;
+
 p_err:
 	vision_err("Return with fail... (%d)\n", ret);
 	return ret;
@@ -300,10 +427,19 @@ p_err:
 
 static void put_vs4l_container64(struct vs4l_container_list *kp, struct vs4l_container_list __user *up)
 {
+	struct vs4l_container_list temp;
 	int i;
+	int ret;
 
 	if (!access_ok(VERIFY_WRITE, up, sizeof(struct vs4l_container_list)))
 		vision_err("Cannot access to user ptr(%pK)\n", up);
+
+	if ((kp->profiler != NULL) && (kp->profiler->node != NULL)) {
+		ret = put_vs4l_profiler(kp, &temp, up);
+		if (ret) {
+			vision_err("can not copy to user\n");
+		}
+	}
 
 	if (put_user(kp->flags, &up->flags) ||
 		put_user(kp->index, &up->index) ||
@@ -325,8 +461,12 @@ static void put_vs4l_container64(struct vs4l_container_list *kp, struct vs4l_con
 
 	for (i = 0; i < kp->count; ++i)
 		kfree(kp->containers[i].buffers);
-
+	if ((kp->profiler != NULL) && (kp->profiler->node != NULL)) {
+		kfree(kp->profiler->node);
+	}
+	kfree(kp->profiler);
 	kfree(kp->containers);
+	kp->profiler = NULL;
 	kp->containers = NULL;
 }
 

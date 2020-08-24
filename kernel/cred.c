@@ -81,6 +81,30 @@ void put_cred(const struct cred *_cred)
 			__put_cred(cred);
 	}
 }
+/*Check whether the address belong to Cred Area*/
+u8 rkp_ro_page(unsigned long addr)
+{
+	struct kmem_cache *s;
+	struct page *page;
+	void *objp = (void *)addr;
+
+	if(!objp)
+		return 0;
+
+	if(!rkp_cred_enable)
+		return (u8)0;
+
+	if((addr == ((unsigned long)&init_cred)) ||
+		(addr == ((unsigned long)&init_sec)))
+		return (u8)1;
+
+	page = virt_to_head_page(objp);
+	s = page->slab_cache;
+	if(s && (s == cred_jar_ro || s == tsec_jar)) {
+		return 1;
+	}
+	return 0;
+}
 #endif  /* CONFIG_KDP_CRED */
 
 /*
@@ -244,10 +268,10 @@ void __put_cred(struct cred *cred)
 
 #ifdef CONFIG_KDP_CRED
 	if (rkp_ro_page((unsigned long)cred)) {
-	        if (get_rocred_rcu(cred)->non_rcu)
-        	    put_ro_cred_rcu(&(get_rocred_rcu(cred)->rcu));
-	        else
-        	    call_rcu(&(get_rocred_rcu(cred)->rcu), put_ro_cred_rcu);
+		if (get_rocred_rcu(cred)->non_rcu)
+			put_ro_cred_rcu(&(get_rocred_rcu(cred)->rcu));
+		else
+			call_rcu(&(get_rocred_rcu(cred)->rcu), put_ro_cred_rcu);
 	} 
 	else {
 #endif
@@ -379,7 +403,7 @@ static struct cred *prepare_ro_creds(struct cred *old, int kdp_cmd, u64 p)
 		panic("[%d] : Unable to allocate security pointer\n", kdp_cmd);
 
 	rkp_cred_fill_params(old, new_ro, use_cnt_ptr, tsec, kdp_cmd, p);
-	uh_call(UH_APP_RKP, RKP_KDP_X46, (u64)&cred_param, (u64)current, 0, 0);
+	uh_call(UH_APP_KDP, RKP_KDP_X46, (u64)&cred_param, (u64)current, 0, 0);
 	if (kdp_cmd == RKP_CMD_COPY_CREDS) {
 		if ((new_ro->bp_task != (void *)p) 
 			|| new_ro->security != tsec 
@@ -532,7 +556,7 @@ void rkp_free_security(unsigned long tsec)
 		return;
 
 	if(rkp_ro_page(tsec) && 
-		rkp_from_tsec_jar(tsec)){
+		rkp_from_tsec_jar(tsec)) {
 		kmem_cache_free(tsec_jar,(void *)tsec);
 	}
 	else { 
@@ -938,7 +962,7 @@ void __init cred_init(void)
 		if(!usecnt_jar) {
 			panic("Unable to create use count jar\n");
 		}
-		uh_call(UH_APP_RKP,RKP_KDP_X42,(u64)cred_jar_ro->size,(u64)tsec_jar->size,0,0);
+		uh_call(UH_APP_KDP,RKP_KDP_X42,(u64)cred_jar_ro->size,(u64)tsec_jar->size,0,0);
 	}
 #endif
 }

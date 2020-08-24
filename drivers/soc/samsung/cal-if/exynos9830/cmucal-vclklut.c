@@ -336,6 +336,9 @@ unsigned int div_clk_peric_66_lut_params[] = {
 unsigned int div_clk_peric_50_lut_params[] = {
 	7, 1,
 };
+unsigned int div_clk_peric_33_lut_params[] = {
+	11, 1,
+};
 unsigned int div_clk_peric_26_lut_params[] = {
 	0, 0,
 };

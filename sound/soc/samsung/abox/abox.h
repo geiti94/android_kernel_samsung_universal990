@@ -181,7 +181,7 @@ enum abox_dai {
 	ABOX_NSRC6, /* Virtual DAI */
 	ABOX_NSRC7, /* Virtual DAI */
 	ABOX_USB = 0x90, /* Virtual DAI */
-	ABOX_FWD,
+	ABOX_FWD, /* Virtual DAI */
 	ABOX_BI_PDI0 = 0x100,
 	ABOX_BI_PDI1,
 	ABOX_BI_PDI2,
@@ -252,6 +252,13 @@ enum calliope_state {
 	CALLIOPE_ENABLING,
 	CALLIOPE_ENABLED,
 	CALLIOPE_STATE_COUNT,
+};
+
+enum system_state {
+	SYSTEM_CALL,
+	SYSTEM_OFFLOAD,
+	SYSTEM_DISPLAY_OFF,
+	SYSTEM_STATE_COUNT
 };
 
 enum audio_mode {
@@ -425,6 +432,7 @@ struct abox_data {
 	bool enabled;
 	bool restored;
 	bool no_profiling;
+	bool system_state[SYSTEM_STATE_COUNT];
 	enum calliope_state calliope_state;
 	bool failsafe;
 	struct notifier_block qos_nb;
@@ -439,6 +447,7 @@ struct abox_data {
 	struct delayed_work wdt_work;
 	unsigned long long audio_mode_time;
 	enum audio_mode audio_mode;
+	enum abox_call_event call_event;
 	enum sound_type sound_type;
 	struct wakeup_source ws;
 };
@@ -530,6 +539,15 @@ extern struct abox_data *abox_get_abox_data(void);
  * @return		pointer to abox_data
  */
 extern struct abox_data *abox_get_data(struct device *dev);
+
+/**
+ * set system state
+ * @param[in]	data	pointer to abox_data structure
+ * @param[in]	state	state
+ * @param[in]	en	enable or disable
+ */
+extern int abox_set_system_state(struct abox_data *data,
+		enum system_state state, bool en);
 
 /**
  * get physical address from abox virtual address

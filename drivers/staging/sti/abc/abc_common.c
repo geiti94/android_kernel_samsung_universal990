@@ -256,6 +256,23 @@ static ssize_t show_abc_log(struct device *dev,
 }
 static DEVICE_ATTR(log, 0644, show_abc_log, store_abc_log);
 
+static ssize_t store_abc_testinfo(struct device *dev,
+			     struct device_attribute *attr,
+			     const char *buf, size_t count)
+{
+	ABC_PRINT("%s: %s\n", __func__, buf);
+
+#if defined(CONFIG_SEC_SUPPORT_MOTTOTEST_WITH_ACT)
+	if (abc_enabled) {
+		ABC_PRINT("Call store_act_upload_information.\n");
+		store_act_upload_information(buf, count);
+	}
+#endif
+
+	return count;
+}
+static DEVICE_ATTR(testinfo, S_IWUSR, NULL, store_abc_testinfo);
+
 static int sec_abc_is_full(struct abc_buffer *buffer)
 {
 	if ((buffer->rear + 1) % buffer->size == buffer->front)
@@ -578,6 +595,12 @@ static int sec_abc_probe(struct platform_device *pdev)
 		goto err_create_abc_log_sysfs;
 	}
 
+	ret = device_create_file(pinfo->dev, &dev_attr_testinfo);
+	if (ret) {
+		pr_err("%s: Failed to create device log file\n", __func__);
+		goto err_create_abc_testinfo_sysfs;
+	}
+
 	INIT_WORK(&pinfo->work, sec_abc_work_func);
 
 	pinfo->workqueue = create_singlethread_workqueue("sec_abc_wq");
@@ -599,6 +622,8 @@ static int sec_abc_probe(struct platform_device *pdev)
 	abc_init = true;
 	return ret;
 err_create_abc_wq:
+	device_remove_file(pinfo->dev, &dev_attr_testinfo);
+err_create_abc_testinfo_sysfs:
 	device_remove_file(pinfo->dev, &dev_attr_log);
 err_create_abc_log_sysfs:
 	device_remove_file(pinfo->dev, &dev_attr_enabled);

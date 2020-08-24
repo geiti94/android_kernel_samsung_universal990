@@ -58,7 +58,7 @@
 #define TCNTO0_OFF                      0x0014
 /* Definition for ZEBU */
 #ifdef CONFIG_NPU_HARDWARE
-//#define FORCE_HWACG_DISABLE
+#define FORCE_HWACG_DISABLE
 /* #define FORCE_WDT_DISABLE */
 //#define ENABLE_PWR_ON
 

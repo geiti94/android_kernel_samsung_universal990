@@ -145,6 +145,7 @@ int npu_frame_mbox_ops_get(struct msgid_pool *pool, struct proto_req_frame **tar
 			npu_uftrace("mbox->protodrv : frame msgid(%d)\n", &(*target)->frame, msgid);
 			(*target)->frame.msgid = -1;
 			(*target)->frame.result_code = frame.result_code;
+			(*target)->frame.duration = frame.duration;
 			return 1;
 		} else {
 			npu_err("failed to find request mapped with msgid[%d]\n", msgid);

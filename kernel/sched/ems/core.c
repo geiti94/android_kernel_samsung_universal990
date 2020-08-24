@@ -56,6 +56,7 @@ static void select_fit_cpus(struct tp_env *env)
 
 	/* Get cpus where fits task from ontime migration */
 	ontime_select_fit_cpus(p, &ontime_fit_cpus);
+	cpumask_copy(&env->ontime_fit_cpus, &ontime_fit_cpus);
 
 	/*
 	 * Find cpus that becomes over capacity.
@@ -138,6 +139,46 @@ finish:
 		*(unsigned int *)cpumask_bits(&busy_cpus));
 }
 
+/* setup cpu and task util */
+static void get_util_snapshot(struct tp_env *env)
+{
+	int cpu, prev_cpu = task_cpu(env->p);
+	int task_util_est = (int)ml_task_util_est(env->p);
+
+	/*
+	 * We don't agree setting 0 for task util
+	 * Because we do better apply active power of task
+	 * when get the energy
+	 */
+	env->task_util = task_util_est ? task_util_est : 1;
+
+	/* fill cpu util */
+	for_each_cpu(cpu, cpu_active_mask) {
+		env->cpu_util_wo[cpu][USS] = _ml_cpu_util_est(cpu, USS);
+		env->cpu_util_wo[cpu][SSE] = _ml_cpu_util_est(cpu, SSE);
+		/* remove task util from previous cpu util */
+		if (cpu == prev_cpu) {
+			env->cpu_util_wo[prev_cpu][env->p->sse] =
+				max_t(int, (env->cpu_util_wo[prev_cpu][env->p->sse] - task_util_est), 0);
+		}
+		env->cpu_util_with[cpu] = ml_cpu_util_with(cpu, env->p);
+		env->cpu_rt_util[cpu] = cpu_util_rt(cpu_rq(cpu));
+
+		/*
+		 * fill cpu util for get_next_cap,
+		 * It improves expecting next_cap in governor
+		 */
+		env->cpu_util[cpu] = ml_cpu_util(cpu) + env->cpu_rt_util[cpu];
+
+		env->nr_running[cpu] = cpu_rq(cpu)->nr_running;
+
+		trace_ems_snapshot_cpu(cpu, env->task_util,
+			env->cpu_util_wo[cpu][USS], env->cpu_util_wo[cpu][SSE],
+			env->cpu_util_with[cpu], env->cpu_rt_util[cpu],
+			env->cpu_util[cpu], env->nr_running[cpu]);
+	}
+}
+
 static void get_ready_env(struct tp_env *env)
 {
 	int cpu;
@@ -149,6 +190,8 @@ static void get_ready_env(struct tp_env *env)
 		 */
 		env->eff_weight[cpu] = emstune_eff_weight(env->p, cpu, idle_cpu(cpu));
 	}
+	/* snapshot util to use same util during core selection */
+	get_util_snapshot(env);
 
 	/*
 	 * Among fit_cpus, idle cpus are included in env->idle_candidates
@@ -161,7 +204,7 @@ static void get_ready_env(struct tp_env *env)
 			cpumask_set_cpu(cpu, &env->idle_candidates);
 	cpumask_andnot(&env->candidates, &env->fit_cpus, &env->idle_candidates);
 
-	trace_ems_candidates(env->p, env->prefer_idle,
+	trace_ems_candidates(env->p, env->sched_policy,
 		*(unsigned int *)cpumask_bits(&env->candidates),
 		*(unsigned int *)cpumask_bits(&env->idle_candidates));
 }
@@ -193,7 +236,7 @@ int exynos_select_task_rq(struct task_struct *p, int prev_cpu,
 	int target_cpu = -1;
 	struct tp_env env = {
 		.p = p,
-		.prefer_idle = emstune_prefer_idle(p),
+		.sched_policy = emstune_sched_policy(p),
 		.wake = wake,
 	};
 

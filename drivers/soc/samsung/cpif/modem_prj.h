@@ -144,7 +144,8 @@ enum crash_type {
 	CRASH_REASON_MIF_RSV_MAX = 12,
 	CRASH_REASON_CP_SRST,
 	CRASH_REASON_CP_RSV_0,
-	CRASH_REASON_CP_RSV_MAX = 15,
+	CRASH_REASON_CP_RSV_MAX,
+	CRASH_REASON_CLD = 16,
 	CRASH_REASON_NONE = 0xFFFF,
 };
 
@@ -159,6 +160,31 @@ struct cpif_version {
 	char string[CPIF_VERSION_SIZE];
 } __packed;
 #define IOCTL_GET_CPIF_VERSION		_IOR('o', 0x56, struct cpif_version)
+
+#define IOCTL_SET_INTERNET_PDN_CID	_IO(IOCTL_MAGIC, 0x60)
+
+#define RMNET_COUNT 8
+#define IPV6_ADDR_SIZE	16
+
+enum dl_destination {
+	PC = 1,
+	AP,
+	MAX_DL_DST
+};
+
+struct pdn_info {
+	bool is_activated;			/* open_pdn: true, close_pdn: false */
+	bool is_internet;
+	u8 cid;					/* 1(rmnet0), 2(rmnet1), and so on */
+	enum dl_destination dl_dst;		/* pc or ap */
+	u32 ipv4_src_addr;			/* iphdr->saddr */
+	u8 ipv6_src_addr[IPV6_ADDR_SIZE];	/* ipv6hdr->saddr.s6_addr */
+} __packed;
+
+struct  pdn_table {
+	struct pdn_info pdn[RMNET_COUNT];
+} __packed;
+#define IOCTL_SET_MULTIPLE_PDN_INFO	_IOW(IOCTL_MAGIC, 0x61, struct pdn_info)
 
 /*
  * Definitions for IO devices
@@ -455,6 +481,10 @@ struct link_device {
 	bool (*is_uts_ch)(u8 ch);
 	bool (*is_wfs0_ch)(u8 ch);
 	bool (*is_wfs1_ch)(u8 ch);
+	u8 (*get_rmnet_type)(u8 ch);
+	u8 (*get_ch_from_cid)(u8 cid);
+
+	u32 internet_pdn_cid;
 
 	/* SIPC version */
 	enum sipc_ver ipc_version;
@@ -481,6 +511,9 @@ struct link_device {
 
 	/* Save reason of forced crash */
 	struct crash_reason crash_reason;
+
+	/* Save Source IP addresses for each PDN setup request */
+	struct pdn_table pdn_table;
 
 	int (*init_comm)(struct link_device *ld, struct io_device *iod);
 	void (*terminate_comm)(struct link_device *ld, struct io_device *iod);
@@ -839,6 +872,10 @@ const struct file_operations *get_bootdump_io_fops(void);
 const struct file_operations *get_ipc_io_fops(void);
 int sipc5_init_io_device(struct io_device *iod);
 void sipc5_deinit_io_device(struct io_device *iod);
+
+#ifdef CONFIG_USB_CONFIGFS_F_MBIM
+extern struct modem_ctl *get_mc(void);
+#endif
 
 #if defined(CONFIG_RPS) && defined(CONFIG_ARGOS)
 extern struct net init_net;

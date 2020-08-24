@@ -87,6 +87,7 @@ struct exynos_dm_constraint {
 	struct list_head	slave_domain;
 
 	bool				guidance;		/* check constraint table by hw guide */
+	bool				support_dynamic_disable;
 	u32				table_length;
 
 	enum exynos_constraint_type	constraint_type;
@@ -143,6 +144,7 @@ struct exynos_dm_device {
 	int 			constraint_domain_count;
 	int				*domain_order;
 	struct exynos_dm_data		*dm_data;
+	int				dynamic_disable;
 };
 
 /* External Function call */
@@ -158,6 +160,7 @@ int register_exynos_dm_freq_scaler(int dm_type,
 int unregister_exynos_dm_freq_scaler(int dm_type);
 int policy_update_call_to_DM(int dm_type, u32 min_freq, u32 max_freq);
 int DM_CALL(int dm_type, unsigned long *target_freq);
+extern void exynos_dm_dynamic_disable(int flag);
 #else
 static inline
 int exynos_dm_data_init(int dm_type, void *data,
@@ -197,6 +200,11 @@ static inline
 int DM_CALL(int dm_type, unsigned long *target_freq)
 {
 	return 0;
+}
+static inline
+void exynos_dm_dynamic_disable(int flag)
+{
+	return;
 }
 #endif
 

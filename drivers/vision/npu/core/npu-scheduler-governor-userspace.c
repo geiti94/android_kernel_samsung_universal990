@@ -159,7 +159,7 @@ ssize_t npu_store_attrs_governor_userspace(struct device *dev,
 	struct npu_governor_userspace_prop *p;
 	const ptrdiff_t offset = attr - npu_userspace_attrs;
 
-	if (sscanf(buf, "%255s%* %d", name, &x) > 0) {
+	if (sscanf(buf, "%255s* %d", name, &x) > 0) {
 		d = npu_governor_userspace_get_dev(name);
 		if (!d) {
 			npu_err("No device : %s %d\n", name, x);
@@ -198,7 +198,7 @@ static ssize_t npu_store_attrs_governor_userspace_args(struct device *dev,
 	struct npu_governor_userspace_prop *p;
 	const ptrdiff_t offset = attr - npu_userspace_attrs;
 
-	if (sscanf(buf, "%255s%* %d %d", name, &x, &y) > 0) {
+	if (sscanf(buf, "%255s* %d %d", name, &x, &y) > 0) {
 		d = npu_governor_userspace_get_dev(name);
 		if (!d) {
 			npu_err("No device : %s %d %d\n", name, x, y);

@@ -29,6 +29,8 @@ extern struct is_sysfs_actuator sysfs_actuator;
 
 #define AK737X_DEFAULT_FIRST_POSITION		120
 #define AK737X_DEFAULT_FIRST_DELAY			2000
+#define AK737X_DEFAULT_SLEEP_TO_STANDBY_DELAY		1000
+#define AK737X_DEFAULT_ACTIVE_TO_STANDBY_DELAY		200
 
 static int sensor_ak737x_write_position(struct i2c_client *client, u32 val)
 {
@@ -168,10 +170,10 @@ static int sensor_ak737x_soft_landing_on_recording(struct v4l2_subdev *subdev)
 			if (ret < 0)
 				goto p_err;
 			/* change Gain parameter */
-			ret = is_sensor_addr8_write8(client, AK737X_REG_CHANGE_GAIN_PARAMETER, 0x0A);
+			ret = is_sensor_addr8_write8(client, AK737X_REG_CHANGE_GAIN2_PARAMETER, 0x0A);
 			if (ret < 0)
 				goto p_err;
-		} else if (actuator->vendor_soft_landing_seqid == 2) {
+		} else if (actuator->vendor_soft_landing_seqid == 2 || actuator->vendor_soft_landing_seqid == 3) {
 			/* setting mode on */
 			ret = is_sensor_addr8_write8(client, AK737X_REG_SETTING_MODE_ON, 0x3B);
 			if (ret < 0)
@@ -185,7 +187,12 @@ static int sensor_ak737x_soft_landing_on_recording(struct v4l2_subdev *subdev)
 			if (ret < 0)
 				goto p_err;
 			/* change Gain2 parameter */
-			ret = is_sensor_addr8_write8(client, AK737X_REG_CHANGE_GAIN_PARAMETER, 0x08);
+			if (actuator->vendor_soft_landing_seqid == 3) {
+				ret = is_sensor_addr8_write8(client, AK737X_REG_CHANGE_GAIN3_PARAMETER, 0x08);
+			} else {
+				ret = is_sensor_addr8_write8(client, AK737X_REG_CHANGE_GAIN2_PARAMETER, 0x08);
+			}
+			
 			if (ret < 0)
 				goto p_err;
 		}
@@ -266,11 +273,11 @@ int sensor_ak737x_actuator_init(struct v4l2_subdev *subdev, u32 val)
 	}
 
 	if (actuator->vendor_use_standby_mode) {
-		/* Go standby mode */
+		/* sleep to standby mode */
 		ret = is_sensor_addr8_write8(client, AK737X_REG_CONT1, AK737X_MODE_STANDBY);
 		if (ret < 0)
 			goto p_err;
-		usleep_range(1000, 1010);
+		usleep_range(actuator->vendor_sleep_to_standby_delay, actuator->vendor_sleep_to_standby_delay + 10);
 	}
 
 	for (i = 0; i < product_id_len; i += 2) {
@@ -509,7 +516,11 @@ static int sensor_ak737x_actuator_set_active(struct v4l2_subdev *subdev, int ena
 		ret = is_sensor_addr8_write8(client, AK737X_REG_CONT1, AK737X_MODE_STANDBY);
 		if (ret < 0)
 			goto p_err;
-		usleep_range(1000, 1010);
+
+		if (enable)
+			usleep_range(actuator->vendor_sleep_to_standby_delay, actuator->vendor_sleep_to_standby_delay + 10);
+		else
+			usleep_range(actuator->vendor_active_to_standby_delay, actuator->vendor_active_to_standby_delay + 10);
 	}
 
 	if (enable) {
@@ -562,6 +573,8 @@ int sensor_ak737x_actuator_probe(struct i2c_client *client,
 	u32 sensor_id = 0;
 	u32 first_pos = 0;
 	u32 first_delay = 0;
+	u32 sleep_to_standby_delay = 0;
+	u32 active_to_standby_delay = 0;
 	bool vendor_use_sleep_mode = false;
 	bool vendor_use_standby_mode = false;
 	struct device *dev;
@@ -590,13 +603,25 @@ int sensor_ak737x_actuator_probe(struct i2c_client *client,
 	ret = of_property_read_u32(dnode, "vendor_first_pos", &first_pos);
 	if (ret) {
 		first_pos = AK737X_DEFAULT_FIRST_POSITION;
-		err("vendor_first_pos read is fail(%d)", ret);
+		info("use default first_pos : %d\n", first_pos);
 	}
 
 	ret = of_property_read_u32(dnode, "vendor_first_delay", &first_delay);
 	if (ret) {
 		first_delay = AK737X_DEFAULT_FIRST_DELAY;
-		err("vendor_first_delay read is fail(%d)", ret);
+		info("use default first_delay : %d\n", first_delay);
+	}
+
+	ret = of_property_read_u32(dnode, "vendor_sleep_to_standby_delay", &sleep_to_standby_delay);
+	if (ret) {
+		sleep_to_standby_delay = AK737X_DEFAULT_SLEEP_TO_STANDBY_DELAY;
+		info("use default sleep_to_standby_delay : %d\n", sleep_to_standby_delay);
+	}
+
+	ret = of_property_read_u32(dnode, "vendor_active_to_standby_delay", &active_to_standby_delay);
+	if (ret) {
+		active_to_standby_delay= AK737X_DEFAULT_ACTIVE_TO_STANDBY_DELAY;
+		info("use default active_to_standby_delay : %d\n", active_to_standby_delay);
 	}
 
 	ret = of_property_read_u32(dnode, "id", &sensor_id);
@@ -655,6 +680,8 @@ int sensor_ak737x_actuator_probe(struct i2c_client *client,
 	actuator->vendor_product_id = AK737X_PRODUCT_ID_AK7371; // AK737X - initial product_id : AK7371
 	actuator->vendor_first_pos = first_pos;
 	actuator->vendor_first_delay = first_delay;
+	actuator->vendor_sleep_to_standby_delay = sleep_to_standby_delay;
+	actuator->vendor_active_to_standby_delay = active_to_standby_delay;
 	actuator->vendor_use_sleep_mode = vendor_use_sleep_mode;
 	actuator->vendor_use_standby_mode = vendor_use_standby_mode;
 

@@ -93,8 +93,11 @@ static int crypto_diskcipher_check(struct bio *bio)
 		return 0;
 
 	page = bio->bi_io_vec[0].bv_page;
-	if (!page || PageAnon(page) || !page->mapping || !page->mapping->host)
+	if (!page || PageAnon(page) || !page->mapping || !page->mapping->host || atomic_read(&ci->inode->i_dio_count))
 		return 0;
+
+	if (!page->mapping->host->i_crypt_info)
+                return 0;
 
 	inode = page->mapping->host;
 	if (ci->inode != inode) {
@@ -111,6 +114,7 @@ static int crypto_diskcipher_check(struct bio *bio)
 	if (!ci) {
 		pr_err("%s: fails to invalid crypto info\n", __func__);
 		return -EINVAL;
+
 	} else if ((bio->bi_aux_private != ci) &&
 			!(bio->bi_flags & REQ_OP_DISCARD)) {
 		pr_err("%s: fails to async crypto info\n", __func__);
@@ -153,9 +157,12 @@ struct crypto_diskcipher *crypto_diskcipher_get(struct bio *bio)
 		} else {
 			crypto_diskcipher_debug(DISKC_API_GET, true);
 		}
-		if ((diskc->ivmode != IV_MODE_DUN) && bio_dun(bio))
-			panic("invalid ivmode:%d, %d\n",
-				diskc->ivmode, bio_dun(bio));
+
+		if (!IS_ERR(diskc)) {
+			if ((diskc->ivmode != IV_MODE_DUN) && bio_dun(bio))
+				panic("invalid ivmode:%d, %d\n",
+					diskc->ivmode, bio_dun(bio));
+		}
 	}
 #endif
 

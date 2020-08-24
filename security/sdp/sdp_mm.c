@@ -117,6 +117,7 @@ EXPORT_SYMBOL(sdp_mm_set_process_sensitive);
 static int32_t sdp_mm_set_proc_sensitive(void __user *argp)
 {
     unsigned int proc_id = 0;
+    unsigned long flags = 0;
     if (copy_from_user(&proc_id, (void __user *)argp,
                 sizeof(unsigned int))) {
         pr_err("SDP_MM: copy_from_user failed\n");
@@ -124,10 +125,12 @@ static int32_t sdp_mm_set_proc_sensitive(void __user *argp)
     }
 
     printk("SDP_MM: sensitive process id is %d\n", proc_id);
+    spin_lock_irqsave(&sdp_mm.sdp_proc_list_lock, flags);
     if (sdp_mm.sensitive_proc_list_len < MAX_SENSITIVE_PROC) {
         sdp_mm.proc_id[sdp_mm.sensitive_proc_list_len] = proc_id;
         sdp_mm.sensitive_proc_list_len++;
     }
+    spin_unlock_irqrestore(&sdp_mm.sdp_proc_list_lock, flags);
 
     return sdp_mm_set_process_sensitive(proc_id);
 }

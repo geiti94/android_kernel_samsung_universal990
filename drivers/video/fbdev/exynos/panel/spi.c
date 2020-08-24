@@ -1,9 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * linux/drivers/video/fbdev/exynos/panel/spi.c
- *
- * Samsung Common LCD Driver.
- *
- * Copyright (c) 2016 Samsung Electronics
+ * Copyright (c) Samsung Electronics Co., Ltd.
  *
  * JiHoon Kim <jihoonn.kim@samsung.com>
  * Gwanghui Lee <gwanghui.lee@samsung.com>
@@ -12,16 +9,23 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+
 #include <linux/spi/spi.h>
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/workqueue.h>
+#include "panel_debug.h"
 
-#if defined (CONFIG_OF)
+#if defined(CONFIG_OF)
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #endif /* CONFIG_OF */
+
+#ifdef PANEL_PR_TAG
+#undef PANEL_PR_TAG
+#define PANEL_PR_TAG	"spi"
+#endif
 
 #define DRIVER_NAME "panel_spi"
 #define MAX_PANEL_SPI_RX_BUF	(256)
@@ -43,11 +47,11 @@ int panel_spi_write_data(struct spi_device *spi, const u8 *cmd, int size)
 	};
 
 	if (unlikely(!spi || !cmd)) {
-		pr_err("%s, invalid parameter\n", __func__);
+		panel_err("invalid parameter\n");
 		return -EINVAL;
 	}
 
-	pr_debug("%s, addr 0x%02X len %d\n", __func__, cmd[0], size);
+	panel_dbg("addr 0x%02X len %d\n", cmd[0], size);
 
 	spi_message_init(&msg);
 	for (i = 0; i < ARRAY_SIZE(xfer); i++)
@@ -55,7 +59,7 @@ int panel_spi_write_data(struct spi_device *spi, const u8 *cmd, int size)
 			spi_message_add_tail(&xfer[i], &msg);
 	status = spi_sync(spi, &msg);
 	if (status < 0) {
-		pr_err("%s, failed to spi_sync %d\n", __func__, status);
+		panel_err("failed to spi_sync %d\n", status);
 		return status;
 	}
 
@@ -82,15 +86,15 @@ int panel_spi_read_data(struct spi_device *spi, u8 addr, u8 *buf, int size)
 	};
 
 	if (unlikely(!spi || !buf)) {
-		pr_err("%s, invalid parameter\n", __func__);
+		panel_err("invalid parameter\n");
 		return -EINVAL;
 	}
 
-	pr_debug("%s, addr 0x%02X len %d\n", __func__, addr, size);
+	panel_dbg("addr 0x%02X len %d\n", addr, size);
 
 	if (size > ARRAY_SIZE(rx_buf)) {
-		pr_err("%s, read length(%d) should be less than %ld\n",
-				__func__, size, ARRAY_SIZE(rx_buf));
+		panel_err("read length(%d) should be less than %ld\n",
+				size, ARRAY_SIZE(rx_buf));
 		return -EINVAL;
 	}
 
@@ -103,13 +107,13 @@ int panel_spi_read_data(struct spi_device *spi, u8 addr, u8 *buf, int size)
 
 	status = spi_sync(spi, &msg);
 	if (status < 0) {
-		pr_err("%s, failed to spi_sync %d\n", __func__, status);
+		panel_err("failed to spi_sync %d\n", status);
 		return status;
 	}
 
 	for (i = 0; i < size; i++) {
 		buf[i] = rx_buf[i];
-		pr_debug("%s, rx_buf[%d] 0x%02X\n", __func__, i, buf[i]);
+		panel_dbg("rx_buf[%d] 0x%02X\n", i, buf[i]);
 	}
 
 	return size;
@@ -145,20 +149,19 @@ static int panel_spi_probe(struct spi_device *spi)
 	int ret;
 
 	if (unlikely(!spi)) {
-		pr_err("%s, invalid spi\n", __func__);
+		panel_err("invalid spi\n");
 		return -EINVAL;
 	}
 
 	ret = panel_spi_probe_dt(spi);
 	if (ret < 0) {
-		dev_err(&spi->dev, "%s, failed to parse device tree, ret %d\n",
-				__func__, ret);
+		dev_err(&spi->dev, "failed to parse device tree, ret %d\n", ret);
 		return ret;
 	}
 
 	ret = spi_setup(spi);
 	if (ret < 0) {
-		dev_err(&spi->dev, "%s, failed to setup spi, ret %d\n", __func__, ret);
+		dev_err(&spi->dev, "failed to setup spi, ret %d\n", ret);
 		return ret;
 	}
 

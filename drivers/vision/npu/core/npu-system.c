@@ -396,7 +396,7 @@ int npu_system_resume(struct npu_system *system, u32 mode)
 	}
 	set_bit(NPU_SYS_RESUME_INIT_FWBUF, &system->resume_steps);
 
-	npu_info("reset FW working memory : paddr %p, vaddr %p, daddr %p, size 0x%x\n",
+	npu_info("reset FW working memory : paddr %llu, vaddr %p, daddr %llu, size %lu\n",
 		system->fw_npu_memory_buffer->paddr,
 		system->fw_npu_memory_buffer->vaddr,
 		system->fw_npu_memory_buffer->daddr,

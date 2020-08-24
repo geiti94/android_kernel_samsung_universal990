@@ -32,6 +32,13 @@ config SENSORS_SSP_BBD
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
+config SENSORS_DYNAMIC_SENSORLIST
+	tristate "Sensors dynamic sensorlist"
+	default n
+	depends on SPI
+	help
+	  This option enables dynamic sensorlist.
+
 config SENSORS_SSP_MPU6500
 	tristate "Sensors ssp mpu6500"
 	default n
@@ -53,6 +60,18 @@ config SENSORS_SSP_ICM20610
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
+
+config SENSORS_SSP_ICM42632M
+	tristate "Sensors ssp icm42632m"
+	default n
+	depends on SPI
+	help
+	  icm42632m file for factory test in ssp driver.
+          If you say yes here you get icm42632m support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
 
 config SENSORS_SSP_BMI058
 	tristate "Sensors ssp bmi058"
@@ -88,12 +107,12 @@ config SENSORS_SSP_LSM6DSL
 	  module will be called ssp.
 
 config SENSORS_SSP_LSM6DSO
-	tristate "Sensors ssp lsm6dsl"
+	tristate "Sensors ssp lsm6dso"
 	default n
 	depends on SPI
 	help
-	  This option enables lsm6dsl 6axis sensor.
-	  If you say yes here you get lsm6dsl support for
+	  This option enables lsm6dso 6axis sensor.
+	  If you say yes here you get lsm6dso support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -105,6 +124,17 @@ config SENSORS_SSP_AK09911
 	help
 	  ak09911 file for factory test and doeplus in ssp driver.
           If you say yes here you get ak09911 support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_AK09918C
+	tristate "Sensors ssp ak09918c"
+	default n
+	depends on SPI
+	help
+	  ak09918c file for factory test and doeplus in ssp driver.
+          If you say yes here you get ak09918c support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -207,7 +237,6 @@ config SENSORS_SSP_LPS22H
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
-
 
 config SENSORS_SSP_SHTC1
 	tristate "Sensors ssp shtc1"
@@ -342,6 +371,8 @@ config SENSORS_SSP_CM3323
 	depends on SPI
 	help
 	  This option enables cm3323 proxitmity sensor.
+
+
 
 config SENSORS_SSP_PROX_SETTING
 	tristate "Sensors ssp prox setting"
@@ -627,6 +658,28 @@ config SENSORS_SSP_PICASSO
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
+config SENSORS_SSP_CANVAS
+	tristate "CANVAS Project"
+	default n
+	depends on SPI
+	help
+	  Binary file for ssp driver.
+          If you say yes here you get CANVAS project support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SSP_R8
+	tristate "R8 Project"
+	default n
+	depends on SPI
+	help
+	  Binary file for ssp driver.
+          If you say yes here you get R8 project support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
 config SSP_MOTOR_CALLBACK
 	tristate "Sensors support motor"
 	default n
@@ -675,5 +728,61 @@ config SENSORS_SSP_PROX_LIGHT_DIFF
 	depends on SPI
 	help
 	  If you want to use light diff value at proximity data, it should be set.
+
+config SENSORS_VL53L5
+	depends on SPI
+	tristate "VL53L5 driver"
+	default n
+	help
+	  Say Y here if you use VL53L5.
+	  This option enables range sensor using VL53L5.
+
+config SENSORS_VL53L5_C2
+	depends on SPI
+	tristate "VL53L5 firmware for C2"
+	default n
+	help
+	  Say Y here if you use VL53L5.
+	  This option enables range sensor using VL53L5.
+
+config SENSORS_VL53L5_SUPPORT_UAPI
+	tristate "STM vl53l5 ranging sensor UPAI interface"
+	default n
+	help
+	  STM vl53l5 ranging sensor UPAI interface.
+
+config SENSORS_VL53L5_SUPPORT_KERNEL_INTERFACE
+	tristate "STM vl53l5 ranging sensor Kernel Interface"
+	default n
+	help
+	  STM vl53l5 ranging sensor Kernel Interface.
+
+config SENSORS_ICM42632M
+	bool "accelerometer/gyroscope icm42632m"
+	default y if SENSORS_DYNAMIC_SENSORLIST
+
+config SENSORS_LSM6DSO
+	bool "accelerometer/gyroscope lsm6dso"
+	default y if SENSORS_DYNAMIC_SENSORLIST
+
+config SENSORS_TMD4907
+	bool "proximity/light tdm4907"
+	default y if SENSORS_DYNAMIC_SENSORLIST
+
+config SENSORS_STK31610
+	bool "light stk31610"
+	default y if SENSORS_DYNAMIC_SENSORLIST
+
+config SENSORS_AK09918C
+	bool "magnetometer ak09918c"
+	default y if SENSORS_DYNAMIC_SENSORLIST
+
+config SENSORS_LPS22H
+	bool "barometer lps22hhtr"
+	default y if SENSORS_DYNAMIC_SENSORLIST
+
+config SENSORS_LPS25H
+	bool "barometer lps25hhtr"
+	default y if SENSORS_DYNAMIC_SENSORLIST
 
 source "drivers/sensorhub/brcm/bbdpl/Kconfig"

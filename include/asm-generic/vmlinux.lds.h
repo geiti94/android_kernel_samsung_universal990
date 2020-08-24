@@ -57,7 +57,9 @@
 /* Align . to a 8 byte boundary equals to maximum function alignment. */
 #define ALIGN_FUNCTION()  . = ALIGN(8)
 
+#ifndef CONFIG_UML
 #include <asm/kernel-pgtable.h>
+#endif
 
 /*
  * LD_DEAD_CODE_DATA_ELIMINATION option enables -fdata-sections, which
@@ -497,6 +499,8 @@
 		*(__ksymtab_strings)					\
 	}								\
 									\
+	SECDBG_MEMBERS							\
+									\
 	/* __*init sections */						\
 	__init_rodata : AT(ADDR(__init_rodata) - LOAD_OFFSET) {		\
 		*(.ref.rodata)						\
@@ -799,6 +803,19 @@
 #define ORC_UNWIND_TABLE
 #endif
 
+#ifdef CONFIG_SEC_DEBUG
+#define SECDBG_MEMBERS							\
+	/* Secdbg member table: offsets */				\
+	. = ALIGN(8);							\
+	__secdbg_member_table : AT(ADDR(__secdbg_member_table) - LOAD_OFFSET) { \
+		__start__secdbg_member_table = .;			\
+		KEEP(*(SORT(.secdbg_mbtab.*))) 				\
+		__stop__secdbg_member_table = .;			\
+	}
+#else
+#define SECDBG_MEMBERS
+#endif
+
 #ifdef CONFIG_PM_TRACE
 #define TRACEDATA							\
 	. = ALIGN(4);							\
@@ -852,6 +869,17 @@
 		__security_initcall_start = .;				\
 		KEEP(*(.security_initcall.init))			\
 		__security_initcall_end = .;
+
+#ifdef CONFIG_KUNIT
+/* Alignment must be consistent with (test_module *) in include/test/test.h */
+#define KUNIT_TEST_MODULES						\
+		. = ALIGN(8);						\
+		__test_modules_start = .;				\
+		KEEP(*(.test_modules))					\
+		__test_modules_end = .;
+#else
+#define KUNIT_TEST_MODULES
+#endif
 
 #ifdef CONFIG_BLK_DEV_INITRD
 #define INIT_RAM_FS							\
@@ -1021,6 +1049,7 @@
 		CON_INITCALL						\
 		SECURITY_INITCALL					\
 		INIT_RAM_FS						\
+		KUNIT_TEST_MODULES					\
 	}
 
 #define BSS_SECTION(sbss_align, bss_align, stop_align)			\

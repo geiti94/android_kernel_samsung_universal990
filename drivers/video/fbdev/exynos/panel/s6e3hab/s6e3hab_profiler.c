@@ -11,6 +11,11 @@
 #include "s6e3hab_profiler.h"
 #include "../display_profiler/maskgen.h"
 
+#ifdef PANEL_PR_TAG
+#undef PANEL_PR_TAG
+#define PANEL_PR_TAG	"prof"
+#endif
+
 void hab_profile_win_update(struct maptbl *tbl, u8 *dst)
 {
 	struct profiler_device *profiler = tbl->pdata;

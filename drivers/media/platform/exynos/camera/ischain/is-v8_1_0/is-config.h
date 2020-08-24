@@ -240,7 +240,7 @@
 #undef RESERVED_MEM_IN_DT
 
 /* init AWB */
-#define ENABLE_INIT_AWB
+// #define ENABLE_INIT_AWB
 #define WB_GAIN_COUNT		(4)
 #define INIT_AWB_COUNT_REAR	(3)
 #define INIT_AWB_COUNT_FRONT	(8)
@@ -273,6 +273,7 @@
 
 #define THROTTLING_MIF_LEVEl	(1539000)
 
+#define SYNC_SHOT_ALWAYS	/* This is a feature for reducing late shot. */
 /*
  * ======================================================
  * CONFIG - Interface version configs

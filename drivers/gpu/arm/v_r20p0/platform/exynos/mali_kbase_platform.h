@@ -47,6 +47,26 @@ do { \
 #define DVFS_TABLE_COL_NUM 8
 #define DVFS_TABLE_ROW_MAX 20
 #define OF_DATA_NUM_MAX 100
+#define PRE_FRAME 3
+#define WINDOW (4 * PRE_FRAME)	/* If DVFS Period is 4-ms, Total WINDOW has 4-ms * 4 = 16-ms */
+
+#ifdef CONFIG_MALI_SEC_G3D_PERF_STABLE_PMQOS
+#define STAY_COUNT_NO_PEAK_MODE_PERIOD 20   /* STAY_COUNT_NO_PEAK_MODE x 30ms(dvfs period) */
+#define STAY_COUNT_NO_PEAK_MODE_UTIL_MUL_FREQ	66690000	/* 95 x 702000KHz, 83 x 800000KHz */
+#endif
+
+#ifdef CONFIG_MALI_SEC_CL_BOOST
+#define DOWN_STAY_COUNT_NO_USE_PERIOD 3
+#endif
+
+typedef enum {
+	GL_NORMAL = 0,
+	GL_PEAK_MODE1,
+	GL_PEAK_MODE2,
+	CL_FULL,
+	CL_UNFULL,
+	GL_MIGOV_MODE,
+} gpu_operation_mode;
 
 typedef enum {
 	DVFS_DEBUG_START = 0,
@@ -144,6 +164,7 @@ typedef struct _gpu_dvfs_info {
 	int max_threshold;
 	int down_staycount;
 	unsigned long long time;
+	unsigned long long time_busy;
 	int mem_freq;
 	int int_freq;
 	int cpu_little_min_freq;
@@ -216,6 +237,8 @@ struct exynos_context {
 	int user_min_lock[NUMBER_LOCK];
 	int down_requirement;
 	int governor_type;
+	int governor_type_init;
+	int is_gov_set;
 	bool wakeup_lock;
 	int dvfs_pending;
 
@@ -280,13 +303,18 @@ struct exynos_context {
 	int power_runtime_suspend_ret;
 	int power_runtime_resume_ret;
 
-
 	int polling_speed;
 	int runtime_pm_delay_time;
 	bool pmqos_int_disable;
 
 	int pmqos_mif_max_clock;
 	int pmqos_mif_max_clock_base;
+#ifdef CONFIG_MALI_SEC_G3D_PERF_STABLE_PMQOS
+	int pmqos_g3d_clock[2];
+	int pmqos_cl1_max_clock[2];
+	int pmqos_cl2_max_clock[2];
+	int stay_count_no_peak_mode; /* stay count @ do not enter peak_mode */
+#endif
 
 	int cl_dvfs_start_base;
 
@@ -341,6 +369,8 @@ struct exynos_context {
 
 #ifdef CONFIG_MALI_SEC_CL_BOOST
 	bool cl_boost_disable;
+	bool previous_cl_job; /* save previous status of cl_boost  */
+	int down_stay_no_count;
 #endif
 
 	int gpu_set_pmu_duration_reg;
@@ -349,6 +379,37 @@ struct exynos_context {
 	char g3d_genpd_name[30];
 	int gpu_dss_freq_id;
 	bool hardstop;
+
+#ifdef CONFIG_MALI_DYNAMIC_IFPO
+	int gpu_dynamic_ifpo_util;
+	int gpu_dynamic_ifpo_freq;
+	int gpu_ifpo_cnt;
+	bool gpu_ifpo_get_flag;
+#endif
+
+	int gpu_operation_mode_info;
+	struct {
+		int util_history[2][WINDOW];
+		int freq_history[WINDOW];
+		int average_util;
+		int average_freq;
+		int diff_util;
+		int diff_freq;
+		int weight_util[2];
+		int weight_freq;
+		int next_util;
+		int next_freq;
+		int pre_util;
+		int pre_freq;
+		bool en_signal;
+	} prediction;
+
+	int freq_margin;
+	int migov_mode;
+	int migov_saved_polling_speed;
+	bool is_pm_qos_tsg;	/* true : cpu pmqos unlock for joint governor */
+
+int wa_frame_cnt;
 };
 
 struct kbase_device *gpu_get_device_structure(void);

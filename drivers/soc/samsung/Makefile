@@ -104,3 +104,9 @@ obj-$(CONFIG_EXYNOS_S2MPU)	+= exynos-harxlog.o
 
 # Exynos EL2
 obj-$(CONFIG_ARCH_EXYNOS)       += exynos-el2.o
+
+# Multi IP Governor
+obj-$(CONFIG_EXYNOS_MIGOV)	+= exynos-migov.o
+obj-$(CONFIG_EXYNOS_CPU_PROFILER)	+= exynos-cpu-profiler.o
+obj-$(CONFIG_EXYNOS_GPU_PROFILER)	+= exynos-gpu-profiler.o
+obj-$(CONFIG_EXYNOS_MIF_PROFILER)	+= exynos-mif-profiler.o

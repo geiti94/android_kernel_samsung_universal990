@@ -1571,7 +1571,9 @@ static struct task_struct *_pick_next_task_rt(struct rq *rq)
 		BUG_ON(!rt_se);
 		if (rt_se->on_rq)
 			frt_update_load_avg(rt_rq, rt_se, 0);
+#if defined CONFIG_SMP || defined CONFIG_RT_GROUP_SCHED
 		rt_rq->curr = rt_se;
+#endif
 		rt_rq = group_rt_rq(rt_se);
 	} while (rt_rq);
 
@@ -1658,7 +1660,9 @@ static void put_prev_task_rt(struct rq *rq, struct task_struct *p)
 		struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
 		if (rt_se->on_rq)
 			frt_update_load_avg(rt_rq, rt_se, 0);
+#if defined CONFIG_SMP || defined CONFIG_RT_GROUP_SCHED
 		rt_rq->curr = NULL;
+#endif
 	}
 }
 
@@ -2293,7 +2297,9 @@ void __init init_sched_rt_class(void)
  */
 static void switched_to_rt(struct rq *rq, struct task_struct *p)
 {
+#ifdef CONFIG_SMP
 	frt_sync_sched_avg(p, &p->rt.avg);
+#endif
 	frt_attach_task_rt_rq(p);
 
 	/*

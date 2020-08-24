@@ -126,6 +126,9 @@ int npu_session_put_frame_req(
 	frame_cmd_e frame_cmd, struct av_info *IFM_info, struct av_info *OFM_info, u32 j)
 {
 	int ret = 0;
+	struct npu_vertex *vertex;
+	struct npu_device *device;
+	struct npu_vertex_ctx *vctx;
 	struct npu_frame frame = {
 		.uid = session->uid,
 		.frame_id = j+1,
@@ -151,7 +154,13 @@ int npu_session_put_frame_req(
 		ret = -EFAULT;
 		goto p_err;
 	}
+	vctx = &(session->vctx);
+	vertex = vctx->vertex;
+	device = container_of(vertex, struct npu_device, vertex);
+
+	npu_scheduler_set_init_freq(device, session->uid);
 	npu_udbg("success in %s", session, __func__);
+	return 0;
 p_err:
 	return ret;
 }
@@ -1324,7 +1333,7 @@ static int npu_session_queue(struct npu_queue *queue, struct vb_container_list *
 	u32 j;
 	u32 buff_cnt;
 
-	frame_cmd_e frame_cmd = NPU_FRAME_CMD_Q;
+	frame_cmd_e frame_cmd;
 
 	BUG_ON(!queue);
 	BUG_ON(!incl);
@@ -1332,6 +1341,11 @@ static int npu_session_queue(struct npu_queue *queue, struct vb_container_list *
 	BUG_ON(!otcl);
 	/*BUG_ON(!otcl->index >= NPU_MAX_FRAME);*/
 
+	if (otcl->profiler != NULL) {
+		frame_cmd = NPU_FRAME_CMD_PROFILER;
+	} else {
+		frame_cmd = NPU_FRAME_CMD_Q;
+	}
 	vctx = container_of(queue, struct npu_vertex_ctx, queue);
 	session = container_of(vctx, struct npu_session, vctx);
 
@@ -1365,6 +1379,8 @@ static int npu_session_queue(struct npu_queue *queue, struct vb_container_list *
 
 		ret = npu_session_put_frame_req(session, queue, incl, otcl, frame_cmd, IFM_info, OFM_info,
 											incl->id*VISION_MAX_BUFFER + j);
+		if (ret)
+			goto p_err;
 
 		IFM_info->state = SS_BUF_STATE_QUEUE;
 		OFM_info->state = SS_BUF_STATE_QUEUE;
@@ -1596,10 +1612,10 @@ p_err:
 /* S_PARAM handler list definition - Chain of responsibility pattern */
 typedef npu_s_param_ret (*fn_s_param_handler)(struct npu_session *, struct vs4l_param *, int *);
 fn_s_param_handler s_param_handlers[] = {
-	fw_test_s_param_handler,
+	NULL,	/* NULL termination is required to denote EOL */
 	npu_scheduler_param_handler,
 	npu_qos_param_handler,
-	NULL	/* NULL termination is required to denote EOL */
+	fw_test_s_param_handler
 };
 
 int npu_session_param(struct npu_session *session, struct vs4l_param_list *plist)
@@ -1607,30 +1623,38 @@ int npu_session_param(struct npu_session *session, struct vs4l_param_list *plist
 	npu_s_param_ret		ret;
 	int			retval = 0;
 	struct vs4l_param	*param;
-	u32			i;
+	u32			i, target;
 	fn_s_param_handler	*p_fn;
 
 	/* Search over each set param request over handlers */
 	for (i = 0; i < plist->count; i++) {
 		param = &plist->params[i];
+		target = param->target;
 		npu_udbg("Try set param [%u/%u] - target: [0x%x]\n",
-			session, i+1, plist->count, param->target);
+			session, i+1, plist->count, target);
 
-		for (p_fn = s_param_handlers; *p_fn != NULL; p_fn++) {
-			ret = (*p_fn)(session, param, &retval);
-			if (ret != S_PARAM_NOMB) {
-				/* Handled */
-				npu_udbg("Handled by handler at [%pK] ret = %d\n",
-					session, *p_fn, ret);
-				break;
-			}
-		}
-		if (*p_fn == NULL) {
-			npu_uwarn("No handler defined for target [%u]. Skipping.\n",
-				session, param->target);
-			/* Continue process others but retuen value is -EINVAL */
+		p_fn = s_param_handlers;
+		if ((target >= NPU_S_PARAM_PERF_MODE) &&
+				(target <= NPU_S_PARAM_TPF)) {
+			p_fn += 1;
+		} else if ((target >= NPU_S_PARAM_QOS_NPU) &&
+				(target <= NPU_S_PARAM_QOS_RST)) {
+			p_fn += 2;
+		} else if ((target >= NPU_S_PARAM_FW_UTC_LOAD) &&
+				(target <= NPU_S_PARAM_FW_UTC_EXECUTE)) {
+			p_fn += 3;
+		} else {
+			npu_uwarn("No handler defined for target [%u]."
+				"Skipping.\n", session, param->target);
+			/* Continue process others but retuen -EINVAL */
 			retval = -EINVAL;
+			continue;
 		}
+
+		ret = (*p_fn)(session, param, &retval);
+		if (ret != S_PARAM_NOMB)
+			npu_udbg("Handled by handler at [%pK](%d)\n",
+						session, *p_fn, ret);
 	}
 
 	return retval;
@@ -1660,20 +1684,19 @@ int npu_session_nw_sched_param(struct npu_session *session, struct vs4l_sched_pa
 	bound_id = param->bound_id;
 	max_npu_core = session->sched_param.max_npu_core;
 	/* Check priority range */
-	if ((priority >= NPU_PRIORITY_MIN_VAL) && (priority <= NPU_PRIORITY_MAX_VAL)) {
+	if (priority <= NPU_PRIORITY_MAX_VAL) {
 		session->sched_param.priority = priority;
 	} else {
 		retval = -EINVAL;
 	}
 	/* Check boundness to the core */
-	if (((bound_id >= NPU_BOUND_CORE0) && (bound_id < max_npu_core)) ||
-			(bound_id == NPU_BOUND_UNBOUND)) {
+	if ((bound_id < max_npu_core) || (bound_id == NPU_BOUND_UNBOUND)) {
 		session->sched_param.bound_id = bound_id;
 	} else {
 		retval = -EINVAL;
 	}
 	/* Set the default value if anything is wrong */
-	if(retval != 0) {
+	if (retval != 0) {
 		session->sched_param.priority = NPU_PRIORITY_MAX_VAL;
 		session->sched_param.bound_id = NPU_BOUND_UNBOUND;
 	}

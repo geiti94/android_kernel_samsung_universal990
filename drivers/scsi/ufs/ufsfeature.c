@@ -134,6 +134,61 @@ out:
 	return ret;
 }
 
+int ufsf_hpb_dt_check(struct ufs_hba *hba)
+{
+	struct device_node *node = hba->dev->of_node;
+	struct ufsf_feature *ufsf = &hba->ufsf;
+	int dt_hpb_enable = 1;
+	bool dev_hpb_enable = 0;
+	int err;
+
+	if ((ufsf->hpb_dev_info.hpb_ver < UFSHPB_HPBEN_VER) ||
+	    (ufsf->hpb_dev_info.hpb_ver > UFSHPB_MAX_VER))
+		return dt_hpb_enable;
+
+	err = of_property_read_u32(node, "hpb-enable", &dt_hpb_enable);
+	if (err) {
+		ERR_MSG("of_property_read_u32 failed...err %d", err);		
+		dt_hpb_enable = 0;
+	}
+
+	pm_runtime_get_sync(hba->dev);
+	err = ufshcd_query_flag_retry(hba, UPIU_QUERY_OPCODE_READ_FLAG,
+				      QUERY_FLAG_IDN_HPB_EN, &dev_hpb_enable);
+	if (err) {
+		ERR_MSG("read flag [0x%.2X] failed...err %d",
+			QUERY_FLAG_IDN_HPB_EN, err);
+		goto query_fail;
+	}
+
+	INIT_INFO("HPB enable DT %d - Dev %d", dt_hpb_enable, dev_hpb_enable);
+
+	if (!dt_hpb_enable && dev_hpb_enable) {
+		err = ufshcd_query_flag_retry(hba, UPIU_QUERY_OPCODE_CLEAR_FLAG,
+					      QUERY_FLAG_IDN_HPB_EN, NULL);
+		if (err) {
+			ERR_MSG("clear flag [0x%.2X] failed...err%d",
+				QUERY_FLAG_IDN_HPB_EN, err);
+			goto query_fail;
+		}
+	} else if (dt_hpb_enable && !dev_hpb_enable) {
+		err = ufshcd_query_flag_retry(hba, UPIU_QUERY_OPCODE_SET_FLAG,
+					      QUERY_FLAG_IDN_HPB_EN, NULL);
+		if (err) {
+			ERR_MSG("set flag [0x%.2X] failed...err %d",
+				QUERY_FLAG_IDN_HPB_EN, err);
+			goto query_fail;
+		}
+	}
+	pm_runtime_put_sync(hba->dev);
+
+	return dt_hpb_enable;
+
+query_fail:
+	pm_runtime_put_sync(hba->dev);
+	return 0;
+}
+
 void ufsf_device_check(struct ufs_hba *hba)
 {
 	struct ufsf_feature *ufsf = &hba->ufsf;
@@ -146,6 +201,10 @@ void ufsf_device_check(struct ufs_hba *hba)
 	ret = ufsf_read_dev_desc(ufsf, UFSFEATURE_SELECTOR);
 	if (ret)
 		return;
+
+	ret = ufsf_hpb_dt_check(hba);
+	if (!ret)
+		goto dt_hpb_disable;
 
 	ret = ufsf_read_geo_desc(ufsf, UFSFEATURE_SELECTOR);
 	if (ret)
@@ -169,6 +228,11 @@ out_free_mem:
 	ufsf->ufshpb_state = HPB_FAILED;
 #endif
 	return;
+dt_hpb_disable:
+#if defined(CONFIG_UFSHPB)
+	/* don't call init handler */
+	ufsf->ufshpb_state = HPB_FAILED;
+#endif
 }
 
 static void ufsf_print_query_buf(unsigned char *field, int size)
@@ -185,7 +249,7 @@ static void ufsf_print_query_buf(unsigned char *field, int size)
 		if ((i + 1) % 16 == 0) {
 			buf[count] = '\n';
 			buf[count + 1] = '\0';
-			printk(buf);
+			printk("%s", buf);
 			count = 0;
 			count += snprintf(buf, 8, "(0x%.2X):", i + 1);
 		} else if ((i + 1) % 4 == 0)
@@ -193,7 +257,7 @@ static void ufsf_print_query_buf(unsigned char *field, int size)
 	}
 	buf[count] = '\n';
 	buf[count + 1] = '\0';
-	printk(buf);
+	printk("%s",buf);
 }
 
 inline int ufsf_check_query(__u32 opcode)
@@ -386,8 +450,9 @@ inline void ufsf_hpb_init(struct ufsf_feature *ufsf)
 {
 	if (ufsf->hpb_dev_info.hpb_device &&
 	    ufsf->ufshpb_state == HPB_NEED_INIT) {
-		INIT_WORK(&ufsf->ufshpb_init_work, ufshpb_init_handler);
-		schedule_work(&ufsf->ufshpb_init_work);
+		INIT_DELAYED_WORK(&ufsf->ufshpb_init_work, ufshpb_init_handler);
+		schedule_delayed_work(&ufsf->ufshpb_init_work,
+				      msecs_to_jiffies(10000));
 	}
 }
 

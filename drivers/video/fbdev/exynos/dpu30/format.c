@@ -604,7 +604,7 @@ const struct dpu_fmt *dpu_find_fmt_info(enum decon_pixel_format fmt)
 	if (!IS_ERR_OR_NULL(fmt_info))
 		return fmt_info;
 
-	decon_err("%s: can't find format(%d) in supported format list\n",
+	decon_err("%s: can't find format(%d) in the list -> apply ARGB8888\n",
 			__func__, fmt);
-	return NULL;
+	return &dpu_formats_list[0];
 }

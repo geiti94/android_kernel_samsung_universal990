@@ -15,14 +15,26 @@ fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS) += tsp_sec/y761_dream1.fw
 fw-external-$(CONFIG_TOUCHSCREEN_SEC_TS_Y79A) += tsp_sec/y771_y2_ub.bin tsp_sec/y79a_y2_ub.bin tsp_sec/y79a_y2.bin \
 							tsp_sec/y79a_x1_ub.bin tsp_sec/y79a_x1.bin tsp_sec/y79a_z3.bin
 
-fw-external-$(CONFIG_EPEN_WACOM_W9020) += epen/w9020_c2_bringup.bin
+fw-external-$(CONFIG_TOUCHSCREEN_SEC_TS_Y79A_C) += tsp_sec/y79a_c2_y2ub.bin tsp_sec/y79a_c2_6layer.bin \
+							tsp_sec/y79a_c1_x1ub.bin tsp_sec/y79a_c1_old.bin tsp_sec/y771_c1_pv1.bin tsp_sec/y771_c1.bin\
+							tsp_sec/y79a_c2_4layer.bin
+
+fw-external-$(CONFIG_TOUCHSCREEN_ZINITIX_ZT7650) += tsp_zinitix/zt7650_r8.bin
+
+fw-external-$(CONFIG_EPEN_WACOM_W9020) += epen/w9020_c2.bin epen/w9020_c2_dv1.bin epen/w9020_c2_dv2.bin \
+						epen/w9020_c1_x1ub.bin epen/w9020_c1_y79a.bin epen/w9020_c1.bin
 
 fw-external-$(CONFIG_WIRELESS_FIRMWARE_UPDATE) += mfc/mfc_fw_flash.bin
 fw-external-$(CONFIG_WIRELESS_CHARGER_MFC_S2MIW04) += mfc/mfc_fw_flash_s2miw04.bin
 
-fw-external-$(CONFIG_KEYBOARD_STM_FSR) += key_stm/fsr1ad04_p2.fw 
+fw-external-$(CONFIG_KEYBOARD_STM_FSR) += key_stm/fsr1ad04_p2.fw
 fw-external-$(CONFIG_NPU_PERF_FW) += npu_perf/NPU_perf.bin
 fw-external-$(CONFIG_NPU_PERF_FW) += npu_dn/NPU_dn.bin
+
+fw-external-$(CONFIG_SENSORS_VL53L5_C2) += range_sensor/vl53l5.bin \
+						range_sensor/generic_xtalk_shape_c2_00.bin \
+						range_sensor/generic_xtalk_shape_c2_01.bin \
+						range_sensor/generic_xtalk_shape_c2_02.bin
 
 fw-shipped-$(CONFIG_FIVE_TEE_DRIVER) += five/ffffffff000000000000000000000072.tlbin
 
@@ -84,5 +96,3 @@ endif
 targets := $(patsubst $(obj)/%,%, \
                                 $(shell find $(obj) -name \*.gen.S 2>/dev/null))
 
-# SPU signature verify
-obj-y += spu_verify/

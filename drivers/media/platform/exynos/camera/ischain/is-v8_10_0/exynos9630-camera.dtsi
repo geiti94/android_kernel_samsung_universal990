@@ -642,6 +642,9 @@
 		#define LIC_MODE_STATIC		(1)
 		#define LIC_PATH_OTF		(0)
 		#define LIC_PATH_DMA		(1)
+
+		lic_mode_default = <LIC_MODE_DYNAMIC>;
+
 		/*
 		 * When DYNAMIC mode is selected, param means enable limitation for DMA path.
 		 * Example:

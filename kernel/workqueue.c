@@ -50,6 +50,8 @@
 #include <linux/sched/isolation.h>
 #include <linux/debug-snapshot.h>
 #include <linux/nmi.h>
+#include <linux/sec_debug.h>
+#include <soc/samsung/exynos-debug.h>
 
 #include "workqueue_internal.h"
 
@@ -2943,7 +2945,9 @@ static bool __flush_work(struct work_struct *work, bool from_cancel)
 	}
 
 	if (start_flush_work(work, &barr, from_cancel)) {
+		secdbg_dtsk_set_data(DTYPE_WORK, work);
 		wait_for_completion(&barr.done);
+		secdbg_dtsk_clear_data();
 		destroy_work_on_stack(&barr.work);
 		return true;
 	} else {
@@ -5108,8 +5112,8 @@ static int workqueue_apply_unbound_cpumask(void)
  *  and apply it to all unbound workqueues and updates all pwqs of them.
  *
  *  Retun:	0	- Success
- *  		-EINVAL	- Invalid @cpumask
- *  		-ENOMEM	- Failed to allocate memory for attrs or pwqs.
+ *		-EINVAL	- Invalid @cpumask
+ *		-ENOMEM	- Failed to allocate memory for attrs or pwqs.
  */
 int workqueue_set_unbound_cpumask(cpumask_var_t cpumask)
 {
@@ -5587,10 +5591,16 @@ static void wq_watchdog_timer_fn(struct timer_list *unused)
 		/* did we stall? */
 		if (time_after(jiffies, ts + thresh)) {
 			lockup_detected = true;
-			pr_emerg("BUG: workqueue lockup - pool");
+			pr_auto(ASL9, "BUG: workqueue lockup - pool");
 			pr_cont_pool_info(pool);
 			pr_cont(" stuck for %us!\n",
 				jiffies_to_msecs(jiffies - pool_ts) / 1000);
+#ifdef CONFIG_SEC_DEBUG_WQ_LOCKUP_INFO
+			if (pool->cpu >= 0) {
+				secdbg_show_sched_info(pool->cpu, 10);
+				secdbg_show_busy_task(pool->cpu, jiffies_to_msecs(jiffies - pool_ts) / 1000, 5);
+			}
+#endif
 		}
 	}
 

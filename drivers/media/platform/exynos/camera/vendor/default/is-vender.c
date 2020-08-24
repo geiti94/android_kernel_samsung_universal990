@@ -293,7 +293,8 @@ int is_vender_preprocessor_gpio_on(struct is_vender *vender, u32 scenario, u32 g
 	return ret;
 }
 
-int is_vender_sensor_gpio_on_sel(struct is_vender *vender, u32 scenario, u32 *gpio_scenario)
+int is_vender_sensor_gpio_on_sel(struct is_vender *vender, u32 scenario, u32 *gpio_scenario
+	, void *module_data)
 {
 	int ret = 0;
 	return ret;

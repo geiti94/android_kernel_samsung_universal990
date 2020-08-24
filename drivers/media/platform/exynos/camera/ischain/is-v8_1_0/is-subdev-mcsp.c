@@ -35,6 +35,7 @@ int is_ischain_mxp_stripe_cfg(struct is_subdev *subdev,
 	struct is_frame *frame;
 	struct is_fmt *fmt = framecfg->format;
 	bool x_flip = test_bit(SCALER_FLIP_COMMAND_X_MIRROR, &framecfg->flip);
+	bool is_last_region = false;
 	unsigned long flags;
 	u32 stripe_x = 0, stripe_w = 0;
 	u32 dma_offset = 0;
@@ -88,6 +89,7 @@ int is_ischain_mxp_stripe_cfg(struct is_subdev *subdev,
 			if (incrop->x + incrop->w < ldr_frame->stripe_info.in.h_pix_num) {
 				temp_stripe_w = incrop->w - frame->stripe_info.in.h_pix_num;
 				stripe_roi_end_x = incrop->x + incrop->w;
+				is_last_region = true;
 			} else {
 				stripe_roi_end_x = ldr_frame->stripe_info.in.h_pix_num;
 			}
@@ -147,7 +149,10 @@ int is_ischain_mxp_stripe_cfg(struct is_subdev *subdev,
 			if (*use_out_crop) {
 				stripe_w = ALIGN_DOWN(GET_SCALED_SIZE(stripe_w, h_ratio), MCSC_WIDTH_ALIGN);
 			} else {
-				stripe_w = ALIGN(otcrop->w * frame->stripe_info.in.h_pix_ratio / STRIPE_RATIO_PRECISION, 4);
+				if (is_last_region)
+					stripe_w = otcrop->w - frame->stripe_info.out.h_pix_num;
+				else
+					stripe_w = ALIGN(otcrop->w * frame->stripe_info.in.h_pix_ratio / STRIPE_RATIO_PRECISION, 4);
 
 				/* Add horizontal DMA offset */
 				if (x_flip)
@@ -544,8 +549,8 @@ static int is_ischain_mxp_start(struct is_device_ischain *device,
 	mcs_output->stripe_in_start_pos_x = stripe_in_start_pos_x; /* for stripe */
 	mcs_output->stripe_roi_start_pos_x = stripe_roi_start_pos_x; /* for stripe */
 	mcs_output->stripe_roi_end_pos_x = stripe_roi_end_pos_x; /* for stripe */
-	mcs_output->crop_cmd = (use_out_crop & BIT(MCSC_OUT_CROP)); /* for stripe */
-	mcs_output->crop_cmd |= (node->request & BIT(MCSC_CROP_TYPE)); /* 0: ceter crop, 1: freeform crop */
+	mcs_output->crop_cmd = (u32)(use_out_crop & BIT(MCSC_OUT_CROP)); /* for stripe */
+	mcs_output->crop_cmd |= (u32)(node->request & BIT(MCSC_CROP_TYPE)); /* 0: ceter crop, 1: freeform crop */
 	/* HW spec: stride should be aligned by 16 byte. */
 	mcs_output->dma_stride_y = ALIGN(max(otcrop->w * format->bitsperpixel[0] / BITS_PER_BYTE,
 					queue->framecfg.bytesperline[0]), 16);

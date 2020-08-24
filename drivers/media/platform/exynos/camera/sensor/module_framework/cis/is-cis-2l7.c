@@ -577,9 +577,9 @@ int sensor_2l7_cis_retention_crc_check(struct v4l2_subdev *subdev)
 	is_sensor_write16(cis->client, 0x6018, 0x0001);
 	is_sensor_write16(cis->client, 0x7002, 0x0001);
 	is_sensor_write16(cis->client, 0x6014, 0x0001);
-	mdelay(4);
+	usleep_range(4000, 4100);
 	is_sensor_write16(cis->client, 0x7002, 0x0000);
-	mdelay(4);
+	usleep_range(4000, 4100);
 
 	is_sensor_read8(cis->client, 0x070B, &crc_check);
 	is_sensor_read8(cis->client, 0x070F, &crc_status);
@@ -730,7 +730,7 @@ int sensor_2l7_cis_stream_on(struct v4l2_subdev *subdev)
 	 * then 8 ms waiting is needed before the StreamOn of a sensor (S5K2L7).
 	 */
 	if (test_bit(IS_SENSOR_PREPROCESSOR_AVAILABLE, &sensor_peri->peri_state)) {
-		mdelay(8);
+		usleep_range(8000, 8100);
 	}
 
 	/* Sensor stream on */

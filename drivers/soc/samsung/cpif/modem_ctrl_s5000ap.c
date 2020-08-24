@@ -59,17 +59,15 @@ static irqreturn_t cp_wdt_handler(int irq, void *arg)
 	if (mc->phone_state == STATE_ONLINE)
 		modem_notify_event(MODEM_EVENT_WATCHDOG, mc);
 
-	mif_set_snapshot(false);
+	mif_stop_logging();
 
 	new_state = STATE_CRASH_WATCHDOG;
 	ld->crash_reason.type = CRASH_REASON_CP_WDOG_CRASH;
 
 	mif_info("new_state:%s\n", cp_state_str(new_state));
 
-	list_for_each_entry(iod, &mc->modem_state_notify_list, list) {
-		if (iod && atomic_read(&iod->opened) > 0)
-			iod->modem_state_changed(iod, new_state);
-	}
+	list_for_each_entry(iod, &mc->modem_state_notify_list, list)
+		iod->modem_state_changed(iod, new_state);
 
 	return IRQ_HANDLED;
 }
@@ -109,10 +107,8 @@ static irqreturn_t cp_active_handler(int irq, void *arg)
 		if (old_state == STATE_ONLINE)
 			modem_notify_event(MODEM_EVENT_RESET, mc);
 
-		list_for_each_entry(iod, &mc->modem_state_notify_list, list) {
-			if (iod && atomic_read(&iod->opened) > 0)
-				iod->modem_state_changed(iod, new_state);
-		}
+		list_for_each_entry(iod, &mc->modem_state_notify_list, list)
+			iod->modem_state_changed(iod, new_state);
 	}
 
 	return IRQ_HANDLED;
@@ -302,6 +298,8 @@ static int init_control_messages(struct modem_ctl *mc)
 static int _is_first_boot;
 static int power_on_cp(struct modem_ctl *mc)
 {
+	struct io_device *iod;
+
 	mif_info("+++\n");
 
 	mc->receive_first_ipc = 0;
@@ -310,10 +308,10 @@ static int power_on_cp(struct modem_ctl *mc)
 	exynos_cp_init();
 #endif
 
-	/* Enable debug Snapshot */
-	mif_set_snapshot(true);
-
-	mc->phone_state = STATE_OFFLINE;
+	list_for_each_entry(iod, &mc->modem_state_notify_list, list) {
+		if (iod && atomic_read(&iod->opened) > 0)
+			iod->modem_state_changed(iod, STATE_OFFLINE);
+	}
 
 	if (cal_cp_status() == 0) {
 		if (!_is_first_boot) {
@@ -359,10 +357,8 @@ static int power_shutdown_cp(struct modem_ctl *mc)
 	remain = wait_for_completion_timeout(&mc->off_cmpl, timeout);
 	if (remain == 0) {
 		mc->phone_state = STATE_OFFLINE;
-		list_for_each_entry(iod, &mc->modem_state_notify_list, list) {
-			if (iod && atomic_read(&iod->opened) > 0)
-				iod->modem_state_changed(iod, STATE_OFFLINE);
-		}
+		list_for_each_entry(iod, &mc->modem_state_notify_list, list)
+			iod->modem_state_changed(iod, STATE_OFFLINE);
 	}
 
 exit:
@@ -493,10 +489,8 @@ static int start_normal_boot(struct modem_ctl *mc)
 	if (ld->link_prepare_normal_boot)
 		ld->link_prepare_normal_boot(ld, mc->bootd);
 
-	list_for_each_entry(iod, &mc->modem_state_notify_list, list) {
-		if (iod && atomic_read(&iod->opened) > 0)
-			iod->modem_state_changed(iod, STATE_BOOTING);
-	}
+	list_for_each_entry(iod, &mc->modem_state_notify_list, list)
+		iod->modem_state_changed(iod, STATE_BOOTING);
 
 	if (ld->link_start_normal_boot) {
 		mif_info("link_start_normal_boot\n");
@@ -571,10 +565,8 @@ static int complete_normal_boot(struct modem_ctl *mc)
 
 	mif_enable_irq(&mc->irq_cp_wdt);
 
-	list_for_each_entry(iod, &mc->modem_state_notify_list, list) {
-		if (iod && atomic_read(&iod->opened) > 0)
-			iod->modem_state_changed(iod, STATE_ONLINE);
-	}
+	list_for_each_entry(iod, &mc->modem_state_notify_list, list)
+		iod->modem_state_changed(iod, STATE_ONLINE);
 
 #if defined(CONFIG_CPIF_TP_MONITOR)
 	tpmon_start(1);
@@ -1118,3 +1110,11 @@ int s5000ap_init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	mif_info("---\n");
 	return 0;
 }
+
+#ifdef CONFIG_USB_CONFIGFS_F_MBIM
+struct modem_ctl *get_mc(void)
+{
+	return g_mc;
+}
+#endif
+

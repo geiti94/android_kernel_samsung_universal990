@@ -96,7 +96,7 @@ static bool migrate_anon_page_one(struct page *page, struct vm_area_struct *vma,
 		if (pte_soft_dirty(pteval))
 			newpte = pte_mksoft_dirty(newpte);
 		if (pte_write(pteval))
-			newpte = maybe_mkwrite(newpte, vma);
+			newpte = maybe_mkwrite(newpte, vma->vm_flags);
 
 		flush_dcache_page(newpage);
 
@@ -381,7 +381,7 @@ static int reclaim_pages_list(unsigned long start_pfn, unsigned int nr_pages,
 			pr_err("failed to migrate pages in [%#lx, %#lx) (%d)\n",
 			       start_pfn, start_pfn + nr_pages, ret);
 			putback_movable_pages(nonfile);
-			return ret;
+			return -EAGAIN;
 		}
 	}
 
@@ -459,12 +459,12 @@ static bool page_steal_available(unsigned long pfn, unsigned int order)
 	while (pfn < pfn_end) {
 		struct page *page = pfn_to_page(pfn);
 
+		if (!pfn_valid_within(pfn))
+			return false;
 		if (PageBuddy(page)) {
 			pfn += 1 << page_order(page);
 			continue;
 		}
-		if (!pfn_valid_within(pfn))
-			return false;
 		if (PageCompound(page) || PageReserved(page))
 			return false;
 		if (!PageLRU(page) && !__PageMovable(page))
@@ -598,7 +598,7 @@ err:
 	if (ret < 0)
 		return ret;
 
-	pr_info("stolen %d pages in %llu msec.(drn,islt,stel %llu %llu %llu)\n",
+	pr_info("stolen %lu pages in %llu msec.(drn,islt,stel %llu %llu %llu)\n",
 		nr_pages, ktime_ms_delta(end, begin),
 		ktime_ms_delta(steal, isolate),
 		ktime_ms_delta(isolate, begin),
@@ -656,7 +656,7 @@ static int page_steal_debugfs_steal_write(void *data, u64 val)
 	return 0;
 }
 DEFINE_SIMPLE_ATTRIBUTE(page_steal_debugfs_steal_fops, NULL,
-			page_steal_debugfs_steal_write, "%u\n");
+			page_steal_debugfs_steal_write, "%llu\n");
 
 static int page_steal_debugfs_base_pfn_get(void *data, u64 *val)
 {

@@ -1,7 +1,7 @@
 /*
  * Linux OS Independent Layer
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _linux_osl_h_
@@ -84,6 +84,8 @@ extern void osl_assert(const char *exp, const char *file, int line);
 #endif /* __GNUC__ */
 #endif
 #endif /* ASSERT */
+
+#define ASSERT_FP(exp) ASSERT(exp)
 
 /* microsecond delay */
 #define	OSL_DELAY(usec)		osl_delay(usec)
@@ -305,10 +307,36 @@ extern uint64 osl_systztime_us(void);
 #define	bcmp(b1, b2, len)	memcmp((b1), (b2), (len))
 #define	bzero(b, len)		memset((b), '\0', (len))
 
+#if defined(CONFIG_SOC_EXYNOS9830)
+extern int exynos_pcie_l1_exit(int ch_num);
+#endif /* CONFIG_SOC_EXYNOS9830	*/
+
 /* register access macros */
 
 #ifdef CONFIG_64BIT
 /* readq is defined only for 64 bit platform */
+#if defined(CONFIG_SOC_EXYNOS9830)
+#define R_REG(osh, r) (\
+	SELECT_BUS_READ(osh, \
+		({ \
+			__typeof(*(r)) __osl_v = 0; \
+			exynos_pcie_l1_exit(0); \
+			BCM_REFERENCE(osh);	\
+			switch (sizeof(*(r))) { \
+				case sizeof(uint8):	__osl_v = \
+					readb((volatile uint8*)(r)); break; \
+				case sizeof(uint16):	__osl_v = \
+					readw((volatile uint16*)(r)); break; \
+				case sizeof(uint32):	__osl_v = \
+					readl((volatile uint32*)(r)); break; \
+				case sizeof(uint64):	__osl_v = \
+					readq((volatile uint64*)(r)); break; \
+			} \
+			__osl_v; \
+		}), \
+		OSL_READ_REG(osh, r)) \
+)
+#else
 #define R_REG(osh, r) (\
 	SELECT_BUS_READ(osh, \
 		({ \
@@ -328,6 +356,7 @@ extern uint64 osl_systztime_us(void);
 		}), \
 		OSL_READ_REG(osh, r)) \
 )
+#endif /* CONFIG_SOC_EXYNOS9830 */
 #else /* !CONFIG_64BIT */
 #define R_REG(osh, r) (\
 	SELECT_BUS_READ(osh, \
@@ -349,6 +378,25 @@ extern uint64 osl_systztime_us(void);
 
 #ifdef CONFIG_64BIT
 /* writeq is defined only for 64 bit platform */
+#if defined(CONFIG_SOC_EXYNOS9830)
+#define W_REG(osh, r, v) do { \
+	SELECT_BUS_WRITE(osh, \
+		({ \
+			exynos_pcie_l1_exit(0); \
+			switch (sizeof(*(r))) { \
+				case sizeof(uint8):	writeb((uint8)(v), \
+						(volatile uint8*)(r)); break; \
+				case sizeof(uint16):	writew((uint16)(v), \
+						(volatile uint16*)(r)); break; \
+				case sizeof(uint32):	writel((uint32)(v), \
+						(volatile uint32*)(r)); break; \
+				case sizeof(uint64):	writeq((uint64)(v), \
+						(volatile uint64*)(r)); break; \
+			} \
+		 }), \
+		(OSL_WRITE_REG(osh, r, v))); \
+	} while (0)
+#else
 #define W_REG(osh, r, v) do { \
 	SELECT_BUS_WRITE(osh, \
 		switch (sizeof(*(r))) { \
@@ -359,7 +407,7 @@ extern uint64 osl_systztime_us(void);
 		}, \
 		(OSL_WRITE_REG(osh, r, v))); \
 	} while (0)
-
+#endif /* CONFIG_SOC_EXYNOS9830 */
 #else /* !CONFIG_64BIT */
 #define W_REG(osh, r, v) do { \
 	SELECT_BUS_WRITE(osh, \
@@ -428,6 +476,8 @@ extern uint32 osl_rand(void);
 
 /* ASSERT */
 	#define ASSERT(exp)	do {} while (0)
+
+#define ASSERT_FP(exp) ASSERT(exp)
 
 /* MALLOC and MFREE */
 #define MALLOC(o, l) malloc(l)

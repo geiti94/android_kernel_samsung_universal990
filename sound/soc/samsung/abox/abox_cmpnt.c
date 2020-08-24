@@ -349,6 +349,9 @@ static int rate_put(struct snd_kcontrol *kcontrol,
 
 	dev_info(dev, "%s(%#x, %u)\n", __func__, reg, val);
 
+	if (val < mc->min || val > mc->max)
+		return -EINVAL;
+
 	return rate_put_ipc(dev, val, reg);
 }
 
@@ -475,6 +478,9 @@ static int width_put(struct snd_kcontrol *kcontrol,
 
 	dev_info(dev, "%s(%#x, %u)\n", __func__, reg, val);
 
+	if (val < mc->min || val > mc->max)
+		return -EINVAL;
+
 	return width_put_ipc(dev, val, reg);
 }
 
@@ -517,6 +523,9 @@ static int channels_put(struct snd_kcontrol *kcontrol,
 	unsigned int val = (unsigned int)ucontrol->value.integer.value[0];
 
 	dev_info(dev, "%s(%#x, %u)\n", __func__, reg, val);
+
+	if (val < mc->min || val > mc->max)
+		return -EINVAL;
 
 	return channels_put_ipc(dev, val, reg);
 }
@@ -671,6 +680,34 @@ static const unsigned int sound_type_enum_values[] = {
 SOC_VALUE_ENUM_SINGLE_DECL(sound_type_enum, SND_SOC_NOPM, 0, 0,
 		sound_type_enum_texts, sound_type_enum_values);
 
+static int display_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
+	struct device *dev = cmpnt->dev;
+	struct abox_data *data = dev_get_drvdata(dev);
+	bool val = !data->system_state[SYSTEM_DISPLAY_OFF];
+
+	dev_dbg(dev, "%s: %d\n", __func__, val);
+
+	ucontrol->value.integer.value[0] = val;
+
+	return 0;
+}
+
+static int display_put(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
+	struct device *dev = cmpnt->dev;
+	struct abox_data *data = dev_get_drvdata(dev);
+	bool val = !!ucontrol->value.integer.value[0];
+
+	dev_dbg(dev, "%s(%d)\n", __func__, val);
+
+	return abox_set_system_state(data, SYSTEM_DISPLAY_OFF, !val);
+}
+
 static int tickle_get(struct snd_kcontrol *kcontrol,
 		struct snd_ctl_elem_value *ucontrol)
 {
@@ -753,6 +790,9 @@ static int asrc_factor_put(struct snd_kcontrol *kcontrol,
 
 	dev_info(dev, "%s(%#x, %u)\n", __func__, reg, val);
 
+	if (val < mc->min || val > mc->max)
+		return -EINVAL;
+
 	return asrc_factor_put_ipc(dev, val, reg);
 }
 
@@ -787,7 +827,7 @@ static int spus_asrc_enable_put(struct snd_kcontrol *kcontrol,
 
 	dev_info(dev, "%s(%ld, %d)\n", __func__, val, idx);
 
-	spus_asrc_force_enable[idx] = val;
+	spus_asrc_force_enable[idx] = !!val;
 
 	return snd_soc_put_volsw(kcontrol, ucontrol);
 }
@@ -812,9 +852,23 @@ static int spum_asrc_enable_put(struct snd_kcontrol *kcontrol,
 
 	dev_info(dev, "%s(%ld, %d)\n", __func__, val, idx);
 
-	spum_asrc_force_enable[idx] = val;
+	spum_asrc_force_enable[idx] = !!val;
 
 	return snd_soc_put_volsw(kcontrol, ucontrol);
+}
+
+static int spus_asrc_id_put(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	/* ignore asrc id change */
+	return 0;
+}
+
+static int spum_asrc_id_put(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	/* ignore asrc id change */
+	return 0;
 }
 
 static int get_apf_coef(struct abox_data *data, int stream, int idx)
@@ -1159,6 +1213,7 @@ static const struct snd_kcontrol_new cmpnt_controls[] = {
 			audio_mode_get, audio_mode_put),
 	SOC_VALUE_ENUM_EXT("Sound Type", sound_type_enum,
 			sound_type_get, sound_type_put),
+	SOC_SINGLE_EXT("Display", 0, 0, 1, 0, display_get, display_put),
 	SOC_SINGLE_EXT("Tickle", 0, 0, 1, 0, tickle_get, tickle_put),
 	SOC_SINGLE_EXT("Wakelock", 0, 0, 1, 0, wake_lock_get, wake_lock_put),
 	SOC_SINGLE_EXT("Reset Log", 0, 0, 1, 0, reset_log_get, reset_log_put),
@@ -1284,43 +1339,60 @@ static const struct snd_kcontrol_new spum_asrc_controls[] = {
 };
 
 static const struct snd_kcontrol_new spus_asrc_id_controls[] = {
-	SOC_SINGLE("SPUS ASRC0 ID", ABOX_SPUS_CTRL4,
-			ABOX_SRC_ASRC_ID_L(0), 11, 0),
-	SOC_SINGLE("SPUS ASRC1 ID", ABOX_SPUS_CTRL4,
-			ABOX_SRC_ASRC_ID_L(1), 11, 0),
-	SOC_SINGLE("SPUS ASRC2 ID", ABOX_SPUS_CTRL4,
-			ABOX_SRC_ASRC_ID_L(2), 11, 0),
-	SOC_SINGLE("SPUS ASRC3 ID", ABOX_SPUS_CTRL4,
-			ABOX_SRC_ASRC_ID_L(3), 11, 0),
-	SOC_SINGLE("SPUS ASRC4 ID", ABOX_SPUS_CTRL5,
-			ABOX_SRC_ASRC_ID_L(4), 11, 0),
-	SOC_SINGLE("SPUS ASRC5 ID", ABOX_SPUS_CTRL5,
-			ABOX_SRC_ASRC_ID_L(5), 11, 0),
-	SOC_SINGLE("SPUS ASRC6 ID", ABOX_SPUS_CTRL5,
-			ABOX_SRC_ASRC_ID_L(6), 11, 0),
-	SOC_SINGLE("SPUS ASRC7 ID", ABOX_SPUS_CTRL5,
-			ABOX_SRC_ASRC_ID_L(7), 11, 0),
-	SOC_SINGLE("SPUS ASRC8 ID", ABOX_SPUS_CTRL5,
-			ABOX_SRC_ASRC_ID_L(8), 11, 0),
-	SOC_SINGLE("SPUS ASRC9 ID", ABOX_SPUS_CTRL5,
-			ABOX_SRC_ASRC_ID_L(9), 11, 0),
-	SOC_SINGLE("SPUS ASRC10 ID", ABOX_SPUS_CTRL5,
-			ABOX_SRC_ASRC_ID_L(10), 11, 0),
-	SOC_SINGLE("SPUS ASRC11 ID", ABOX_SPUS_CTRL5,
-			ABOX_SRC_ASRC_ID_L(11), 11, 0),
+	SOC_SINGLE_EXT("SPUS ASRC0 ID", ABOX_SPUS_CTRL4,
+			ABOX_SRC_ASRC_ID_L(0), 11, 0,
+			snd_soc_get_volsw, spus_asrc_id_put),
+	SOC_SINGLE_EXT("SPUS ASRC1 ID", ABOX_SPUS_CTRL4,
+			ABOX_SRC_ASRC_ID_L(1), 11, 0,
+			snd_soc_get_volsw, spus_asrc_id_put),
+	SOC_SINGLE_EXT("SPUS ASRC2 ID", ABOX_SPUS_CTRL4,
+			ABOX_SRC_ASRC_ID_L(2), 11, 0,
+			snd_soc_get_volsw, spus_asrc_id_put),
+	SOC_SINGLE_EXT("SPUS ASRC3 ID", ABOX_SPUS_CTRL4,
+			ABOX_SRC_ASRC_ID_L(3), 11, 0,
+			snd_soc_get_volsw, spus_asrc_id_put),
+	SOC_SINGLE_EXT("SPUS ASRC4 ID", ABOX_SPUS_CTRL5,
+			ABOX_SRC_ASRC_ID_L(4), 11, 0,
+			snd_soc_get_volsw, spus_asrc_id_put),
+	SOC_SINGLE_EXT("SPUS ASRC5 ID", ABOX_SPUS_CTRL5,
+			ABOX_SRC_ASRC_ID_L(5), 11, 0,
+			snd_soc_get_volsw, spus_asrc_id_put),
+	SOC_SINGLE_EXT("SPUS ASRC6 ID", ABOX_SPUS_CTRL5,
+			ABOX_SRC_ASRC_ID_L(6), 11, 0,
+			snd_soc_get_volsw, spus_asrc_id_put),
+	SOC_SINGLE_EXT("SPUS ASRC7 ID", ABOX_SPUS_CTRL5,
+			ABOX_SRC_ASRC_ID_L(7), 11, 0,
+			snd_soc_get_volsw, spus_asrc_id_put),
+	SOC_SINGLE_EXT("SPUS ASRC8 ID", ABOX_SPUS_CTRL5,
+			ABOX_SRC_ASRC_ID_L(8), 11, 0,
+			snd_soc_get_volsw, spus_asrc_id_put),
+	SOC_SINGLE_EXT("SPUS ASRC9 ID", ABOX_SPUS_CTRL5,
+			ABOX_SRC_ASRC_ID_L(9), 11, 0,
+			snd_soc_get_volsw, spus_asrc_id_put),
+	SOC_SINGLE_EXT("SPUS ASRC10 ID", ABOX_SPUS_CTRL5,
+			ABOX_SRC_ASRC_ID_L(10), 11, 0,
+			snd_soc_get_volsw, spus_asrc_id_put),
+	SOC_SINGLE_EXT("SPUS ASRC11 ID", ABOX_SPUS_CTRL5,
+			ABOX_SRC_ASRC_ID_L(11), 11, 0,
+			snd_soc_get_volsw, spus_asrc_id_put),
 };
 
 static const struct snd_kcontrol_new spum_asrc_id_controls[] = {
-	SOC_SINGLE("SPUM ASRC0 ID", ABOX_SPUM_CTRL4,
-			ABOX_NSRC_ASRC_ID_L(0), 7, 0),
-	SOC_SINGLE("SPUM ASRC1 ID", ABOX_SPUM_CTRL4,
-			ABOX_NSRC_ASRC_ID_L(1), 7, 0),
-	SOC_SINGLE("SPUM ASRC2 ID", ABOX_SPUM_CTRL4,
-			ABOX_NSRC_ASRC_ID_L(2), 7, 0),
-	SOC_SINGLE("SPUM ASRC3 ID", ABOX_SPUM_CTRL4,
-			ABOX_NSRC_ASRC_ID_L(3), 7, 0),
-	SOC_SINGLE("SPUM ASRC4 ID", ABOX_SPUM_CTRL4,
-			ABOX_NSRC_ASRC_ID_L(4), 7, 0),
+	SOC_SINGLE_EXT("SPUM ASRC0 ID", ABOX_SPUM_CTRL4,
+			ABOX_NSRC_ASRC_ID_L(0), 7, 0,
+			snd_soc_get_volsw, spum_asrc_id_put),
+	SOC_SINGLE_EXT("SPUM ASRC1 ID", ABOX_SPUM_CTRL4,
+			ABOX_NSRC_ASRC_ID_L(1), 7, 0,
+			snd_soc_get_volsw, spum_asrc_id_put),
+	SOC_SINGLE_EXT("SPUM ASRC2 ID", ABOX_SPUM_CTRL4,
+			ABOX_NSRC_ASRC_ID_L(2), 7, 0,
+			snd_soc_get_volsw, spum_asrc_id_put),
+	SOC_SINGLE_EXT("SPUM ASRC3 ID", ABOX_SPUM_CTRL4,
+			ABOX_NSRC_ASRC_ID_L(3), 7, 0,
+			snd_soc_get_volsw, spum_asrc_id_put),
+	SOC_SINGLE_EXT("SPUM ASRC4 ID", ABOX_SPUM_CTRL4,
+			ABOX_NSRC_ASRC_ID_L(4), 7, 0,
+			snd_soc_get_volsw, spum_asrc_id_put),
 };
 
 static const struct snd_kcontrol_new spus_asrc_apf_coef_controls[] = {
@@ -3382,7 +3454,7 @@ static void asrc_release_id(struct snd_soc_dapm_widget *w, int stream)
 	int idx = asrc_get_idx(w);
 	int id = asrc_get_id(cmpnt, idx, stream);
 
-	if (id < 0)
+	if (id < 0 || id >= asrc_get_num(stream))
 		return;
 
 	if (asrc_get_lock_id(stream, idx) >= 0)
@@ -3531,9 +3603,12 @@ int abox_cmpnt_update_asrc_tick(struct device *adev)
 
 	for (stream = 0; stream <= SNDRV_PCM_STREAM_LAST; stream++) {
 		for (id = 0; id < asrc_get_num(stream); id++) {
-			res = asrc_update_tick(data, stream, id);
-			if (res < 0)
-				ret = res;
+			if (pm_runtime_get_if_in_use(dev) > 0) {
+				res = asrc_update_tick(data, stream, id);
+				if (res < 0)
+					ret = res;
+				pm_runtime_put(dev);
+			}
 		}
 	}
 

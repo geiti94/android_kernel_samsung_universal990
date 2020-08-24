@@ -53,6 +53,7 @@ struct abox_if_data {
 	struct abox_data *abox_data;
 	const struct abox_if_of_data *of_data;
 	unsigned int config[ABOX_IF_FMT_COUNT];
+	unsigned long quirks;
 	bool extend_bclk;
 };
 

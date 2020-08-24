@@ -59,6 +59,7 @@ DECLARE_DVFS_DT(IS_SN_END,
 		{"front_vt2_"				, IS_SN_FRONT_VT2},
 		{"front_vt4_"				, IS_SN_FRONT_VT4},
 		{"front_preview_high_speed_fps_"	, IS_SN_FRONT_PREVIEW_HIGH_SPEED_FPS},
+		{"front_video_high_speed_120fps_"       , IS_SN_FRONT_VIDEO_HIGH_SPEED_120FPS},
 		{"rear3_preview_fhd_"			, IS_SN_REAR3_PREVIEW_FHD},
 		{"rear3_capture_"			, IS_SN_REAR3_CAPTURE},
 		{"rear3_video_fhd_"			, IS_SN_REAR3_CAMCORDING_FHD},
@@ -140,6 +141,7 @@ DECLARE_DVFS_CHK_FUNC(IS_SN_FRONT_VT1);
 DECLARE_DVFS_CHK_FUNC(IS_SN_FRONT_VT2);
 DECLARE_DVFS_CHK_FUNC(IS_SN_FRONT_VT4);
 DECLARE_DVFS_CHK_FUNC(IS_SN_FRONT_PREVIEW_HIGH_SPEED_FPS);
+DECLARE_DVFS_CHK_FUNC(IS_SN_FRONT_VIDEO_HIGH_SPEED_120FPS);
 
 DECLARE_DVFS_CHK_FUNC(IS_SN_REAR3_PREVIEW_FHD);
 DECLARE_DVFS_CHK_FUNC(IS_SN_REAR3_CAPTURE);
@@ -216,6 +218,10 @@ struct is_dvfs_scenario static_scenarios[] = {
 		.scenario_id		= IS_SN_FRONT_PREVIEW_HIGH_SPEED_FPS,
 		.scenario_nm		= DVFS_SN_STR(IS_SN_FRONT_PREVIEW_HIGH_SPEED_FPS),
 		.check_func		= GET_DVFS_CHK_FUNC(IS_SN_FRONT_PREVIEW_HIGH_SPEED_FPS),
+	}, {
+		.scenario_id            = IS_SN_FRONT_VIDEO_HIGH_SPEED_120FPS,
+		.scenario_nm            = DVFS_SN_STR(IS_SN_FRONT_VIDEO_HIGH_SPEED_120FPS),
+		.check_func             = GET_DVFS_CHK_FUNC(IS_SN_FRONT_VIDEO_HIGH_SPEED_120FPS),
 	}, {
 		.scenario_id		= IS_SN_SECURE_FRONT,
 		.scenario_nm		= DVFS_SN_STR(IS_SN_SECURE_FRONT),
@@ -614,6 +620,21 @@ DECLARE_DVFS_CHK_FUNC(IS_SN_FRONT_PREVIEW_HIGH_SPEED_FPS)
 		(mask == ISS_SUB_SCENARIO_VIDEO_HIGH_SPEED);
 
 	if (IS_FRONT_SENSOR(position) && (fps > 30) && !setfile_flag)
+		return 1;
+	else
+		return 0;
+}
+
+/* front 120fps recording */
+DECLARE_DVFS_CHK_FUNC(IS_SN_FRONT_VIDEO_HIGH_SPEED_120FPS)
+{
+	u32 mask = (device->setfile & IS_SETFILE_MASK);
+	bool setfile_flag = (mask == ISS_SUB_SCENARIO_VIDEO_HIGH_SPEED);
+
+	if (IS_FRONT_SENSOR(position) &&
+			(fps > 60) &&
+			(fps <= 120) &&
+			setfile_flag)
 		return 1;
 	else
 		return 0;

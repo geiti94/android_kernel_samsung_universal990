@@ -4230,7 +4230,7 @@ static ssize_t cs40l2x_hw_reset_store(struct device *dev,
 	unsigned int val, fw_id_restore;
 
 #ifdef CONFIG_CS40L2X_SAMSUNG_FEATURE
-	pr_info("%s: enter revid:%d %d count:%d\n", __func__,
+	pr_info("%s: enter revid:%d %d count:%lu\n", __func__,
 			CS40L2X_REVID_B1, cs40l2x->revid, count);
 #endif
 
@@ -9146,7 +9146,7 @@ static int cs40l2x_i2c_probe(struct i2c_client *i2c_client,
 	if (cs40l2x->reset_gpio == NULL) {
 		cs40l2x->reset_vldo = devm_regulator_get(dev, "samsung,reset-vldo");
 		if (IS_ERR(cs40l2x->reset_vldo)) {
-			pr_err("can't request VLDO power supply: %ld\n", __func__,
+			pr_err("%s : can't request VLDO power supply: %ld\n", __func__,
 				PTR_ERR(cs40l2x->reset_vldo));
 			cs40l2x->reset_vldo = NULL;
 			return ret;

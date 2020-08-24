@@ -507,6 +507,47 @@ p_err:
 	return ret;
 }
 
+#ifdef USE_OIS_HALL_DATA_FOR_VDIS
+int is_sensor_ctl_update_hall_data(struct is_device_sensor *device,
+				struct is_sensor_ctl *module_ctl,
+				u32 *dm_index, struct is_ois_hall_data *halldata)
+{
+	int ret = 0;
+	struct is_module_enum *module = NULL;
+	struct is_device_sensor_peri *sensor_peri = NULL;
+
+	FIMC_BUG(!device);
+	FIMC_BUG(!dm_index);
+
+	module = (struct is_module_enum *)v4l2_get_subdevdata(device->subdev_module);
+	if (unlikely(!module)) {
+		err("%s, module in is NULL", __func__);
+		module = NULL;
+		goto p_err;
+	}
+
+	sensor_peri = (struct is_device_sensor_peri *)module->private_data;
+
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.readTimeStamp = halldata->readTimeStamp;
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.counter = halldata->counter;
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.X_AngVel[0] = halldata->X_AngVel[0];
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.Y_AngVel[0] = halldata->Y_AngVel[0];
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.Z_AngVel[0] = halldata->Z_AngVel[0];
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.X_AngVel[1]  = halldata->X_AngVel[1];
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.Y_AngVel[1] = halldata->Y_AngVel[1];
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.Z_AngVel[1] = halldata->Z_AngVel[1];
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.X_AngVel[2]  = halldata->X_AngVel[2];
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.Y_AngVel[2] = halldata->Y_AngVel[2];
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.Z_AngVel[2] = halldata->Z_AngVel[2];
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.X_AngVel[3]  = halldata->X_AngVel[3];
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.Y_AngVel[3] = halldata->Y_AngVel[3];
+	sensor_peri->cis.expecting_aa_dm[dm_index[2]].vendor_oisHallData.Z_AngVel[3] = halldata->Z_AngVel[3];
+
+p_err:
+	return ret;
+}
+#endif
+
 static int is_sensor_ctl_adjust_exposure(struct is_device_sensor *device,
 				struct is_sensor_ctl *module_ctl,
 				ae_setting *applied_ae_setting,
@@ -626,7 +667,7 @@ void is_sensor_ctl_frame_evt(struct is_device_sensor *device)
 	u32 vsync_count = 0;
 	u32 applied_frame_number = 0;
 	u32 uctl_frame_index = 0;
-	u32 dm_index[2];
+	u32 dm_index[3];
 	ae_setting applied_ae_setting;
 	u32 frame_duration = 0;
 	struct ae_param expo, adj_again, adj_dgain;
@@ -634,6 +675,12 @@ void is_sensor_ctl_frame_evt(struct is_device_sensor *device)
 	struct is_device_sensor_peri *sensor_peri = NULL;
 	struct is_sensor_ctl *module_ctl = NULL;
 	cis_shared_data *cis_data = NULL;
+#ifdef USE_OIS_HALL_DATA_FOR_VDIS
+	u32 hashkey;
+	uint64_t timestamp = 0;
+	struct is_ois_hall_data hall_data;
+	u32 cur_frame_duration = 0;
+#endif
 
 	camera2_sensor_ctl_t *sensor_ctrl = NULL;
 	camera2_sensor_uctl_t *sensor_uctrl = NULL;
@@ -662,9 +709,11 @@ void is_sensor_ctl_frame_evt(struct is_device_sensor *device)
 	uctl_frame_index = applied_frame_number % CAM2P0_UCTL_LIST_SIZE;
 	/* dm_index[0] : index for update dm
 	 * dm_index[1] : previous updated index for error case
+	 * dm_index[2] : index for using ois hall data
 	 */
 	dm_index[0] = (applied_frame_number + 2) % EXPECT_DM_NUM;
 	dm_index[1] = (applied_frame_number + 1) % EXPECT_DM_NUM;
+	dm_index[2] = (applied_frame_number + 0) % EXPECT_DM_NUM;
 
 	module_ctl = &sensor_peri->cis.sensor_ctls[uctl_frame_index];
 	cis_data = sensor_peri->cis.cis_data;
@@ -757,13 +806,16 @@ void is_sensor_ctl_frame_evt(struct is_device_sensor *device)
 			module_ctl->update_wb_gains = false;
 		}
 
-		if (module_ctl->update_3hdr_stat || module_ctl->update_roi) {
+		if (module_ctl->update_3hdr_stat || module_ctl->update_roi ||
+			module_ctl->update_tone || module_ctl->update_ev) {
 			ret = is_sensor_peri_s_sensor_stats(device, true, module_ctl, NULL);
 			if (ret < 0)
 				err("[%s] frame number(%d) set exposure fail\n", __func__, applied_frame_number);
 
 			module_ctl->update_roi = false;
 			module_ctl->update_3hdr_stat = false;
+			module_ctl->update_tone = false;
+			module_ctl->update_ev = false;
 		}
 
 		module_ctl->force_update = false;
@@ -796,18 +848,38 @@ void is_sensor_ctl_frame_evt(struct is_device_sensor *device)
 
 	/* Warning! Aperture mode should be set before setting ois mode */
 	if (sensor_peri->mcu && sensor_peri->mcu->ois) {
-		ret = CALL_OISOPS(sensor_peri->mcu->ois, ois_set_mode, sensor_peri->subdev_mcu, sensor_peri->mcu->ois->ois_mode);
-		if (ret < 0) {
-			err("[SEN:%d] v4l2_subdev_call(ois_mode_change, mode:%d) is fail(%d)",
-				module->sensor_id, sensor_peri->mcu->ois->ois_mode, ret);
-			goto p_err;
-		}
+		if (CALL_OISOPS(sensor_peri->mcu->ois, ois_get_active)) {
+			ret = CALL_OISOPS(sensor_peri->mcu->ois, ois_set_mode, sensor_peri->subdev_mcu, sensor_peri->mcu->ois->ois_mode);
+			if (ret < 0) {
+				err("[SEN:%d] v4l2_subdev_call(ois_mode_change, mode:%d) is fail(%d)",
+					module->sensor_id, sensor_peri->mcu->ois->ois_mode, ret);
+				goto p_err;
+			}
 
-		ret = CALL_OISOPS(sensor_peri->mcu->ois, ois_set_coef, sensor_peri->subdev_mcu, sensor_peri->mcu->ois->coef);
-		if (ret < 0) {
-			err("[SEN:%d] v4l2_subdev_call(ois_set_coef, coef:%d) is fail(%d)",
-				module->sensor_id, sensor_peri->mcu->ois->coef, ret);
-			goto p_err;
+			ret = CALL_OISOPS(sensor_peri->mcu->ois, ois_set_coef, sensor_peri->subdev_mcu, sensor_peri->mcu->ois->coef);
+			if (ret < 0) {
+				err("[SEN:%d] v4l2_subdev_call(ois_set_coef, coef:%d) is fail(%d)",
+					module->sensor_id, sensor_peri->mcu->ois->coef, ret);
+				goto p_err;
+			}
+
+#ifdef USE_OIS_HALL_DATA_FOR_VDIS
+			cur_frame_duration = is_sensor_convert_ns_to_us(sensor_peri->cis.cur_sensor_uctrl.frameDuration);
+			/* in case of under 60fps, enable ois hall data */
+			if (cur_frame_duration >= 16666) {
+				memset(&hall_data, 0, sizeof(hall_data));
+				ret = CALL_OISOPS(sensor_peri->mcu->ois, ois_get_hall_data, sensor_peri->subdev_mcu, &hall_data);
+				if (ret < 0) {
+					err("[SEN:%d] v4l2_subdev_call(ois_get_hall_data) is fail(%d)", ret);
+					goto p_err;
+				}
+
+				hashkey = module_ctl->sensor_frame_number % IS_TIMESTAMP_HASH_KEY;
+				timestamp = device->timestampboot[hashkey];
+				hall_data.readTimeStamp = timestamp;
+				is_sensor_ctl_update_hall_data(device, module_ctl, dm_index, &hall_data);
+			}
+#endif
 		}
 	}
 

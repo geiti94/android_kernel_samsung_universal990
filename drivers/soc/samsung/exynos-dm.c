@@ -24,6 +24,7 @@
 
 #define DM_EMPTY	0xFF
 static struct exynos_dm_device *exynos_dm;
+void exynos_dm_dynamic_disable(int flag);
 
 /*
  * SYSFS for Debugging
@@ -246,10 +247,40 @@ static ssize_t show_dm_policy(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
+static ssize_t show_dynamic_disable(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct platform_device *pdev = container_of(dev, struct platform_device, dev);
+	struct exynos_dm_device *dm = platform_get_drvdata(pdev);
+	ssize_t count = 0;
+
+	count += snprintf(buf + count, PAGE_SIZE,
+			"%s\n", dm->dynamic_disable ? "true" : "false");
+
+	return count;
+}
+
+static ssize_t store_dynamic_disable(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	int flag, ret = 0;
+
+	ret = sscanf(buf, "%u", &flag);
+	if (ret != 1)
+		return -EINVAL;
+
+	exynos_dm_dynamic_disable(flag);
+
+	return count;
+}
+
 static DEVICE_ATTR(available, 0440, show_available, NULL);
+static DEVICE_ATTR(dynamic_disable, 0640, show_dynamic_disable, store_dynamic_disable);
 
 static struct attribute *exynos_dm_sysfs_entries[] = {
 	&dev_attr_available.attr,
+	&dev_attr_dynamic_disable.attr,
 	NULL,
 };
 
@@ -260,6 +291,17 @@ static struct attribute_group exynos_dm_attr_group = {
 /*
  * SYSFS for Debugging end
  */
+
+
+void exynos_dm_dynamic_disable(int flag)
+{
+	mutex_lock(&exynos_dm->lock);
+
+	exynos_dm->dynamic_disable = !!flag;
+
+	mutex_unlock(&exynos_dm->lock);
+}
+EXPORT_SYMBOL(exynos_dm_dynamic_disable);
 
 static void print_available_dm_data(struct exynos_dm_device *dm)
 {
@@ -693,6 +735,10 @@ static int update_constraint_min(struct exynos_dm_constraint *constraint, u32 ma
 	struct exynos_dm_constraint *t;
 	int i;
 
+	// This constraint condition could be ignored when perf lock is disabled
+	if (exynos_dm->dynamic_disable && constraint->support_dynamic_disable)
+		master_min = 0;
+
 	// Find constraint condition for min relationship
 	for (i = constraint->table_length - 1; i >= 0; i--) {
 		if (const_table[i].master_freq >= master_min)
@@ -873,6 +919,10 @@ static int update_gov_min(struct exynos_dm_constraint *constraint, u32 master_fr
 	struct exynos_dm_constraint *t;
 	int i;
 
+	// This constraint condition could be ignored when perf lock is disabled
+	if (exynos_dm->dynamic_disable && constraint->support_dynamic_disable)
+		master_freq = 0;
+
 	// Find constraint condition for min relationship
 	for (i = constraint->table_length - 1; i >= 0; i--) {
 		if (const_table[i].master_freq >= master_freq)
@@ -956,8 +1006,10 @@ int DM_CALL(int dm_type, unsigned long *target_freq)
 		// Perform frequency down scaling
 		if (dm->cur_freq > dm->next_target_freq && dm->freq_scaler) {
 			ret = dm->freq_scaler(dm->dm_type, dm->devdata, dm->next_target_freq, relation);
-			if (!ret)
-				dm->cur_freq = dm->next_target_freq;
+			if (ret)
+				goto out;
+
+			dm->cur_freq = dm->next_target_freq;
 		}
 	}
 
@@ -966,8 +1018,10 @@ int DM_CALL(int dm_type, unsigned long *target_freq)
 		dm = &exynos_dm->dm_data[exynos_dm->domain_order[i]];
 		if (dm->cur_freq < dm->next_target_freq && dm->freq_scaler) {
 			ret = dm->freq_scaler(dm->dm_type, dm->devdata, dm->next_target_freq, relation);
-			if (!ret)
-				dm->cur_freq = dm->next_target_freq;
+			if (ret)
+				goto out;
+
+			dm->cur_freq = dm->next_target_freq;
 		}
 
 	}
@@ -983,7 +1037,7 @@ out:
 
 	*target_freq = target_dm->cur_freq;
 
-	dbg_snapshot_dm((int)dm_type, *target_freq, 3, pre_time, time);
+	dbg_snapshot_dm((int)dm_type, *target_freq, (ret ? ret : 3), pre_time, time);
 
 	return ret;
 }

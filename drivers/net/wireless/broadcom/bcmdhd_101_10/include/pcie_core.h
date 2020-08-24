@@ -1,7 +1,7 @@
 /*
  * BCM43XX PCIE core hardware definitions.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #ifndef	_PCIE_CORE_H
 #define	_PCIE_CORE_H
@@ -75,6 +75,26 @@
 
 #define PCIEDEV_TR3_WINDOW_START 0x0E000000
 #define PCIEDEV_TR3_WINDOW_END   0x0FFFFFFF
+
+#define PCIEDEV_TRANS_WIN_LEN	0x2000000
+#define PCIEDEV_ARM_ADDR_SPACE 0x0FFFFFFF
+
+/* PCIe translation windoes */
+#define PCIEDEV_TRANS_WIN_0 0
+#define PCIEDEV_TRANS_WIN_1 1
+#define PCIEDEV_TRANS_WIN_2 2
+#define PCIEDEV_TRANS_WIN_3 3
+
+#define PCIEDEV_ARM_ADDR(host_addr, win) \
+	(((host_addr) & 0x1FFFFFF) | ((win) << 25) | PCIEDEV_HOSTADDR_MAP_BASE)
+
+/* Current mapping of PCIe translation windows to SW features */
+
+#define PCIEDEV_TRANS_WIN_TRAP_HANDLER	PCIEDEV_TRANS_WIN_0
+#define PCIEDEV_TRANS_WIN_HOSTMEM	PCIEDEV_TRANS_WIN_1
+#define PCIEDEV_TRANS_WIN_SWPAGING	PCIEDEV_TRANS_WIN_1
+#define PCIEDEV_TRANS_WIN_BT		PCIEDEV_TRANS_WIN_2
+#define PCIEDEV_TRANS_WIN_UNUSED	PCIEDEV_TRANS_WIN_3
 
 /* dma regs to control the flow between host2dev and dev2host  */
 typedef volatile struct pcie_devdmaregs {

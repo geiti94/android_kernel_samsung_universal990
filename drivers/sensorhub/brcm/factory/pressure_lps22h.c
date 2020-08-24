@@ -191,7 +191,12 @@ static ssize_t pressure_vendor_show(struct device *dev,
 static ssize_t pressure_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", CHIP_ID);
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	pr_info("[SSP] %s :: sensor(%d) : %s", __func__, PRESSURE_SENSOR, data->sensor_name[PRESSURE_SENSOR]);
+	
+	return sprintf(buf, "%s\n", data->sensor_name[PRESSURE_SENSOR][0] == 0 ? 
+			CHIP_ID : data->sensor_name[PRESSURE_SENSOR]);
 }
 
 static ssize_t pressure_temperature_show(struct device *dev,

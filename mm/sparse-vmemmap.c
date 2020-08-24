@@ -188,6 +188,9 @@ pud_t * __meminit vmemmap_pud_populate(p4d_t *p4d, unsigned long addr, int node)
 #endif
 		if (!p)
 			return NULL;
+#ifdef CONFIG_FASTUH_RKP
+		uh_call(UH_APP_RKP, RKP_ROBUFFER_ALLOC, (u64)p, 0, 0, 0);
+#endif
 		pud_populate(&init_mm, pud, p);
 	}
 	return pud;

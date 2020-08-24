@@ -92,6 +92,9 @@
 #include <linux/clk-provider.h>
 #include <linux/delay.h>
 #include <linux/log2.h>
+#ifdef CONFIG_MALI_SEC_GPU_MEM_DUMP
+#include <linux/oom.h>
+#endif
 
 #include <mali_kbase_config.h>
 
@@ -4631,6 +4634,103 @@ int kbase_wa_execute(struct kbase_device *kbdev, u64 cores)
 
 	return failed ? -EFAULT : 0;
 }
+#ifdef CONFIG_MALI_SEC_GPU_MEM_DUMP
+const struct list_head *kbase_dev_list_try_get(void)
+{
+	if (!mutex_trylock(&kbase_dev_list_lock))
+		return NULL;
+
+	return &kbase_dev_list;
+}
+KBASE_EXPORT_TEST_API(kbase_dev_list_get);
+
+long gpu_memory_status_dump(bool print_all_buffers)
+{
+	struct kbase_device *kbdev = NULL;
+	struct device *dev;
+	struct kbase_context *kctx;
+	const struct list_head *kbdev_list;
+	struct list_head *entry;
+	long total_used_pages = 0;
+	long used_pages = 0;
+
+	kbdev_list = kbase_dev_list_try_get();
+
+	if (kbdev_list == NULL)
+		return -ENODEV;
+
+	list_for_each(entry, kbdev_list) {
+		kbdev = list_entry(entry, struct kbase_device, entry);
+
+		if (kbdev == NULL) {
+			kbase_dev_list_put(kbdev_list);
+			return -ENODEV;
+		}
+
+		dev = kbdev->dev;
+		used_pages = atomic_read(&(kbdev->memdev.used_pages));
+
+		if (print_all_buffers) {
+			dev_warn(dev, "%-16s  %10u\n", kbdev->devname, used_pages);
+			if (mutex_trylock(&kbdev->kctx_list_lock)) {
+				list_for_each_entry(kctx, &kbdev->kctx_list, kctx_list_link) {
+					dev_warn(dev, "%10u | tgid=%10d | pid=%10d  | name=%20s\n",
+							atomic_read(&(kctx->used_pages)),
+							kctx->tgid,
+							kctx->pid,
+							kctx->name);
+				}
+				mutex_unlock(&kbdev->kctx_list_lock);
+			}
+		} else {
+			total_used_pages += used_pages;
+		}
+	}
+	kbase_dev_list_put(kbdev_list);
+	return total_used_pages;
+}
+
+static int mali_used_size_notifier(struct notifier_block *nb,
+		unsigned long action, void *data)
+{
+	struct seq_file *s;
+	long used_pages = gpu_memory_status_dump(false);
+
+	if (used_pages < 0)
+		return 0;
+
+	used_pages = (used_pages << (PAGE_SHIFT - 10));
+
+	s = (struct seq_file *)data;
+	if (s != NULL)
+		seq_printf(s, "mali:           %8lu kB\n", used_pages);
+	else
+		pr_cont("mali:%lukB ", used_pages);
+
+	return 0;
+}
+
+static struct notifier_block mali_used_size_nb = {
+	.notifier_call = mali_used_size_notifier,
+};
+
+static int mali_used_buffer_oom_notifier(struct notifier_block *nb,
+		unsigned long action, void *data)
+{
+	gpu_memory_status_dump(true);
+
+	return 0;
+}
+
+static struct notifier_block mali_used_buffer_oom_nb = {
+	.notifier_call = mali_used_buffer_oom_notifier,
+};
+
+static void register_mali_used_mem_notifier(struct kbase_device *kbdev) {
+	show_mem_extra_notifier_register(&mali_used_size_nb);
+	register_oom_debug_notifier(&mali_used_buffer_oom_nb);
+}
+#endif
 
 static int kbase_platform_device_probe(struct platform_device *pdev)
 {
@@ -4759,6 +4859,9 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 	dev_list = kbase_dev_list_get();
 	list_add(&kbdev->entry, &kbase_dev_list);
 	kbase_dev_list_put(dev_list);
+#ifdef CONFIG_MALI_SEC_GPU_MEM_DUMP
+	register_mali_used_mem_notifier(kbdev);
+#endif
 	kbdev->inited_subsys |= inited_dev_list;
 
 	err = kbasep_js_devdata_init(kbdev);
@@ -4916,6 +5019,21 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 #ifdef CONFIG_MALI_ASV_CALIBRATION_SUPPORT
 	gpu_asv_calibration_start();
 #endif
+
+	kbdev->queued_total_job_nr = 0;
+	kbdev->in_js_total_job_nr = 0;
+	kbdev->hw_complete_job_nr_cnt = 0;
+	kbdev->complete_job_nr_cnt = 0;
+	kbdev->stop_cnt = 0;
+	kbdev->input_job_nr = 0;
+	kbdev->output_job_nr = 0;
+	kbdev->input_job_nr_acc = 0;
+	kbdev->queued_time_tick[0] = 0;
+	kbdev->queued_time_tick[1] = 0;
+	kbdev->queued_time[0] = 0;
+	kbdev->queued_time[1] = 0;
+	kbdev->queued_threshold[0] = 0;
+	kbdev->queued_threshold[1] = 0;
 
 	return err;
 }

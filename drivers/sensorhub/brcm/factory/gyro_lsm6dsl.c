@@ -66,7 +66,12 @@ static ssize_t gyro_vendor_show(struct device *dev,
 static ssize_t gyro_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", CHIP_ID);
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	pr_info("[SSP] %s :: sensor(%d) : %s", __func__, GYROSCOPE_SENSOR, data->sensor_name[GYROSCOPE_SENSOR]);
+	
+	return sprintf(buf, "%s\n", data->sensor_name[GYROSCOPE_SENSOR][0] == 0 ? 
+			CHIP_ID : data->sensor_name[GYROSCOPE_SENSOR]);
 }
 
 static ssize_t selftest_revised_show(struct device *dev,

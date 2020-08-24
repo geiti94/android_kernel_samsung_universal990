@@ -5,8 +5,31 @@
 #include <linux/uh.h>
 #include <asm/stack_pointer.h>
 #include <asm/thread_info.h>
+#include <linux/spinlock.h>
 
 /* uH_RKP Command ID */
+#ifdef CONFIG_FASTUH_RKP
+enum __RKP_CMD_ID{
+	RKP_START = 0x00,
+	RKP_DEFERRED_START = 0x01,
+	RKP_FIMC_VERIFY = 0x0B,
+	/* RKP robuffer cmds*/
+	RKP_ROBUFFER_ALLOC = 0x10,
+	RKP_ROBUFFER_FREE = 0x11,
+	RKP_PGD_RO = 0x12,
+	RKP_PGD_RW = 0x13,
+	RKP_GET_RO_BUFFER = 0x15,
+	/* dynamic load */
+	RKP_DYNAMIC_LOAD = 0x20,
+	RKP_LOG = 0x30,
+#ifdef CONFIG_RKP_TEST
+	CMD_ID_TEST_GET_PAR = 0x41,
+	CMD_ID_TEST_GET_RO = 0x43,
+	CMD_ID_TEST_GET_VA_XN,
+	CMD_ID_TEST_GET_VMM_INFO,
+#endif
+};
+#else
 enum __RKP_CMD_ID{
 	RKP_START = 0x01,
 	RKP_DEFERRED_START = 0x02,
@@ -26,8 +49,8 @@ enum __RKP_CMD_ID{
 	RKP_ROPP_SAVE = 0x0F,
 	RKP_ROPP_RELOAD = 0x10,
 	/* RKP robuffer cmds*/
-	RKP_RKP_ROBUFFER_ALLOC = 0x11,
-	RKP_RKP_ROBUFFER_FREE = 0x12,
+	RKP_ROBUFFER_ALLOC = 0x11,
+	RKP_ROBUFFER_FREE = 0x12,
 	RKP_GET_RO_BITMAP = 0x13,
 	RKP_GET_DBL_BITMAP = 0x14,
 	RKP_GET_RKP_GET_BUFFER_BITMAP = 0x15,
@@ -40,6 +63,7 @@ enum __RKP_CMD_ID{
 	CMD_ID_TEST_GET_VMM_INFO,
 #endif
 };
+#endif
 
 #ifdef CONFIG_RKP_TEST
 #define RKP_INIT_MAGIC		0x5afe0002
@@ -60,6 +84,12 @@ enum __RKP_CMD_ID{
 #define RKP_DYN_FIMC				0x02
 #define RKP_DYN_FIMC_COMBINED		0x03
 #define RKP_DYN_MODULE				0x04
+
+#ifdef CONFIG_FASTUH_RKP
+extern u64 robuffer_base;
+extern u64 robuffer_size;
+extern int ro_pages;
+#endif
 
 struct rkp_init { //copy from uh (app/rkp/rkp.h)
 	u32 magic;
@@ -124,27 +154,6 @@ static inline u64 uh_call_static(u64 app_id, u64 cmd_id, u64 arg1)
 	return ret;
 }
 
-// void *rkp_ro_alloc(void);
-static inline void *rkp_ro_alloc(void)
-{
-	u64 addr = 0;
-	uh_call(UH_APP_RKP, RKP_RKP_ROBUFFER_ALLOC, (u64)&addr, 0, 0, 0);
-	if(!addr)
-		return 0;
-	return (void *)__phys_to_virt(addr);
-}
-
-static inline void rkp_ro_free(void *free_addr)
-{
-	uh_call(UH_APP_RKP, RKP_RKP_ROBUFFER_FREE, (u64)free_addr, 0, 0, 0);
-}
-
-
-static inline void rkp_deferred_init(void)
-{
-	uh_call(UH_APP_RKP, RKP_DEFERRED_START, 0, 0, 0, 0);
-}
-
 static inline u8 rkp_check_bitmap(u64 pa, sparse_bitmap_for_kernel_t *kernel_bitmap, u8 overflow_ret, u8 uninitialized_ret)
 {
 	u8 val;
@@ -169,9 +178,9 @@ static inline u8 rkp_check_bitmap(u64 pa, sparse_bitmap_for_kernel_t *kernel_bit
 	return val;
 }
 
-static inline unsigned int is_rkp_ro_page(u64 va)
+static inline void rkp_deferred_init(void)
 {
-	return rkp_check_bitmap(__pa(va), rkp_s_bitmap_buffer, 0, 0);
+	uh_call(UH_APP_RKP, RKP_DEFERRED_START, 0, 0, 0, 0);
 }
 
 static inline u8 rkp_is_pg_protected(u64 va)
@@ -185,5 +194,121 @@ static inline u8 rkp_is_pg_dbl_mapped(u64 pa)
 {
 	return rkp_check_bitmap(pa, rkp_s_bitmap_dbl, 0, 0);
 }
+
+
+#ifdef CONFIG_FASTUH_RKP
+extern spinlock_t ro_rkp_pages_lock;
+extern char ro_pages_stat[];
+extern unsigned int ro_alloc_avail;
+extern unsigned int ro_alloc_n;
+
+static inline phys_addr_t rkp_ro_alloc_phys(void)
+{
+	unsigned long flags;
+	unsigned int i = 0;
+	phys_addr_t alloc_addr = 0;
+	bool found = false;
+
+	int ro_pages = robuffer_size >> PAGE_SHIFT;
+
+	spin_lock_irqsave(&ro_rkp_pages_lock, flags);
+	while(i < ro_pages) {
+		if(ro_pages_stat[ro_alloc_avail] == false){
+			found = true;
+			break;
+		}
+		ro_alloc_avail = (ro_alloc_avail + 1) % ro_pages;
+		i++;
+	}
+
+	if(found) {
+		alloc_addr = (phys_addr_t)(robuffer_base + (ro_alloc_avail << PAGE_SHIFT));
+		ro_pages_stat[ro_alloc_avail] = true;
+		ro_alloc_avail = (ro_alloc_avail + 1) % ro_pages;
+	}
+	ro_alloc_n++;
+	spin_unlock_irqrestore(&ro_rkp_pages_lock, flags);
+
+	return alloc_addr;
+}
+
+static inline void *rkp_ro_alloc(void)
+{
+	unsigned long flags;
+	unsigned int i = 0;
+	void *alloc_addr = NULL;
+	bool found = false;
+
+	int ro_pages = robuffer_size >> PAGE_SHIFT;
+	u64 va = (u64)phys_to_virt(robuffer_base);
+
+	spin_lock_irqsave(&ro_rkp_pages_lock, flags);
+	while(i < ro_pages) {
+		if(ro_pages_stat[ro_alloc_avail] == false){
+			found = true;
+			break;
+		}
+		ro_alloc_avail = (ro_alloc_avail + 1) % ro_pages;
+		i++;
+	}
+
+	if(found) {
+		alloc_addr = (void *)(va + (ro_alloc_avail << PAGE_SHIFT));
+		ro_pages_stat[ro_alloc_avail] = true;
+		ro_alloc_avail = (ro_alloc_avail + 1) % ro_pages;
+	}
+	ro_alloc_n++;
+	spin_unlock_irqrestore(&ro_rkp_pages_lock, flags);
+
+	return alloc_addr;
+}
+
+static inline void rkp_ro_free(void *free_addr)
+{
+	unsigned int i;
+	unsigned long flags;
+
+	u64 va = (u64)phys_to_virt(robuffer_base);
+	i =  ((u64)free_addr - va) >> PAGE_SHIFT;
+	spin_lock_irqsave(&ro_rkp_pages_lock, flags);
+	ro_pages_stat[i] = 0;
+	ro_alloc_avail = i;
+	ro_alloc_n--;
+	spin_unlock_irqrestore(&ro_rkp_pages_lock, flags);
+}
+
+static inline unsigned int is_rkp_ro_page(u64 addr)
+{
+	u64 va = (u64)phys_to_virt(robuffer_base);
+
+	if ((addr >= va)
+		&& (addr < (u64)(va + robuffer_size)))
+		return 1;
+	else
+		return 0;
+}
+#elif defined(CONFIG_UH_RKP)
+// void *rkp_ro_alloc(void);
+static inline void *rkp_ro_alloc(void)
+{
+	u64 addr = 0;
+	uh_call(UH_APP_RKP, RKP_ROBUFFER_ALLOC, (u64)&addr, 0, 0, 0);
+	if(!addr)
+		return 0;
+	return (void *)__phys_to_virt(addr);
+}
+
+static inline void rkp_ro_free(void *free_addr)
+{
+	uh_call(UH_APP_RKP, RKP_ROBUFFER_FREE, (u64)free_addr, 0, 0, 0);
+}
+
+static inline unsigned int is_rkp_ro_page(u64 va)
+{
+	return rkp_check_bitmap(__pa(va), rkp_s_bitmap_buffer, 0, 0);
+}
+
+#endif
+
 #endif //__ASSEMBLY__
 #endif //_RKP_H

@@ -36,6 +36,7 @@
 
 #include "mali_kbase_jm.h"
 #include "mali_kbase_hwaccess_jm.h"
+#include "platform/exynos/gpu_dvfs_governor.h"
 
 /*
  * Private types
@@ -1165,6 +1166,9 @@ bool kbasep_js_add_job(struct kbase_context *kctx,
 
 		/* Setting atom status back to queued as it still has unresolved
 		 * dependencies */
+		/* why this point katom status has been changed from IN JS to QUEUED ??? */
+		if (atom->status == KBASE_JD_ATOM_STATE_IN_JS)
+			gpu_tsg_set_count(atom, atom->core_req, KBASE_JD_ATOM_STATE_QUEUED, true);
 		atom->status = KBASE_JD_ATOM_STATE_QUEUED;
 
 		/* Undo the count, as the atom will get added again later but
@@ -2498,6 +2502,8 @@ struct kbase_jd_atom *kbase_js_complete_atom(struct kbase_jd_atom *katom,
 	if (katom->will_fail_event_code)
 		katom->event_code = katom->will_fail_event_code;
 
+	if (katom->status != KBASE_JD_ATOM_STATE_HW_COMPLETED)
+	gpu_tsg_set_count(katom, katom->core_req, KBASE_JD_ATOM_STATE_HW_COMPLETED, false);
 	katom->status = KBASE_JD_ATOM_STATE_HW_COMPLETED;
 
 	if (katom->event_code != BASE_JD_EVENT_DONE) {

@@ -61,7 +61,7 @@ static void sec_free_rdx_bootdev(phys_addr_t paddr, u64 size)
 	unsigned long pfn_start, pfn_end, pfn_idx;
 	int ret;
 
-	pr_info("start (0x%p, 0x%llx)\n", paddr, size);
+	pr_info("start (0x%llx, 0x%llx)\n", paddr, size);
 
 	if (!sec_rdx_bootdev_paddr) {
 		pr_err("reserved addr is null\n");
@@ -131,7 +131,7 @@ static ssize_t sec_rdx_bootdev_proc_write(struct file *file,
 		err = -ENODEV;
 	} else {
 		if (count > sec_rdx_bootdev_size) {
-			pr_err("size is wrong %llu > %llu\n", count, sec_rdx_bootdev_size);
+			pr_err("size is wrong %lu > %u\n", count, sec_rdx_bootdev_size);
 			err = -EINVAL;
 			goto out;
 		}
@@ -171,7 +171,6 @@ static int __init sec_set_upload_count(char *arg)
 }
 early_param("sec_debug.upload_count", sec_set_upload_count);
 
-
 static int sec_upload_count_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "%d", upload_count);
@@ -192,9 +191,6 @@ static const struct file_operations sec_upload_count_proc_fops = {
 
 static int __init sec_map_rdx_bootdev_region(void)
 {
-#ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
-	return 0;
-#else
 	struct device_node *parent, *node;
 	int ret = 0;
 	u32 temp[3];
@@ -223,7 +219,7 @@ static int __init sec_map_rdx_bootdev_region(void)
 	sec_rdx_bootdev_paddr += temp[1];
 	sec_rdx_bootdev_size = temp[2];
 
-	pr_info("%s, sec_rdx_bootdev : 0x%p, 0x%llx\n", __func__,
+	pr_info("%s, sec_rdx_bootdev : 0x%llx, 0x%x\n", __func__,
 		sec_rdx_bootdev_paddr, sec_rdx_bootdev_size);
 
 	if (!sec_rdx_bootdev_paddr || !sec_rdx_bootdev_size) {
@@ -242,7 +238,6 @@ static int __init sec_map_rdx_bootdev_region(void)
 
 	mutex_unlock(&rdx_bootdev_mutex);
 	return 0;
-#endif
 }
 arch_initcall_sync(sec_map_rdx_bootdev_region);
 

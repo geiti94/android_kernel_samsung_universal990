@@ -19,6 +19,7 @@
 #include <linux/sched/clock.h>
 #include <linux/sec_debug.h>
 #include <asm/stacktrace.h>
+#include <linux/mfd/samsung/s2mps22-regulator.h>
 
 #include "sec_debug_internal.h"
 
@@ -195,11 +196,13 @@ void get_bk_item_val_as_string(const char *key, char *buf)
 	}
 }
 
+static int is_ocp;
+
 static int is_key_in_blacklist(const char *key)
 {
 	char blkey[][MAX_ITEM_KEY_LEN] = {
 		"KTIME", "BAT", "FTYPE", "ODR", "DDRID",
-		"PSTIE", "ASB",
+		"PSITE", "ASB",
 	};
 
 	int nr_blkey, keylen, i;
@@ -210,6 +213,13 @@ static int is_key_in_blacklist(const char *key)
 	for (i = 0; i < nr_blkey; i++)
 		if (!strncmp(key, blkey[i], keylen))
 			return 1;
+
+	if (!strncmp(key, "OCP", keylen)) {
+		if (is_ocp)
+			return 1;
+		else
+			is_ocp = 1;
+	}
 
 	return 0;
 }
@@ -268,7 +278,7 @@ static void set_key_order(const char *key)
 
 	/* -1 to remove NULL between KEYS */
 	/* +1 to add NULL (by snprintf) */
-	snprintf((char *)(v + len_this), len_remain + 1, tmp);
+	snprintf((char *)(v + len_this), len_remain + 1, "%s", tmp);
 
 unlock_keyorder:
 	spin_unlock(&keyorder_lock);
@@ -328,7 +338,7 @@ static void __init set_bk_item_val(const char *key, int slot, const char *fmt, .
 				return;
 			}
 
-			snprintf((char *)p, get_key_len(key) + 1, key);
+			snprintf((char *)p, get_key_len(key) + 1, "%s", key);
 
 			v = ((char *)p + MAX_ITEM_KEY_LEN);
 
@@ -484,7 +494,7 @@ static void __init init_shared_buffer(int type, int nr_keys, void *ptr)
 
 	for (i = 0; i < nr_keys; i++) {
 		/* NULL is considered as +1 */
-		snprintf((char *)addr, get_key_len(keys[i]) + 1, keys[i]);
+		snprintf((char *)addr, get_key_len(keys[i]) + 1, "%s", keys[i]);
 
 		base += size;
 		addr = phys_to_virt(base);
@@ -740,6 +750,15 @@ void secdbg_exin_get_extra_info_F(char *ptr)
 	sec_debug_store_extra_info(fkeys, nr_keys, ptr);
 }
 
+void secdbg_exin_get_extra_info_T(char *ptr)
+{
+	int nr_keys;
+
+	nr_keys = ARRAY_SIZE(tkeys);
+
+	sec_debug_store_extra_info(tkeys, nr_keys, ptr);
+}
+
 static void __init sec_debug_set_extra_info_id(void)
 {
 	struct timespec ts;
@@ -803,6 +822,37 @@ void secdbg_exin_set_panic(char *str)
 	set_item_val("PANIC", "%s", str);
 }
 
+void secdbg_exin_set_regs(struct pt_regs *regs)
+{
+	char fbuf[MAX_ITEM_VAL_LEN];
+	int offset = 0, i;
+	char *v;
+
+	v = get_item_val("REGS");
+	if (!v) {
+		pr_crit("%s: no REGS in items\n", __func__);
+		return;
+	}
+
+	if (get_val_len(v)) {
+		pr_crit("%s: already %s in REGS\n", __func__, v);
+		return;
+	}
+
+	memset(fbuf, 0, MAX_ITEM_VAL_LEN);
+
+	pr_crit("%s: set regs\n", __func__);
+
+	offset += sprintf(fbuf + offset, "pc:%llx/", regs->pc);
+	offset += sprintf(fbuf + offset, "sp:%llx/", regs->sp);
+	offset += sprintf(fbuf + offset, "pstate:%llx/", regs->pstate);
+
+	for (i = 0; i < 31; i++)
+		offset += sprintf(fbuf + offset, "x%d:%llx/", i, regs->regs[i]);
+
+	set_item_val("REGS", fbuf);
+}
+
 void secdbg_exin_set_backtrace(struct pt_regs *regs)
 {
 	char fbuf[MAX_ITEM_VAL_LEN];
@@ -811,6 +861,9 @@ void secdbg_exin_set_backtrace(struct pt_regs *regs)
 	int offset = 0;
 	int sym_name_len;
 	char *v;
+
+	if (regs)
+		secdbg_exin_set_regs(regs);
 
 	v = get_item_val("STACK");
 	if (!v) {
@@ -1064,9 +1117,64 @@ void secdbg_exin_set_epd(char *str)
 	set_item_val("EPD", "%s", str);
 }
 
+#define S2MPS19_BUCK_CNT	(12)
+#define S2MPS19_BB_CNT		(1)
+extern int s2mps22_buck_ocp_cnt[S2MPS22_BUCK_CNT]; /* BUCK 1~4 OCP count */
+extern int s2mps19_bb_ocp_cnt;		/* BUCK-BOOST OCP count */
+extern int s2mps19_buck_ocp_cnt[S2MPS19_BUCK_CNT]; /* BUCK 1~12 OCP count */
+extern int s2mps22_buck_oi_cnt[S2MPS22_BUCK_OI_MAX]; /* BUCK 1~4 OI count */
+#define MAX_OCP_CNT		(0xFF)
+
+static char *__add_pmic_irq_info(char *p, int *cnt, int nr)
+{
+	int i, tmp = 0;
+
+	for (i = 0; i < nr; i++) {
+		tmp = cnt[i];
+		if (tmp > MAX_OCP_CNT)
+			tmp = MAX_OCP_CNT;
+
+		p += sprintf(p, "%02x,", tmp);
+	}
+
+	/* to remove , in the end */
+	if (nr != 0)
+		p--;
+
+	p += sprintf(p, "/");
+
+	return p;
+}
+
+void secdbg_exin_set_master_ocp(void)
+{
+	char *p, str_ocp[SZ_64] = {0, };
+
+	p = str_ocp;
+
+	p = __add_pmic_irq_info(p, s2mps19_buck_ocp_cnt, S2MPS19_BUCK_CNT);
+	p = __add_pmic_irq_info(p, &s2mps19_bb_ocp_cnt, S2MPS19_BB_CNT);
+
+	clear_item_val("MOCP");
+	set_item_val("MOCP", "%s", str_ocp);
+}
+
+void secdbg_exin_set_slave_ocp(void)
+{
+	char *p, str_ocp[SZ_64] = {0, };
+
+	p = str_ocp;
+
+	p = __add_pmic_irq_info(p, s2mps22_buck_ocp_cnt, S2MPS22_BUCK_CNT);
+	p = __add_pmic_irq_info(p, s2mps22_buck_oi_cnt, S2MPS22_BUCK_OI_MAX);
+
+	clear_item_val("SOCP");
+	set_item_val("SOCP", "%s", str_ocp);
+}
+
 #define MAX_UNFZ_VAL_LEN (240)
 
-void secdbg_exin_set_unfz(const char *comm)
+void secdbg_exin_set_unfz(const char *comm, int pid)
 {
 	void *p;
 	char *v;
@@ -1103,17 +1211,38 @@ void secdbg_exin_set_unfz(const char *comm)
 	/* get_item_val returned address without key */
 	len_remain -= MAX_ITEM_KEY_LEN;
 
-	/* need comma */
-	len_this = strlen(comm) + 1;
-	len_remain -= len_this;
-
 	/* put last key at the first of ODR */
 	/* +1 to add NULL (by snprintf) */
-	snprintf(v, len_this + 1, "%s,", comm);
+	if (pid < 0)
+		len_this = scnprintf(v, len_remain , "%s/", comm);
+	else
+		len_this = scnprintf(v, len_remain , "%s:%d/", comm, pid);
 
 	/* -1 to remove NULL between KEYS */
 	/* +1 to add NULL (by snprintf) */
-	snprintf((char *)(v + len_this), len_remain + 1, tmp);
+	snprintf((char *)(v + len_this), len_remain - len_this, "%s", tmp);
+}
+
+char *secdbg_exin_get_unfz(void)
+{
+	void *p;
+	int max = MAX_UNFZ_VAL_LEN;
+
+	p = get_item("UNFZ");
+	if (!p) {
+		pr_crit("%s: fail to find\n", __func__);
+
+		return NULL;
+	}
+
+	max = get_max_len(p);
+	if (!max) {
+		pr_crit("%s: fail to get max len\n", __func__);
+
+		return NULL;
+	}
+
+	return get_item_val(p);
 }
 
 /*********** TEST V3 **************************************/
@@ -1159,7 +1288,7 @@ static int set_debug_reset_extra_info_proc_show(struct seq_file *m, void *v)
 		test_v3(m);
 
 	secdbg_exin_get_extra_info_A(buf);
-	seq_printf(m, buf);
+	seq_printf(m, "%s", buf);
 
 	return 0;
 }

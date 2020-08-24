@@ -19,7 +19,8 @@
 #define REQ_BLOCK_FMT_EVT		4
 #define DATA_BLOCK_FMT_EVT		5
 #define REQ_TYPE_FMT_EVT		6
-#define PRE_DEFINE_EVT_MAX		7
+#define BCM_CALC_FMT_EVT		7
+#define PRE_DEFINE_EVT_MAX		8
 
 #define BCM_STOP			0
 #define BCM_RUN				1
@@ -37,5 +38,8 @@
 #define MODEM_IF			2
 #define ITMON_HANDLE			3
 #define STOP_OWNER_MAX			4
+
+#define DBG_MODE			0
+#define PERF_MODE			1
 
 #endif	/* _DT_BINDINGS_EXYNOS_BCM_DBG_H */

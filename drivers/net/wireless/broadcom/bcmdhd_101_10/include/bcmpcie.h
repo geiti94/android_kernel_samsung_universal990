@@ -3,7 +3,7 @@
  * Software-specific definitions shared between device and host side
  * Explains the shared area between host and dongle
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -20,7 +20,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_bcmpcie_h_
@@ -429,6 +429,7 @@ typedef struct {
  * other trap related purposes also.
  */
 #define BCMPCIE_HOST_EXT_TRAP_DBGBUF_LEN_MIN	(64u * 1024u)
+#define BCMPCIE_HOST_EXT_TRAP_DBGBUF_LEN	(96u * 1024u)
 #define BCMPCIE_HOST_EXT_TRAP_DBGBUF_LEN_MAX	(256u * 1024u)
 
 /**

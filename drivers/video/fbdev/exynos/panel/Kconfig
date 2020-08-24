@@ -1,52 +1,52 @@
 config EXYNOS_DECON_LCD
+	bool "Select LCD panel driver"
 	depends on EXYNOS_DECON_8895 || EXYNOS_DECON_9810 || CONFIG_EXYNOS_DPU20 || EXYNOS_DPU30
 	select BACKLIGHT_CLASS_DEVICE
-	bool "Select LCD panel driver"
 
 config EXYNOS_DECON_MDNIE_LITE
-	depends on EXYNOS_DECON_LCD
 	tristate "Support MDNIE LITE"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config SUPPORT_AFC
-	depends on EXYNOS_DECON_LCD && EXYNOS_DECON_MDNIE_LITE
 	tristate "Support AFC"
+	depends on EXYNOS_DECON_LCD && EXYNOS_DECON_MDNIE_LITE
 	default n
 
 config SUPPORT_ISC_TUNE_TEST
-	depends on EXYNOS_DECON_LCD
 	tristate "Support ISC TUNE TEST"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config EXYNOS_DECON_LCD_SYSFS
-	depends on EXYNOS_DECON_LCD
 	tristate "Support LCD SYSFS"
+	depends on EXYNOS_DECON_LCD
 	default y
 
 config EXYNOS_DECON_LCD_SPI
-	depends on EXYNOS_DECON_LCD
 	tristate "Support LCD SPI"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config EXYNOS_DECON_LCD_COPR
-	depends on EXYNOS_DECON_LCD
 	tristate "Support COPR"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config EXYNOS_DECON_LCD_TUNING
-	depends on EXYNOS_DECON_LCD
 	tristate "Support LCD TUNING"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config PANEL_AID_DIMMING
-	depends on EXYNOS_DECON_LCD
 	tristate "Support AID Dimming"
+	depends on EXYNOS_DECON_LCD
 	default y
 
 config PANEL_AID_DIMMING_DEBUG
+	tristate "Support AID Dimming Debug"
 	depends on PANEL_AID_DIMMING
 	depends on !SAMSUNG_PRODUCT_SHIP
-	tristate "Support AID Dimming Debug"
 	default y
 
 config SUPPORT_DSU
@@ -60,8 +60,8 @@ config SUPPORT_HMD
 	default n
 
 config SUPPORT_DOZE
-	depends on EXYNOS_DECON_LCD
 	tristate "Support Panel AOD"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config EXTEND_LIVE_CLOCK
@@ -70,55 +70,23 @@ config EXTEND_LIVE_CLOCK
 	default n
 
 config SUPPORT_AOD_BL
-	depends on EXYNOS_DECON_LCD && SUPPORT_DOZE
 	tristate "Support AOD(Active On Display) BL(BackLight) Driver"
+	depends on EXYNOS_DECON_LCD && SUPPORT_DOZE
 	default n
 
 config SUPPORT_DISPLAY_PROFILER
-    	depends on EXYNOS_DECON_LCD
-    	tristate "Support Display Profiler"
-    	default n
-
-config EXYNOS_DECON_LCD_S6E3HF3
-	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
-	tristate "S6E3HF3 AMOLED LCD DRIVER"
-
-config EXYNOS_DECON_LCD_S6E3HF4
-	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
-	tristate "S6E3HF4 AMOLED WQHD LCD driver(1440 x 2560)"
-
-config EXYNOS_DECON_LCD_S6E3HA6
-	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
-	tristate "S6E3HA6 AMOLED LCD DRIVER"
-
-config EXYNOS_DECON_LCD_S6E3HA8
-	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
-	tristate "S6E3HA8 AMOLED LCD DRIVER"
-
-config EXYNOS_DECON_LCD_S6E3HA9
-	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
-	tristate "S6E3HA9 AMOLED LCD DRIVER"
-
-config EXYNOS_DECON_LCD_S6E3FA7
-	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
-	tristate "S6E3FA7 AMOLED LCD DRIVER"
-
-config EXYNOS_DECON_LCD_S6E3HAB
-	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
-	tristate "S6E3HAB AMOLED LCD DRIVER"
-
-config EXYNOS_DECON_LCD_S6E3XA0
-	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
-	tristate "S6E3XA0 AMOLED LCD DRIVER"
+	tristate "Support Display Profiler"
+	depends on EXYNOS_DECON_LCD
+	default n
 
 config SUPPORT_DDI_FLASH
-	depends on EXYNOS_DECON_LCD
 	tristate "Support display ddi flash"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config SUPPORT_POC_FLASH
-	depends on EXYNOS_DECON_LCD && SUPPORT_DDI_FLASH
 	tristate "Support display poc flash"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 
@@ -127,61 +95,116 @@ config SUPPORT_MAFPC
 	default n
 
 config SUPPORT_DIM_FLASH
-	depends on EXYNOS_DECON_LCD && SUPPORT_DDI_FLASH
 	tristate "Support display dimming flash"
+	depends on EXYNOS_DECON_LCD && SUPPORT_DDI_FLASH
 	default n
 
 config SUPPORT_GRAM_CHECKSUM
-	depends on EXYNOS_DECON_LCD
 	tristate "Support GRAM Checksum"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config SUPPORT_CCD_TEST
-	depends on EXYNOS_DECON_LCD
 	tristate "Support CCD TEST"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config SUPPORT_DYNAMIC_HLPM
-	depends on EXYNOS_DECON_LCD && SUPPORT_DOZE
 	tristate "Support Dynamic HLPM TEST"
+	depends on EXYNOS_DECON_LCD && SUPPORT_DOZE
 	default n
 
 config SUPPORT_TDMB_TUNE
-	depends on EXYNOS_DECON_LCD && TDMB_NOTIFIER
 	tristate "Support TDMB Tuning"
+	depends on EXYNOS_DECON_LCD && TDMB_NOTIFIER
 	default y
 
 config PANEL_BACKLIGHT_PAC_3_0
-	depends on EXYNOS_DECON_LCD
 	tristate "Support baclight PAC 3.0"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config DISPLAY_USE_INFO
-	depends on EXYNOS_DECON_LCD
 	tristate "Support display use info logging"
+	depends on EXYNOS_DECON_LCD
+	default n
+
+config SELF_MOVE_3PX
+	tristate "self move 3 pixel"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config PANEL_NOTIFY
-	depends on EXYNOS_DECON_LCD
 	tristate "Support panel notifier"
+	depends on EXYNOS_DECON_LCD
 	default y
 
 config SUPPORT_POC_SPI
-	depends on EXYNOS_DECON_LCD
 	tristate "Support poc SPI connection"
+	depends on EXYNOS_DECON_LCD
+	default n
+
+config SUPPORT_GM2_FLASH
+	tristate "Support to get Gamma-mode2 panel info from flash"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config DYNAMIC_FREQ
-	depends on EXYNOS_DECON_LCD
 	tristate "Support Dynamic Freq"
+	depends on EXYNOS_DECON_LCD
+	default n
+
+config PANEL_DISPLAY_MODE
+	tristate "Support panel display mode"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config PANEL_VRR_BRIDGE
-	depends on EXYNOS_DECON_LCD
 	tristate "Support panel vrr bridge"
+	depends on EXYNOS_DECON_LCD
+	default n
+
+config SUPPORT_FAST_DISCHARGE
+	tristate "Support fast discharge function"
+	depends on EXYNOS_DECON_LCD
 	default n
 
 config EXYNOS_LCD_ENG
-	depends on EXYNOS_DECON_LCD
 	tristate "Support LCD featue on ENG binary"
+	depends on EXYNOS_DECON_LCD
 	default n
+
+config PANEL_DEBUG
+	tristate "Support panel debug"
+	depends on EXYNOS_DECON_LCD
+	default y
+
+config SUPPORT_MASK_LAYER
+	tristate "Support FP mask layer function"
+	depends on EXYNOS_DECON_LCD
+	default n
+
+config SUPPORT_ERRFG_RECOVERY
+	tristate "Support ERRFG recovery"
+	depends on EXYNOS_DECON_LCD
+	default n
+
+source "drivers/video/fbdev/exynos/panel/s6e3xa0/Kconfig"
+
+source "drivers/video/fbdev/exynos/panel/s6e3fa7/Kconfig"
+
+source "drivers/video/fbdev/exynos/panel/s6e3fa9/Kconfig"
+
+source "drivers/video/fbdev/exynos/panel/s6e3fab/Kconfig"
+
+source "drivers/video/fbdev/exynos/panel/s6e3ha8/Kconfig"
+
+source "drivers/video/fbdev/exynos/panel/s6e3ha9/Kconfig"
+
+source "drivers/video/fbdev/exynos/panel/s6e3hab/Kconfig"
+
+source "drivers/video/fbdev/exynos/panel/s6e3hac/Kconfig"
+
+source "drivers/video/fbdev/exynos/panel/ea8076/Kconfig"
+
+source "drivers/video/fbdev/exynos/panel/ea8079/Kconfig"

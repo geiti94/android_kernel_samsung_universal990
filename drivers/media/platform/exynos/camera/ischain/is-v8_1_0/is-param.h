@@ -1409,6 +1409,13 @@ struct is_frame_header {
 	struct exif_attribute	exif;
 };
 
+struct seamless_mode_change_info {
+	int	width;
+	int	height;
+	int	fps;
+	int	ex_mode;
+};
+
 struct is_fd_rect {
 	u32 offset_x;
 	u32 offset_y;

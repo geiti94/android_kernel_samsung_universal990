@@ -335,8 +335,8 @@ int is_sensor_write8_array(struct i2c_client *client,
 		goto p_err;
 	}
 
-	if (num > 4) {
-		pr_err("currently limit max num is 4, need to fix it!\n");
+	if (num > 8) {
+		pr_err("currently limit max num is 8, need to fix it!\n");
 		ret = -ENODEV;
 		goto p_err;
 	}

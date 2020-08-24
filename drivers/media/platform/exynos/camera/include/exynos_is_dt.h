@@ -19,6 +19,7 @@
 #define F1_8	180
 #define F1_9	190
 #define F2_0	200
+#define F2_1	210
 #define F2_2	220
 #define F2_4	240
 #define F2_45	245
@@ -114,6 +115,7 @@
 #define VC_MIPISTAT		2
 #define VC_EMBEDDED		3
 #define VC_PRIVATE		4
+#define VC_EMBEDDED2		5
 
 #define SP_REAR		0
 #define SP_FRONT	1
@@ -167,6 +169,8 @@
 #define HW_FORMAT_RAW12		0x2C
 #define HW_FORMAT_RAW14		0x2D
 #define HW_FORMAT_USER		0x30
+#define HW_FORMAT_USER1		0x31
+#define HW_FORMAT_USER2		0x32
 #define HW_FORMAT_UNKNOWN	0x0
 
 #define HW_FORMAT_MASK		0x3F
@@ -190,6 +194,7 @@
 #define	EX_3DHDR		6
 #define	EX_PDSTAT_OFF		7
 #define	EX_AEB			8
+#define EX_SEAMLESS_TETRA	9
 #define	EX_REMOSAIC_CAL		11
 #define	EX_LOW_RES_TETRA	12
 
@@ -204,6 +209,7 @@
 #define SENSOR_RETENTION_UNSUPPORTED	0
 #define SENSOR_RETENTION_INACTIVE	1
 #define SENSOR_RETENTION_ACTIVATED	2
+#define SENSOR_RETENTION_REOPEN		3 /* if retention unsupported use this for fake retention */
 
 /* Sensor ID */
 #define SENSOR_NAME_NOTHING		0
@@ -270,6 +276,11 @@
 #define SENSOR_NAME_S5KGM2		61
 #define SENSOR_NAME_S5KGW1		62
 #define SENSOR_NAME_S5KGD1		63
+#define SENSOR_NAME_S5K3M5		64
+#define SENSOR_NAME_S5K3M5_TELE		65
+#define SENSOR_NAME_S5K3M5_FOLD		66
+#define SENSOR_NAME_S5KGD1_TELE		67
+#define SENSOR_NAME_S5KGW1_CPD1914_2	68
 
 /* 101~200: SONY sensors */
 #define SENSOR_NAME_IMX135		101
@@ -295,6 +306,7 @@
 #define SENSOR_NAME_IMX616		121
 #define SENSOR_NAME_IMX518		122
 #define SENSOR_NAME_IMX686		123
+#define SENSOR_NAME_IMX682		124
 /* 201~255: Other vendor sensors */
 #define SENSOR_NAME_SR261		201
 #define SENSOR_NAME_OV5693		202
@@ -309,6 +321,11 @@
 #define SENSOR_NAME_HI1336		211
 #define SENSOR_NAME_GC2375		212
 #define SENSOR_NAME_HI1631		213
+#define SENSOR_NAME_GC02M1		214
+#define SENSOR_NAME_HI846		215
+#define SENSOR_NAME_OV02A10		216
+#define SENSOR_NAME_HI847		217
+
 /* 256~: currently not used */
 #define SENSOR_NAME_CUSTOM		301
 #define SENSOR_NAME_SR200		302 // SoC Module

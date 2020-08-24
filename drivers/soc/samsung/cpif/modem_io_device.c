@@ -37,11 +37,19 @@
 #include <linux/modem_notifier.h>
 #endif
 
+#ifdef CONFIG_USB_CONFIGFS_F_MBIM
+#include <linux/mbim_queue.h>
+#endif
+
 #include "modem_prj.h"
 #include "modem_utils.h"
 #include "modem_dump.h"
 #include "cpif_clat_info.h"
 #include "cpif_tethering_info.h"
+
+#ifdef CONFIG_MCPS
+#include "../../../mcps/mcps.h"
+#endif
 
 static ssize_t show_waketime(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -391,12 +399,23 @@ static int rx_multi_pdp(struct sk_buff *skb)
 	int len = skb->len;
 	int ret = 0;
 	int __maybe_unused l2forward = 0;
+#ifdef CONFIG_USB_CONFIGFS_F_MBIM
+	u8 ch = skbpriv(skb)->sipc_ch;
+	u8 rmnet_type = ld->get_rmnet_type(ch);
+#endif
 
 	ndev = iod->ndev;
 	if (!ndev) {
 		mif_info("%s: ERR! no iod->ndev\n", iod->name);
 		return -ENODEV;
 	}
+
+#ifdef CONFIG_USB_CONFIGFS_F_MBIM
+	if (mbim_read_opened() != 1) {
+		mif_err_limited("ERR! mbim_read is not opened\n");
+		return -ENODEV;
+	}
+#endif
 
 	if (skbpriv(skb)->lnk_hdr) {
 		/* Remove the SIPC5 link header */
@@ -428,6 +447,16 @@ static int rx_multi_pdp(struct sk_buff *skb)
 	skb_reset_network_header(skb);
 	skb_reset_mac_header(skb);
 
+#ifdef CONFIG_USB_CONFIGFS_F_MBIM
+	/* packet capture for MBIM device */
+	mif_queue_skb(skb, RX);
+
+	if (ld->pdn_table.pdn[rmnet_type].dl_dst == PC) {
+		ret = mbim_queue_head(skb);
+		return len;
+	}
+#endif
+
 #ifdef CONFIG_LINK_FORWARD
 	/* Link Forward */
 	l2forward = get_linkforward_mode() ?
@@ -435,15 +464,19 @@ static int rx_multi_pdp(struct sk_buff *skb)
 #endif
 
 #if defined(CONFIG_CP_GRO_EXCEPTION)
-	if (l2forward || !check_gro_support(skb) || (is_tethering_upstream_device(skb->dev->name) && is_heading_toward_clat(skb))) {
+	if (l2forward || (is_tethering_upstream_device(skb->dev->name) && is_heading_toward_clat(skb))) {
 #else
-	if (l2forward || !check_gro_support(skb)) {
+	if (l2forward) {
 #endif
-		ret = netif_receive_skb(skb);
-		if (ret != NET_RX_SUCCESS)
-			mif_err_limited("%s: %s<-%s: ERR! netif_receive_skb\n",
-					ld->name, iod->name, iod->mc->name);
+		goto cp_gro_exception;
 	} else {
+#ifdef CONFIG_MCPS
+		if (!mcps_try_gro(skb))
+			return len;
+#endif
+		if (!check_gro_support(skb))
+			goto cp_gro_exception;
+
 		ret = napi_gro_receive(napi_get_current(), skb);
 		if (ret == GRO_DROP)
 			mif_err_limited("%s: %s<-%s: ERR! napi_gro_receive\n",
@@ -452,6 +485,13 @@ static int rx_multi_pdp(struct sk_buff *skb)
 		if (ld->gro_flush)
 			ld->gro_flush(ld);
 	}
+	return len;
+
+cp_gro_exception:
+	ret = netif_receive_skb(skb);
+	if (ret != NET_RX_SUCCESS)
+		mif_err_limited("%s: %s<-%s: ERR! netif_receive_skb\n",
+				ld->name, iod->name, iod->mc->name);
 	return len;
 }
 
@@ -574,8 +614,11 @@ exit:
 	if (state == STATE_CRASH_RESET
 	    || state == STATE_CRASH_EXIT
 	    || state == STATE_NV_REBUILDING
-	    || state == STATE_CRASH_WATCHDOG)
-		wake_up(&iod->wq);
+	    || state == STATE_CRASH_WATCHDOG
+	    || state == STATE_OFFLINE) {
+		if (atomic_read(&iod->opened) > 0)
+			wake_up(&iod->wq);
+	}
 }
 
 static void io_dev_sim_state_changed(struct io_device *iod, bool sim_online)

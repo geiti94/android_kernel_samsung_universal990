@@ -430,7 +430,7 @@ static ssize_t s2mpb02_read_store(struct device *dev,
 	if (ret < 0)
 		pr_info("%s: fail to read i2c address\n", __func__);
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg_addr, val);
+	pr_info("%s: reg(0x%02hhx) data(0x%02hhx)\n", __func__, reg_addr, val);
 	s2mpb02->read_addr = reg_addr;
 	s2mpb02->read_val = val;
 
@@ -442,7 +442,7 @@ static ssize_t s2mpb02_read_show(struct device *dev,
 				 char *buf)
 {
 	struct s2mpb02_data *s2mpb02 = dev_get_drvdata(dev);
-	return sprintf(buf, "0x%02x: 0x%02x\n", s2mpb02->read_addr,
+	return sprintf(buf, "0x%02hhx: 0x%02hhx\n", s2mpb02->read_addr,
 		       s2mpb02->read_val);
 }
 
@@ -452,20 +452,20 @@ static ssize_t s2mpb02_write_store(struct device *dev,
 {
 	struct s2mpb02_data *s2mpb02 = dev_get_drvdata(dev);
 	int ret;
-	u8 reg, data;
+	u8 reg = 0, data = 0;
 
 	if (buf == NULL) {
 		pr_info("%s: empty buffer\n", __func__);
 		return size;
 	}
 
-	ret = sscanf(buf, "%02x %02x", &reg, &data);
+	ret = sscanf(buf, "0x%02hhx 0x%02hhx", &reg, &data);
 	if (ret != 2) {
 		pr_info("%s: input error\n", __func__);
 		return size;
 	}
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg, data);
+	pr_info("%s: reg(0x%02hhx) data(0x%02hhx)\n", __func__, reg, data);
 
 	ret = s2mpb02_write_reg(s2mpb02->iodev->i2c, reg, data);
 	if (ret < 0)
@@ -528,8 +528,7 @@ static int s2mpb02_pmic_probe(struct platform_device *pdev)
 	struct regulator_config config = { };
 	struct s2mpb02_data *s2mpb02;
 	struct i2c_client *i2c;
-	size_t i;
-	int ret;
+	int ret = 0, i = 0;
 
 	dev_info(&pdev->dev, "%s start\n", __func__);
 	if (!pdata) {

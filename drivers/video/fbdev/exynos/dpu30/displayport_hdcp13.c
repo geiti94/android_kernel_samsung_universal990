@@ -203,7 +203,7 @@ u8 hdcp13_cmp_ri(void)
 
 	cnt = 0;
 	while (hdcp13_info.cp_irq_flag != 1 && cnt < RI_WAIT_COUNT) {
-		mdelay(RI_AVAILABLE_WAITING);
+		usleep_range(RI_AVAILABLE_WAITING * 1000, RI_AVAILABLE_WAITING * 1000 + 1);
 		cnt++;
 	}
 
@@ -219,7 +219,7 @@ u8 hdcp13_cmp_ri(void)
 		/* R0 Sink Available check */
 		displayport_reg_dpcd_read(ADDR_HDCP13_BSTATUS, 1, HDCP13_DPCD.HDCP13_BSTATUS);
 
-		mdelay(RI_AVAILABLE_WAITING);
+		usleep_range(RI_AVAILABLE_WAITING * 1000, RI_AVAILABLE_WAITING * 1000 + 1);
 		cnt++;
 	}
 
@@ -250,7 +250,7 @@ u8 hdcp13_cmp_ri(void)
 		displayport_info("[HDCP 1.3] Ri_Tx(0x%02x%02x) != Ri_Rx(0x%02x%02x)\n",
 				ri[1], ri[0], HDCP13_DPCD.HDCP13_R0[1], HDCP13_DPCD.HDCP13_R0[0]);
 
-		mdelay(RI_DELAY);
+		usleep_range(RI_DELAY * 1000, RI_DELAY * 1000 + 1);
 		ret = -EFAULT;
 	}
 
@@ -306,6 +306,9 @@ void hdcp13_link_integrity_check(void)
 				}
 				break;
 			}
+			if (!IS_DISPLAYPORT_HPD_PLUG_STATE())
+				return;
+
 			msleep(20);
 		}
 	}
@@ -391,7 +394,11 @@ static int hdcp13_proceed_repeater(void)
 	displayport_info("[HDCP 1.3] HDCP repeater Start!!!\n");
 
 	while (hdcp13_info.cp_irq_flag != 1 && cnt < RI_WAIT_COUNT) {
-		mdelay(RI_AVAILABLE_WAITING);
+
+		if (!IS_DISPLAYPORT_HPD_PLUG_STATE())
+			goto repeater_err;
+
+		usleep_range(RI_AVAILABLE_WAITING * 1000, RI_AVAILABLE_WAITING * 1000 + 1);
 		cnt++;
 	}
 
@@ -405,7 +412,10 @@ static int hdcp13_proceed_repeater(void)
 		displayport_reg_dpcd_read(ADDR_HDCP13_BSTATUS, 1,
 				HDCP13_DPCD.HDCP13_BSTATUS);
 
-		mdelay(RI_AVAILABLE_WAITING);
+		if (!IS_DISPLAYPORT_HPD_PLUG_STATE())
+			goto repeater_err;
+
+		usleep_range(RI_AVAILABLE_WAITING * 1000, RI_AVAILABLE_WAITING * 1000 + 1);
 		cnt++;
 
 		if (cnt > REPEATER_READY_WAIT_COUNT || !IS_DISPLAYPORT_HPD_PLUG_STATE()) {
@@ -420,6 +430,9 @@ static int hdcp13_proceed_repeater(void)
 	while ((hdcp13_info.auth_state != HDCP13_STATE_SECOND_AUTH_DONE) &&
 			(retry_cnt != 0)) {
 		retry_cnt--;
+
+		if (!IS_DISPLAYPORT_HPD_PLUG_STATE())
+			goto repeater_err;
 
 		displayport_reg_dpcd_read(ADDR_HDCP13_BINFO, 2, HDCP13_DPCD.HDCP13_BINFO);
 
@@ -491,6 +504,9 @@ void hdcp13_run(void)
 			&& (hdcp13_info.auth_state != HDCP13_STATE_SECOND_AUTH_DONE)
 			&& (retry_cnt != 0)) {
 		retry_cnt--;
+
+		if (!IS_DISPLAYPORT_HPD_PLUG_STATE())
+			goto HDCP13_END;
 
 		hdcp13_info.auth_state = HDCP13_STATE_AUTH_PROCESS;
 

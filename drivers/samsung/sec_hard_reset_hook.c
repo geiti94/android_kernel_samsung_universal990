@@ -255,7 +255,7 @@ void hard_reset_delay(void)
 	 */
 	if (hard_reset_occurred) {
 		pr_err("wait until warm or manual reset is triggered\n");
-		mdelay(2000);
+		dev_mdelay(2000);
 	}
 }
 

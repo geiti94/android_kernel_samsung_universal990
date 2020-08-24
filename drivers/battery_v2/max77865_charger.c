@@ -1891,14 +1891,16 @@ static int max77865_charger_probe(struct platform_device *pdev)
 	charger_cfg.drv_data = charger;
 
 	charger->psy_chg = power_supply_register(&pdev->dev, &max77865_charger_power_supply_desc, &charger_cfg);
-	if (!charger->psy_chg) {
-		pr_err("%s: Failed to Register psy_chg\n", __func__);
+	if (IS_ERR(charger->psy_chg)) {
+		ret = PTR_ERR(charger->psy_chg);
+		pr_err("%s: Failed to Register psy_chg(%d)\n", __func__, ret);
 		goto err_power_supply_register;
 	}
 
 	charger->psy_otg = power_supply_register(&pdev->dev, &otg_power_supply_desc, &charger_cfg);
-	if (!charger->psy_otg) {
-		pr_err("%s: Failed to Register otg_chg\n", __func__);
+	if (IS_ERR(charger->psy_otg)) {
+		ret = PTR_ERR(charger->psy_otg);
+		pr_err("%s: Failed to Register otg_chg(%d)\n", __func__, ret);
 		goto err_power_supply_register_otg;
 	}
 

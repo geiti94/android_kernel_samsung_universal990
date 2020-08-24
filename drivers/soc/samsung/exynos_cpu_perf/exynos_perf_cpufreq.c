@@ -140,7 +140,7 @@ static int cpufreq_log_thread(void *data)
 	// mif, gpu, task
 	ret += snprintf(buf + ret, buf_size - ret, "05-mif_cur 06-gpu_util 06-gpu_cur 07-task_cpu ");
 	for_each_online_cpu(cpu) {
-		ret += snprintf(buf + ret, buf_size - ret, "08-cpuutil_cpu%d ", cpu);
+		ret += snprintf(buf + ret, buf_size - ret, "08-utilratio_cpu%d ", cpu);
 	}
 	ret -= 1;
 	ret += snprintf(buf + ret, buf_size - ret, "\n");

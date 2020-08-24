@@ -22,7 +22,8 @@
 #include "s6e3fa7_digital_clock_img.h"
 
 /* BEYOND0 L-CUT */
-static DEFINE_STATIC_PACKET(s6e3fa7_beyond0_lcut_aod_self_mask_img_pkt, DSI_PKT_TYPE_WR_SR, BEYOND0_LCUT_SELF_MASK_IMG, 0);
+static DEFINE_STATIC_PACKET_WITH_OPTION(s6e3fa7_beyond0_lcut_aod_self_mask_img_pkt,
+		DSI_PKT_TYPE_WR_SR, BEYOND0_LCUT_SELF_MASK_IMG, 0, PKT_OPTION_SR_ALIGN_16);
 
 static void *s6e3fa7_beyond0_lcut_aod_self_mask_img_cmdtbl[] = {
 	&KEYINFO(s6e3fa7_aod_level2_key_enable),
@@ -65,7 +66,8 @@ static struct aod_tune s6e3fa7_beyond0_lcut_aod = {
 };
 
 /* BEYOND0 U-TYPE */
-static DEFINE_STATIC_PACKET(s6e3fa7_beyond0_utype_aod_self_mask_img_pkt, DSI_PKT_TYPE_WR_SR, BEYOND0_UTYPE_SELF_MASK_IMG, 0);
+static DEFINE_STATIC_PACKET_WITH_OPTION(s6e3fa7_beyond0_utype_aod_self_mask_img_pkt,
+		DSI_PKT_TYPE_WR_SR, BEYOND0_UTYPE_SELF_MASK_IMG, 0, PKT_OPTION_SR_ALIGN_16);
 
 static void *s6e3fa7_beyond0_utype_aod_self_mask_img_cmdtbl[] = {
 	&KEYINFO(s6e3fa7_aod_level2_key_enable),
@@ -107,7 +109,8 @@ static struct aod_tune s6e3fa7_beyond0_utype_aod = {
 };
 
 /* BEYOND0 */
-static DEFINE_STATIC_PACKET(s6e3fa7_beyond0_aod_self_mask_img_pkt, DSI_PKT_TYPE_WR_SR, BEYOND0_SELF_MASK_IMG, 0);
+static DEFINE_STATIC_PACKET_WITH_OPTION(s6e3fa7_beyond0_aod_self_mask_img_pkt,
+		DSI_PKT_TYPE_WR_SR, BEYOND0_SELF_MASK_IMG, 0, PKT_OPTION_SR_ALIGN_16);
 
 static void *s6e3fa7_beyond0_aod_self_mask_img_cmdtbl[] = {
 	&KEYINFO(s6e3fa7_aod_level2_key_enable),

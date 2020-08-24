@@ -11,6 +11,9 @@
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 #define SCALE_SIZE 8
 
+#define AUTO_FILL 1
+#define NOT_FILL 0
+
 #include <linux/init.h>
 #include <linux/of.h>
 #include <linux/slab.h>
@@ -179,31 +182,52 @@ static unsigned int ufc_get_table_row(struct device_node *child)
 	return row;
 }
 
-static int ufc_get_proper_min_table_index(unsigned int freq,
+static unsigned int ufc_clamp_vfreq(unsigned int vfreq,
+				struct ufc_table_info *table_info)
+{
+	unsigned int max_vfreq;
+	unsigned int min_vfreq;
+
+	max_vfreq = table_info->ufc_table[UFC_COL_VFREQ][0];
+	min_vfreq = table_info->ufc_table[UFC_COL_VFREQ][ufc.table_row + ufc.lit_table_row - 1];
+
+	if (max_vfreq < vfreq)
+		return max_vfreq;
+	if (min_vfreq > vfreq)
+		return min_vfreq;
+
+	return vfreq;
+}
+
+static int ufc_get_proper_min_table_index(unsigned int vfreq,
 		struct ufc_table_info *table_info)
 {
 	int index;
 
-	for (index = 0; table_info->ufc_table[0][index] > freq; index++)
+	vfreq = ufc_clamp_vfreq(vfreq, table_info);
+
+	for (index = 0; table_info->ufc_table[0][index] > vfreq; index++)
 		;
-	if (table_info->ufc_table[0][index] < freq)
+	if (table_info->ufc_table[0][index] < vfreq)
 		index--;
 
 	return index;
 }
 
-static int ufc_get_proper_max_table_index(unsigned int freq,
+static int ufc_get_proper_max_table_index(unsigned int vfreq,
 		struct ufc_table_info *table_info)
 {
 	int index;
 
-	for (index = 0; table_info->ufc_table[0][index] > freq; index++)
+	vfreq = ufc_clamp_vfreq(vfreq, table_info);
+
+	for (index = 0; table_info->ufc_table[0][index] > vfreq; index++)
 		;
 
 	return index;
 }
 
-static int ufc_get_proper_table_index(unsigned int freq,
+static int ufc_get_proper_table_index(unsigned int vfreq,
 		struct ufc_table_info *table_info, int ctrl_type)
 {
 	int target_idx = 0;
@@ -211,11 +235,11 @@ static int ufc_get_proper_table_index(unsigned int freq,
 	switch (ctrl_type) {
 	case PM_QOS_MIN_LIMIT:
 	case PM_QOS_MIN_WO_BOOST_LIMIT:
-		target_idx = ufc_get_proper_min_table_index(freq, table_info);
+		target_idx = ufc_get_proper_min_table_index(vfreq, table_info);
 		break;
 
 	case PM_QOS_MAX_LIMIT:
-		target_idx = ufc_get_proper_max_table_index(freq, table_info);
+		target_idx = ufc_get_proper_max_table_index(vfreq, table_info);
 		break;
 	}
 	return target_idx;
@@ -367,13 +391,13 @@ static ssize_t store_ufc_table_change(struct kobject *kobj, const char *buf,
 		return -EINVAL;
 	}
 
-	if (edit_row < 0 || edit_row > ufc.table_row) {
-		pr_err("input row is between 0 and %d\n", ufc.table_row);
+	if (edit_row < 0 || edit_row >= ufc.table_row) {
+		pr_err("Valid Input-row is 0 <= row < %d\n", ufc.table_row);
 		return -EINVAL;
 	}
 
-	if (edit_col < 0 || edit_col > ufc.table_col) {
-		pr_err("input row is between 0 and %d\n", ufc.table_row);
+	if (edit_col < 0 || edit_col >= ufc.table_col) {
+		pr_err("Valid Input-col is 0 <= col < %d\n", ufc.table_col);
 		return -EINVAL;
 	}
 
@@ -824,6 +848,9 @@ static int ufc_parse_init_table(struct device_node *dn,
 		}
 	}
 
+	if (!policy)
+		return 0;
+
 	cpufreq_for_each_entry(pos, policy->freq_table) {
 		if (pos->frequency > policy->max)
 			continue;
@@ -875,8 +902,8 @@ static int init_ufc_table(struct device_node *dn)
 		return -ENOMEM;
 
 	for (col_idx = 0; col_idx < ufc.table_col; col_idx++) {
-		table_info->ufc_table[col_idx] = kzalloc(sizeof(u32) * ufc.table_row,
-							GFP_KERNEL);
+		table_info->ufc_table[col_idx] = kzalloc(sizeof(u32) *
+				(ufc.table_row + ufc.lit_table_row), GFP_KERNEL);
 
 		if (!table_info->ufc_table[col_idx])
 			return -ENOMEM;
@@ -927,6 +954,9 @@ static int init_ufc_domain(struct device_node *dn)
 	ufc_dom->min_freq = policy->min;
 	ufc_dom->max_freq = policy->max;
 
+	if (ufc.fill_flag == NOT_FILL)
+		return 0;
+
 	if (ufc_dom->pm_qos_min_class == PM_QOS_CLUSTER0_FREQ_MIN) {
 		struct cpufreq_frequency_table *pos;
 		int lit_row = 0;
@@ -958,6 +988,9 @@ static int init_ufc(struct device_node *dn)
 
 	ufc.table_col = ufc_get_table_col(dn);
 	if (ufc.table_col < 0)
+		return -EINVAL;
+
+	if (of_property_read_u32(dn, "fill-flag", &ufc.fill_flag))
 		return -EINVAL;
 
 	ufc.sse_mode = 0;

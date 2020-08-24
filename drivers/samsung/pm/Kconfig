@@ -8,14 +8,14 @@
 comment "Samsung Mobile Power Management Options"
 menuconfig SEC_PM
 	bool "Samsung Mobile Power Management"
-	default y
+	default n
 	help
 	  This option enables support for various drivers and features for
 	  Samsung Mobile Power Management.
 
 config SEC_PM_DEBUG
 	bool "Enable Samsung Mobile Power management debug support"
-	default y
+	default n
 	depends on SEC_PM
 	help
 	  This option enables Samsung Mobile Power management debug support.
@@ -23,7 +23,16 @@ config SEC_PM_DEBUG
 
 config SEC_PM_BIGDATA
 	bool "Enable Samsung Mobile Power management big data support"
-	default y
+	default n
 	depends on SEC_PM
 	help
 	  This option enables Samsung Mobile Power management big data support.
+
+config SEC_PM_CPUFREQ
+	bool "Enable Samsung Mobile CPU Frequency control support"
+	default n
+	depends on SEC_PM
+	help
+	  This option enables Samsung Mobile CPU Frequency control support.
+	  Adjust the minimum and maximum frequency for each CPU clusters.
+

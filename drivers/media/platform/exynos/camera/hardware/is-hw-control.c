@@ -909,15 +909,6 @@ int is_hardware_shot(struct is_hardware *hardware, u32 instance,
 		return -EINVAL;
 	}
 
-#ifdef DBG_HW
-	if (!atomic_read(&hardware->streaming[hardware->sensor_position[instance]])
-		&& (hw_ip && atomic_read(&hw_ip->status.otf_start)))
-		msinfo_hw("shot [F:%d][G:0x%x][B:0x%lx][O:0x%lx][C:0x%lx][HWF:%d]\n",
-			instance, hw_ip,
-			frame->fcount, GROUP_ID(group->id),
-			frame->bak_flag, frame->out_flag, frame->core_flag, framenum);
-#endif
-
 	return ret;
 
 shot_err_cancel:
@@ -1076,7 +1067,7 @@ int is_hardware_grp_shot(struct is_hardware *hardware, u32 instance,
 	enum is_hardware_id hw_id = DEV_HW_END;
 	struct is_frame *hw_frame;
 	struct is_framemgr *framemgr;
-	struct is_group *head;
+	struct is_group *head, *sensor_group;
 	ulong flags = 0;
 	int num_buffers;
 
@@ -1166,10 +1157,10 @@ int is_hardware_grp_shot(struct is_hardware *hardware, u32 instance,
 		num_buffers, hardware->hw_fro_en);
 
 	if (test_bit(IS_GROUP_OTF_INPUT, &head->state)) {
-		if (!atomic_read(&hw_ip->status.otf_start)) {
+		sensor_group = head->head;
+		if (!atomic_read(&sensor_group->scount)) {
 			hw_frame = get_frame(framemgr, FS_HW_REQUEST);
 
-			atomic_set(&hw_ip->status.otf_start, 1);
 			msinfo_hw("OTF start [F:%d][G:0x%x][B:0x%lx][O:0x%lx]\n",
 				instance, hw_ip,
 				hw_frame->fcount, GROUP_ID(head->id),
@@ -1219,8 +1210,8 @@ int make_internal_shot(struct is_hw_ip *hw_ip, u32 instance, u32 fcount,
 
 	if (framemgr->queued_count[FS_HW_FREE] < 3) {
 		mswarn_hw("Free frame is less than 3", instance, hw_ip);
-		check_hw_bug_count(hw_ip->hardware, 10);
 		frame_manager_print_info_queues(framemgr);
+		check_hw_bug_count(hw_ip->hardware, 10);
 	}
 
 	ret = check_shot_exist(framemgr, fcount);
@@ -1430,14 +1421,6 @@ void is_hardware_frame_start(struct is_hw_ip *hw_ip, u32 instance)
 		return;
 	}
 
-	if (atomic_read(&hw_ip->status.otf_start) && framemgr->batch_num == 1
-			&& frame->fcount != atomic_read(&hw_ip->count.fs)) {
-		/* error handling */
-		info_hw("frame_start_isr (%d, %d)\n", frame->fcount,
-				atomic_read(&hw_ip->count.fs));
-		atomic_set(&hw_ip->count.fs, frame->fcount);
-	}
-
 	/* TODO: multi-instance */
 	frame->frame_info[INFO_FRAME_START].cpu = raw_smp_processor_id();
 	frame->frame_info[INFO_FRAME_START].pid = current->pid;
@@ -1448,6 +1431,13 @@ void is_hardware_frame_start(struct is_hw_ip *hw_ip, u32 instance)
 		hw_ip_ldr = is_get_hw_ip(head->id, hw_ip->hardware);
 		shot_timeout = head->device->resourcemgr->shot_timeout;
 		mod_timer(&hw_ip_ldr->shot_timer, jiffies + msecs_to_jiffies(shot_timeout));
+
+		if (framemgr->batch_num == 1 && frame->fcount != atomic_read(&hw_ip->count.fs)) {
+			/* error handling */
+			info_hw("frame_start_isr (%d, %d)\n", frame->fcount,
+					atomic_read(&hw_ip->count.fs));
+			atomic_set(&hw_ip->count.fs, frame->fcount);
+		}
 	}
 
 	put_frame(framemgr, frame, FS_HW_WAIT_DONE);
@@ -1911,7 +1901,6 @@ void is_hardware_process_stop(struct is_hardware *hardware, u32 instance,
 
 	is_hardware_force_stop(hardware, hw_ip, instance);
 	hw_ip->internal_fcount[instance] = 0;
-	atomic_set(&hw_ip->status.otf_start, 0);
 
 	return;
 }
@@ -2077,7 +2066,6 @@ int is_hardware_close(struct is_hardware *hardware,u32 hw_id, u32 instance)
 		clear_bit(HW_CONFIG, &hw_ip->state);
 		clear_bit(HW_RUN, &hw_ip->state);
 		clear_bit(HW_TUNESET, &hw_ip->state);
-		atomic_set(&hw_ip->status.otf_start, 0);
 		atomic_set(&hw_ip->fcount, 0);
 		atomic_set(&hw_ip->instance, 0);
 		atomic_set(&hw_ip->run_rsccount, 0);
@@ -2295,24 +2283,6 @@ exit:
 	trans_frame(framemgr, frame, FS_HW_FREE);
 	framemgr_x_barrier_common(framemgr, 0, flags);
 	atomic_set(&frame->shot_done_flag, 0);
-
-	/* Force flush the old H/W frames with DONE state */
-	framemgr_e_barrier_common(framemgr, 0, flags);
-	if (framemgr->queued_count[FS_HW_WAIT_DONE] > 0) {
-		struct is_frame *temp;
-		u32 fcount = frame->fcount;
-		u32 instance = frame->instance;
-
-		list_for_each_entry_safe(frame, temp, &framemgr->queued_list[FS_HW_WAIT_DONE], list) {
-			if (frame && frame->instance == instance && frame->fcount < fcount) {
-				msinfo_hw("[F%d]force flush\n",
-						frame->instance, hw_ip, frame->fcount);
-				trans_frame(framemgr, frame, FS_HW_FREE);
-				atomic_set(&frame->shot_done_flag, 0);
-			}
-		}
-	}
-	framemgr_x_barrier_common(framemgr, 0, flags);
 
 	if (framemgr->queued_count[FS_HW_FREE] > 10)
 		atomic_set(&hw_ip->hardware->bug_count, 0);

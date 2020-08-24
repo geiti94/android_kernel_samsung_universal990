@@ -398,6 +398,18 @@ int __linkforward_manip_skb(struct sk_buff *skb, enum linkforward_dir dir)
 			if (udph->dest != htons(5001)) /* TEST-ONLY for iperf */
 				return 0;
 
+			addr_new = test_host_ip_addr.s_addr;
+
+			addr = iphdr->daddr;
+			iphdr->daddr = addr_new;
+			csum_replace4(&iphdr->check, addr, addr_new);
+
+			/* ToDo: port translation */
+			/*csum_replace2(sum, old, new);*/
+
+			if (udph->check != 0000)
+				csum_replace4(&udph->check, addr, addr_new);
+
 			skb->hash = udph->dest;
 			skb->sw_hash = 1;
 
@@ -430,13 +442,10 @@ int __linkforward_manip_skb(struct sk_buff *skb, enum linkforward_dir dir)
 			memcpy(ehdr->h_source, nf_linkfwd.brdg.if_mac, ETH_ALEN);
 			ehdr->h_proto = skb->protocol;
 			skb_reset_mac_header(skb);
-
 			skb->protocol = htons(ETH_P_ALL);
-			skb->dev = get_linkforwd_inner_dev();
 		} else {
 			skb_reset_network_header(skb);
 			skb_reset_mac_header(skb);
-			skb->dev = get_linkforwd_outter_dev(0);
 		}
 
 		*((u32 *)&skb->cb) = dir ? SIGNATURE_LINK_FORWRD_REPLY :
@@ -450,13 +459,12 @@ int __linkforward_manip_skb(struct sk_buff *skb, enum linkforward_dir dir)
 
 /* Device core functions */
 static inline int __dev_linkforward_queue_skb(struct sk_buff *skb,
-		struct Qdisc *q)
+		struct Qdisc *q, enum linkforward_dir dir)
 {
 	spinlock_t *root_lock = qdisc_lock(q);
 	struct sk_buff *to_free = NULL;
 	bool contended;
 	int rc;
-	enum linkforward_dir dir;
 
 	qdisc_calculate_pkt_len(skb, q);
 	contended = qdisc_is_running(q);
@@ -474,9 +482,6 @@ static inline int __dev_linkforward_queue_skb(struct sk_buff *skb,
 			contended = false;
 		}
 
-		dir = ((*((u32 *)&skb->cb)) == SIGNATURE_LINK_FORWRD_REPLY) ?
-			LINK_FORWARD_DIR_REPLY : LINK_FORWARD_DIR_ORIGN;
-
 		atomic_set(&nf_linkfwd.qmask[dir], 1);
 		nf_linkfwd.q[dir] = q;
 
@@ -493,10 +498,10 @@ static inline int __dev_linkforward_queue_skb(struct sk_buff *skb,
 
 static int __dev_linkforward_queue_xmit(struct sk_buff *skb, void *accel_priv)
 {
-	struct net_device *dev = skb->dev;
 	struct netdev_queue *txq;
 	struct Qdisc *q;
 	int rc = -ENOMEM;
+	enum linkforward_dir dir;
 
 	/*
 	 * if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_SCHED_TSTAMP))
@@ -508,11 +513,21 @@ static int __dev_linkforward_queue_xmit(struct sk_buff *skb, void *accel_priv)
 	 */
 	rcu_read_lock_bh();
 
-	txq = netdev_pick_tx(dev, skb, accel_priv);
+	/* Change dev handle from rmnet to rndis during rmnet RPS */
+	dir = ((*((u32 *)&skb->cb)) == SIGNATURE_LINK_FORWRD_REPLY) ?
+		LINK_FORWARD_DIR_REPLY : LINK_FORWARD_DIR_ORIGN;
+	if (dir == LINK_FORWARD_DIR_REPLY)
+		skb->dev = get_linkforwd_inner_dev();
+	else
+		skb->dev = get_linkforwd_outter_dev(0);
+
+	qdisc_skb_cb(skb)->pkt_len = skb->len;
+
+	txq = netdev_pick_tx(skb->dev, skb, accel_priv);
 	q = rcu_dereference_bh(txq->qdisc);
 
 	if (q->enqueue)
-		rc = __dev_linkforward_queue_skb(skb, q);
+		rc = __dev_linkforward_queue_skb(skb, q, dir);
 
 	rcu_read_unlock_bh();
 

@@ -251,11 +251,13 @@ static void max77705_set_float_voltage(struct max77705_charger_data *charger,
 		// do not return here
 	}
 #endif
-	reg_data = float_voltage == 3800 ? 0x38 :
-			(float_voltage == 3900) ? 0x39 :
-			(float_voltage >= 4500) ? 0x23 :
-			(float_voltage <= 4200) ? (float_voltage - 4000) / 50 :
-			(((float_voltage - 4200) / 10) + 0x04);
+	reg_data =
+		(float_voltage == 0) ? 0x13 :
+		(float_voltage == 3800) ? 0x38 :
+		(float_voltage == 3900) ? 0x39 :
+	    (float_voltage >= 4500) ? 0x23 :
+	    (float_voltage <= 4200) ? (float_voltage - 4000) / 50 :
+	    (((float_voltage - 4200) / 10) + 0x04);
 
 	max77705_update_reg(charger->i2c, MAX77705_CHG_REG_CNFG_04,
 			    (reg_data << CHG_CNFG_04_CHG_CV_PRM_SHIFT),
@@ -837,7 +839,7 @@ static int max77705_set_otg(struct max77705_charger_data *charger, int enable)
 	} else {
 		/* OTG off(UNO on), boost off */
 		max77705_chg_set_mode_state(charger, SEC_BAT_CHG_MODE_OTG_OFF);
-		mdelay(50);
+		msleep(50);
 
 		/* enable charger interrupt */
 		max77705_write_reg(charger->i2c,
@@ -1173,7 +1175,7 @@ static void max77705_set_uno(struct max77705_charger_data *charger, int en)
 		charger->uno_on = false;
 		/* boost off */
 		max77705_chg_set_mode_state(charger, SEC_BAT_CHG_MODE_UNO_OFF);
-		mdelay(50);
+		msleep(50);
 
 		/* enable charger interrupt */
 		max77705_write_reg(charger->i2c, MAX77705_CHG_REG_INT_MASK,
@@ -1448,7 +1450,7 @@ static void max77705_chg_set_mode_state(struct max77705_charger_data *charger,
 		else if (state == SEC_BAT_CHG_MODE_OTG_ON) {
 			max77705_update_reg(charger->i2c, MAX77705_CHG_REG_CNFG_00,
 			    MAX77705_MODE_4_BUCK_ON, CHG_CNFG_00_MODE_MASK);
-			mdelay(1);
+			usleep_range(1000, 2000);
 			/* mode 0x4, and 1msec delay, and then otg on */
 			charger->cnfg00_mode = MAX77705_MODE_A_BOOST_OTG_ON;
 		}
@@ -1464,7 +1466,7 @@ static void max77705_chg_set_mode_state(struct max77705_charger_data *charger,
 		else if (state == SEC_BAT_CHG_MODE_UNO_ON) {
 			max77705_update_reg(charger->i2c, MAX77705_CHG_REG_CNFG_00,
 			    MAX77705_MODE_4_BUCK_ON, CHG_CNFG_00_MODE_MASK);
-			mdelay(1);
+			usleep_range(1000, 2000);
 			/* mode 0x4, and 1msec delay, and then uno on */
 			charger->cnfg00_mode = MAX77705_MODE_8_BOOST_UNO_ON;
 		}
@@ -1480,7 +1482,7 @@ static void max77705_chg_set_mode_state(struct max77705_charger_data *charger,
 		else if (state == SEC_BAT_CHG_MODE_OTG_ON) {
 			max77705_update_reg(charger->i2c, MAX77705_CHG_REG_CNFG_00,
 			    MAX77705_MODE_4_BUCK_ON, CHG_CNFG_00_MODE_MASK);
-			mdelay(1);
+			usleep_range(1000, 2000);
 			/* mode 0x4, and 1msec delay, and then otg on */
 			charger->cnfg00_mode = MAX77705_MODE_E_BUCK_BOOST_OTG_ON;
 		}
@@ -1496,7 +1498,7 @@ static void max77705_chg_set_mode_state(struct max77705_charger_data *charger,
 		else if (state == SEC_BAT_CHG_MODE_OTG_ON) {
 			max77705_update_reg(charger->i2c, MAX77705_CHG_REG_CNFG_00,
 			    MAX77705_MODE_4_BUCK_ON, CHG_CNFG_00_MODE_MASK);
-			mdelay(1);
+			usleep_range(1000, 2000);
 			/* mode 0x4, and 1msec delay, and then otg on */
 			charger->cnfg00_mode = MAX77705_MODE_E_BUCK_BOOST_OTG_ON;
 		}
@@ -1512,7 +1514,7 @@ static void max77705_chg_set_mode_state(struct max77705_charger_data *charger,
 		else if (state == SEC_BAT_CHG_MODE_UNO_ON) {
 			max77705_update_reg(charger->i2c, MAX77705_CHG_REG_CNFG_00,
 			    MAX77705_MODE_4_BUCK_ON, CHG_CNFG_00_MODE_MASK);
-			mdelay(1);
+			usleep_range(1000, 2000);
 			/* mode 0x4, and 1msec delay, and then uno on */
 			charger->cnfg00_mode = MAX77705_MODE_C_BUCK_BOOST_UNO_ON;
 		}
@@ -2518,15 +2520,17 @@ static int max77705_charger_probe(struct platform_device *pdev)
 	charger_cfg.drv_data = charger;
 	charger->psy_chg = power_supply_register(&pdev->dev,
 			 	 &max77705_charger_power_supply_desc, &charger_cfg);
-	if (!charger->psy_chg) {
-		pr_err("%s: Failed to Register psy_chg\n", __func__);
+	if (IS_ERR(charger->psy_chg)) {
+		ret = PTR_ERR(charger->psy_chg);
+		pr_err("%s: Failed to Register psy_chg(%d)\n", __func__, ret);
 		goto err_power_supply_register;
 	}
 
 	charger->psy_otg = power_supply_register(&pdev->dev,
 				  &otg_power_supply_desc, &charger_cfg);
-	if (!charger->psy_otg) {
-		pr_err("%s: Failed to Register otg_chg\n", __func__);
+	if (IS_ERR(charger->psy_otg)) {
+		ret = PTR_ERR(charger->psy_otg);
+		pr_err("%s: Failed to Register otg_chg(%d)\n", __func__, ret);
 		goto err_power_supply_register_otg;
 	}
 
@@ -2646,14 +2650,20 @@ static int max77705_charger_remove(struct platform_device *pdev)
 
 	destroy_workqueue(charger->wqueue);
 
+#if defined(CONFIG_SEC_FACTORY)
+	if (factory_mode) {
+		goto free_chg;
+	}
+#endif
+
 	if (charger->i2c) {
 		u8 reg_data;
 
 		reg_data = MAX77705_MODE_4_BUCK_ON;
 		max77705_write_reg(charger->i2c, MAX77705_CHG_REG_CNFG_00, reg_data);
-		reg_data = 0x0F;
+		reg_data = 0x13;
 		max77705_write_reg(charger->i2c, MAX77705_CHG_REG_CNFG_09, reg_data);
-		reg_data = 0x10;
+		reg_data = 0x13;
 		max77705_write_reg(charger->i2c, MAX77705_CHG_REG_CNFG_10, reg_data);
 		reg_data = 0x60;
 		max77705_write_reg(charger->i2c, MAX77705_CHG_REG_CNFG_12, reg_data);
@@ -2661,6 +2671,9 @@ static int max77705_charger_remove(struct platform_device *pdev)
 		pr_err("%s: no max77705 i2c client\n", __func__);
 	}
 
+#if defined(CONFIG_SEC_FACTORY)
+free_chg:
+#endif
 	if (charger->irq_sysovlo)
 		free_irq(charger->irq_sysovlo, charger);
 	if (charger->pdata->chg_irq)
@@ -2736,14 +2749,20 @@ static void max77705_charger_shutdown(struct platform_device *pdev)
 
 	pr_info("%s: ++\n", __func__);
 
+#if defined(CONFIG_SEC_FACTORY)
+	if (factory_mode) {
+		return;
+	}
+#endif
+
 	if (charger->i2c) {
 		u8 reg_data;
 
 		reg_data = MAX77705_MODE_4_BUCK_ON;
 		max77705_write_reg(charger->i2c, MAX77705_CHG_REG_CNFG_00, reg_data);
-		reg_data = 0x0F;
+		reg_data = 0x13;
 		max77705_write_reg(charger->i2c, MAX77705_CHG_REG_CNFG_09, reg_data);
-		reg_data = 0x10;
+		reg_data = 0x13;
 		max77705_write_reg(charger->i2c, MAX77705_CHG_REG_CNFG_10, reg_data);
 		reg_data = 0x60;
 		max77705_write_reg(charger->i2c, MAX77705_CHG_REG_CNFG_12, reg_data);

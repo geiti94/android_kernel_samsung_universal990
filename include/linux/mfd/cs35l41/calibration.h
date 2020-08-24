@@ -101,8 +101,10 @@ int cirrus_cal_component_add(struct snd_soc_component *component, const char *mf
 #endif /* CS35L41_FACTORY_RECOVERY_SYSFS */
 
 int cirrus_cal_amp_add(struct regmap *regmap_new, const char *mfd_suffix,
-					const char *dsp_part_name);
+					const char *dsp_part_name,
+					bool calibration_disable);
 int cirrus_cal_init(struct class *cirrus_amp_class, int num_amps,
-					const char **mfd_suffixes);
+					const char **mfd_suffixes,
+					bool *v_val_separate);
 void cirrus_cal_exit(void);
 

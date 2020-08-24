@@ -304,7 +304,9 @@ void sync_sensor_state(struct ssp_data *data)
 		send_instruction(data, ADD_SENSOR, PROXIMITY_RAW, uBuf, 4);
 	}
 
+#ifdef CONFIG_SENSORS_SSP_LIGHT_COLORID
 	initialize_light_colorid(data);
+#endif
 	set_proximity_threshold(data);
 	set_light_coef(data);
 
@@ -394,6 +396,10 @@ static void print_sensordata(struct ssp_data *data, unsigned int uSensor)
 	case PROXIMITY_SENSOR:
 		ssp_dbg("[SSP] %u : %d, %d (%ums)\n", uSensor,
 			data->buf[uSensor].prox_detect, data->buf[uSensor].prox_adc,
+			get_msdelay(data->adDelayBuf[uSensor]));
+		break;
+	case PROXIMITY_RAW:
+		ssp_dbg("[SSP] %u : %d (%ums)\n", uSensor, data->buf[uSensor].prox_raw[0],
 			get_msdelay(data->adDelayBuf[uSensor]));
 		break;
 	case PROXIMITY_POCKET:
@@ -560,6 +566,12 @@ static void debug_work_func(struct work_struct *work)
             pr_info("[SSP]: %s(%lld, %lld)\n", data->resetInfoDebug, data->resetInfoDebugTime, get_current_timestamp());
 
 	for (uSensorCnt = 0; uSensorCnt < SENSOR_MAX; uSensorCnt++) {
+		
+		if (data->bProximityRawEnabled && uSensorCnt == PROXIMITY_RAW) {
+			ssp_dbg("[SSP] %u : %d (%ums)\n", uSensorCnt, data->buf[uSensorCnt].prox_raw[0],
+				get_msdelay(data->adDelayBuf[uSensorCnt]));
+		}
+
 		if ((atomic64_read(&data->aSensorEnable) & (1ULL << uSensorCnt))
 			|| data->batchLatencyBuf[uSensorCnt]) {
 			print_sensordata(data, uSensorCnt);

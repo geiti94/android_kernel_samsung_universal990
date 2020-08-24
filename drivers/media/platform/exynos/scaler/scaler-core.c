@@ -3203,7 +3203,7 @@ static irqreturn_t sc_irq_handler(int irq, void *priv)
 
 	BUG_ON(!ctx);
 
-	__dbg_snapshot_printk("MSCL job done\n");
+	dbg_snapshot_printk("MSCL job done\n");
 
 	irq_status = sc_hwget_and_clear_irq_status(sc);
 

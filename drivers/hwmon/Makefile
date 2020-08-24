@@ -182,4 +182,4 @@ obj-$(CONFIG_SENSORS_SEC_THERMISTOR)	+= sec_thermistor.o
 obj-$(CONFIG_PMBUS)		+= pmbus/
 
 ccflags-$(CONFIG_HWMON_DEBUG_CHIP) := -DDEBUG
-
+ccflags-y := -Wformat

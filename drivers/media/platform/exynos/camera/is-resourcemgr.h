@@ -190,6 +190,8 @@ struct is_resourcemgr {
 	struct mutex				rsc_lock;
 	/* for sysreg setting */
 	struct mutex				sysreg_lock;
+	/* for qos setting */
+	struct mutex				qos_lock;
 
 	/* BTS */
 	struct is_bts_scen			*bts_scen;

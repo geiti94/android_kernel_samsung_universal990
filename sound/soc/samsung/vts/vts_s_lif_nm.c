@@ -52,6 +52,11 @@ int vts_s_lif_cfg_gpio(struct device *dev, const char *name)
 
 	dev_info(dev, "%s(%s)\n", __func__, name);
 
+	if (data->pinctrl == NULL) {
+		dev_err(dev, "pinctrl is NULL\n");
+		return -EBUSY;
+	}
+
 	pin_state = pinctrl_lookup_state(data->pinctrl, name);
 	if (IS_ERR(pin_state)) {
 		dev_err(dev, "Couldn't find pinctrl %s\n", name);

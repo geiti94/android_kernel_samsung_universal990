@@ -1782,7 +1782,7 @@ int sensor_3p9_cis_set_factory_control(struct v4l2_subdev *subdev, u32 command)
 		pr_info("[%s] FAC_CTRL_BIT_TEST\n", __func__);
 		ret |= is_sensor_write16(cis->client, 0xFCFC, 0x4000);
 		ret |= is_sensor_write16(cis->client, 0xF44A, 0x01FF); // TG 3.16v
-		msleep(1);
+		usleep_range(1000, 1100);
 		ret |= is_sensor_write16(cis->client, 0xF44A, 0x0004); // TG 2.43v -> 2.14v
 		msleep(50);
 		ret |= is_sensor_write16(cis->client, 0xF44C, 0x0009); // RG 3.61v -> 3.18v

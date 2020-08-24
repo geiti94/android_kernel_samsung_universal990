@@ -541,6 +541,11 @@ static void vts_cfg_gpio(struct device *dev, const char *name)
 
 	dev_info(dev, "%s(%s)\n", __func__, name);
 
+	if (data->pinctrl == NULL) {
+		dev_err(dev, "pinctrl is NULL\n");
+		return;
+	}
+
 	pin_state = pinctrl_lookup_state(data->pinctrl, name);
 	if (IS_ERR(pin_state)) {
 		dev_err(dev, "Couldn't find pinctrl %s\n", name);
@@ -1700,6 +1705,11 @@ static irqreturn_t vts_record_period_elapsed_handler(int irq, void *dev_id)
 	struct vts_platform_data *platform_data = platform_get_drvdata(data->pdev_vtsdma[1]);
 	u32 pointer;
 
+	if(data->vts_state == VTS_STATE_RUNTIME_SUSPENDING || data->vts_state == VTS_STATE_RUNTIME_SUSPENDED ||
+		data->vts_state == VTS_STATE_NONE) {
+		dev_warn(dev, "%s: VTS wrong state\n", __func__);
+		return IRQ_HANDLED;
+	}
 	if (data->mic_ready & (0x1 << VTS_MICCONF_FOR_RECORD)) {
 		vts_mailbox_read_shared_register(data->pdev_mailbox,
 						 &pointer, 1, 1);
@@ -1970,9 +1980,11 @@ void vts_dbg_dump_fw_gpr(struct device *dev, struct vts_data *data,
 	} else if (dbg_type == KERNEL_PANIC_DUMP || dbg_type == VTS_FW_NOT_READY ||
 			dbg_type == VTS_IPC_TRANS_FAIL || dbg_type == VTS_FW_ERROR ||
 			dbg_type == VTS_ITMON_ERROR) {
-		if (dbg_type == KERNEL_PANIC_DUMP && !data->running) {
-			dev_info(dev, "%s is skipped due to not running\n", __func__);
-			return;
+		if (dbg_type == KERNEL_PANIC_DUMP || dbg_type == VTS_ITMON_ERROR) {
+			if(!data->running) {
+				dev_info(dev, "%s is skipped due to not running\n", __func__);
+				return;
+			}
 		}
 
 		for (i = 0; i <= 14; i++)
@@ -2858,11 +2870,16 @@ static int samsung_vts_probe(struct platform_device *pdev)
 	mutex_init(&data->ipc_mutex);
 	wake_lock_init(&data->wake_lock, WAKE_LOCK_SUSPEND, "vts");
 
-	data->pinctrl = devm_pinctrl_get(dev);
-	if (IS_ERR(data->pinctrl)) {
-		dev_err(dev, "Couldn't get pins (%li)\n",
-				PTR_ERR(data->pinctrl));
-		return PTR_ERR(data->pinctrl);
+	if (data->pinctrl == NULL) {
+		data->pinctrl = devm_pinctrl_get(dev);
+		if (IS_ERR(data->pinctrl)) {
+			dev_err(dev, "Couldn't get pins (%li)\n",
+					PTR_ERR(data->pinctrl));
+			return PTR_ERR(data->pinctrl);
+		}
+	} else {
+		dev_err(dev, "pinctrl is not NULL\n");
+		data->pinctrl = NULL;
 	}
 
 	data->sfr_base = samsung_vts_devm_request_and_map(pdev, "sfr", NULL);

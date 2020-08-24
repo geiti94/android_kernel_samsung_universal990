@@ -1,7 +1,7 @@
 /*
  * EVENT_LOG system definitions
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _EVENT_LOG_H_
@@ -47,7 +47,7 @@
 #define EVENT_LOG_PSM_BLOCK_SIZE	0x200
 #define EVENT_LOG_MEM_API_BLOCK_SIZE	0x200
 #define EVENT_LOG_BUS_BLOCK_SIZE	0x200
-#define EVENT_LOG_ERROR_BLOCK_SIZE	0x200
+#define EVENT_LOG_ERROR_BLOCK_SIZE	0x400
 #define EVENT_LOG_MSCH_BLOCK_SIZE	0x400
 #define EVENT_LOG_WBUS_BLOCK_SIZE	0x100
 #define EVENT_LOG_PRSV_PERIODIC_BLOCK_SIZE (0x200u)

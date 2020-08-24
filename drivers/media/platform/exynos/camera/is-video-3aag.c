@@ -849,7 +849,7 @@ static void is_3xg_buffer_queue(struct vb2_buffer *vb)
 
 static void is_3xg_buffer_finish(struct vb2_buffer *vb)
 {
-	int ret = 0;
+	int ret;
 	struct is_video_ctx *vctx;
 	struct is_device_ischain *device;
 	struct is_subdev *subdev;
@@ -865,13 +865,11 @@ static void is_3xg_buffer_finish(struct vb2_buffer *vb)
 
 	subdev = &device->txg;
 
-	is_queue_buffer_finish(vb);
-
 	ret = is_subdev_buffer_finish(subdev, vb);
-	if (ret) {
+	if (ret)
 		merr("is_subdev_buffer_finish is fail(%d)", device, ret);
-		return;
-	}
+
+	is_queue_buffer_finish(vb);
 }
 
 const struct vb2_ops is_3xg_qops = {

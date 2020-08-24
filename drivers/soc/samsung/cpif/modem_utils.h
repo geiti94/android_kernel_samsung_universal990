@@ -537,7 +537,7 @@ int argos_task_affinity_setup_label(struct task_struct *p, const char *label,
 		struct cpumask *default_cpu_mask);
 #endif
 
-void mif_set_snapshot(bool enable);
+void mif_stop_logging(void);
 void set_wakeup_packet_log(bool enable);
 
 /* MIF buffer management */
@@ -550,7 +550,11 @@ void set_wakeup_packet_log(bool enable);
  * sizeof(struct skb_shared_info): 512
  * 2048 + 512 = 2560 (0xA00)
  */
+#ifdef CONFIG_CP_JUMBO_4K_WA
+#define MIF_BUFF_DEFAULT_CELL_SIZE	(4096 + 512)
+#else
 #define MIF_BUFF_DEFAULT_CELL_SIZE	(2048 + 512)
+#endif
 #define MIF_BUFF_MAP_CELL_SIZE	(sizeof(uint64_t))
 #define MIF_BITS_FOR_BYTE	(8)
 #define MIF_BITS_FOR_MAP_CELL	(MIF_BUFF_MAP_CELL_SIZE * MIF_BITS_FOR_BYTE)
@@ -627,6 +631,10 @@ int update_rmnet_status(struct io_device *iod, bool open);
 struct io_device *get_current_rmnet_tx_iod(u8 ch);
 void reset_cp_upload_cnt(void);
 bool check_cp_upload_cnt(void);
+#endif
+
+#ifdef CONFIG_USB_CONFIGFS_F_MBIM
+void mif_queue_skb(struct sk_buff *skb, int dir);
 #endif
 
 #endif/*__MODEM_UTILS_H__*/

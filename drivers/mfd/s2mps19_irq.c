@@ -200,7 +200,7 @@ static irqreturn_t s2mps19_irq_thread(int irq, void *data)
 		return IRQ_NONE;
 	}
 
-	pr_info("%s: interrupt source(0x%02x)\n", __func__, irq_src);
+	pr_info("%s: interrupt source(0x%02hhx)\n", __func__, irq_src);
 
 	if (irq_src & S2MPS19_IRQSRC_PMIC) {
 		/* PMIC_INT */
@@ -212,7 +212,8 @@ static irqreturn_t s2mps19_irq_thread(int irq, void *data)
 			return IRQ_NONE;
 		}
 
-		pr_info("%s: pmic interrupt(0x%02x, 0x%02x, 0x%02x, 0x%02x, 0x%02x, 0x%02x, 0x%02x)\n",
+		pr_info("%s: pmic interrupt(0x%02hhx, 0x%02hhx, "
+			"0x%02hhx, 0x%02hhx, 0x%02hhx, 0x%02hhx, 0x%02hhx)\n",
 			 __func__, irq_reg[S2MPS19_PMIC_INT1], irq_reg[S2MPS19_PMIC_INT2],
 			 irq_reg[S2MPS19_PMIC_INT3], irq_reg[S2MPS19_PMIC_INT4],
 			 irq_reg[S2MPS19_PMIC_INT5], irq_reg[S2MPS19_PMIC_INT6],
@@ -310,7 +311,7 @@ int s2mps19_irq_init(struct s2mps19_dev *s2mps19)
 	s2mps19_write_reg(s2mps19->i2c, S2MPS19_PMIC_REG_INTSRC_MASK,
 			   i2c_data);
 
-	pr_info("%s:%s s2mps19_PMIC_REG_INTSRC_MASK=0x%02x\n",
+	pr_info("%s:%s s2mps19_PMIC_REG_INTSRC_MASK=0x%02hhx\n",
 			MFD_DEV_NAME, __func__, i2c_data);
 
 	ret = request_threaded_irq(s2mps19->irq, NULL, s2mps19_irq_thread,

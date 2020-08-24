@@ -391,9 +391,13 @@ static void __save_error_info(struct super_block *sb, const char *func,
 	le32_add_cpu(&es->s_error_count, 1);
 }
 
+extern int ignore_fs_panic;
+
 static void save_error_info(struct super_block *sb, const char *func,
 			    unsigned int line)
 {
+	if (unlikely(ignore_fs_panic))
+		return;
 	__save_error_info(sb, func, line);
 	ext4_commit_super(sb, 1);
 }
@@ -442,8 +446,6 @@ static bool system_going_down(void)
 	return system_state == SYSTEM_HALT || system_state == SYSTEM_POWER_OFF
 		|| system_state == SYSTEM_RESTART;
 }
-
-extern int ignore_fs_panic;
 
 /* Deal with the reporting of failure conditions on a filesystem such as
  * inconsistencies detected or read IO failures.
@@ -4471,23 +4473,6 @@ no_journal:
 			goto failed_mount_wq;
 	}
 
-	if (ext4_r_blocks_count(es)) {
-		ext4_msg(sb, KERN_INFO, "Root reserved blocks %llu",
-				ext4_r_blocks_count(es) >> sbi->s_cluster_bits);
-	}
-
-	if (ext4_sec_r_blocks_count(es))
-		ext4_msg(sb, KERN_INFO, "SEC reserved blocks %llu",
-				ext4_sec_r_blocks_count(es) >>
-				sbi->s_cluster_bits);
-
-	if (strcmp(es->s_volume_name, "data") == 0) {
-		sbi->s_r_inodes_count = EXT4_DEF_RESERVE_INODE;
-		ext4_msg(sb, KERN_INFO, "Reserve inodes (%d/%u)",
-				EXT4_DEF_RESERVE_INODE,
-				le32_to_cpu(es->s_inodes_count));
-	}
-
 	/*
 	 * The maximum number of concurrent works can be high and
 	 * concurrency isn't really necessary.  Limit it to 1.
@@ -5614,10 +5599,8 @@ static int ext4_statfs(struct dentry *dentry, struct kstatfs *buf)
 	/* prevent underflow in case that few free space is available */
 	buf->f_bfree = EXT4_C2B(sbi, max_t(s64, bfree, 0));
 	buf->f_bavail = buf->f_bfree -
-			(ext4_r_blocks_count(es) + resv_blocks +
-			 ext4_sec_r_blocks_count(es));
-	if (buf->f_bfree < (ext4_r_blocks_count(es) + resv_blocks +
-				ext4_sec_r_blocks_count(es)))
+			(ext4_r_blocks_count(es) + resv_blocks);
+	if (buf->f_bfree < (ext4_r_blocks_count(es) + resv_blocks))
 		buf->f_bavail = 0;
 	buf->f_files = le32_to_cpu(es->s_inodes_count);
 	buf->f_ffree = percpu_counter_sum_positive(&sbi->s_freeinodes_counter);

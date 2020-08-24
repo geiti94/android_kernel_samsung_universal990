@@ -1,7 +1,7 @@
 /*
  * Fundamental types and constants relating to 802.11
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _802_11_H_
@@ -39,6 +39,7 @@
 #include <packed_section_start.h>
 
 #define DOT11_TU_TO_US			1024	/* 802.11 Time Unit is 1024 microseconds */
+#define DOT11_SEC_TO_TU			977u	/* 1000000 / DOT11_TU_TO_US = ~977 TU */
 
 /* Generic 802.11 frame constants */
 #define DOT11_A3_HDR_LEN		24	/* d11 header length with A3 */
@@ -598,7 +599,7 @@ BWL_PRE_PACKED_STRUCT struct dot11_rejected_groups_ie {
 	uint8 id;	/* DOT11_MNG_EXT_ID */
 	uint8 len;
 	uint8 id_ext; /* DOT11_MNG_REJECTED_GROUPS_ID */
-	uint16 groups[0];
+	uint16 groups[];
 } BWL_POST_PACKED_STRUCT;
 typedef struct dot11_rejected_groups_ie dot11_rejected_groups_ie_t;
 
@@ -1240,6 +1241,8 @@ typedef struct ccx_qfl_ie ccx_qfl_ie_t;
 
 /* DUR/ID field in assoc resp is 0xc000 | AID */
 #define DOT11_AID_MASK			0x3fff	/* d11 AID mask */
+#define DOT11_AID_OCTET_VAL_SHIFT		3u	/* AID octet value shift */
+#define DOT11_AID_BIT_POS_IN_OCTET		0x07	/* AID bit position in octet */
 
 /* Reason Codes */
 #define DOT11_RC_RESERVED		0	/* d11 RC reserved */
@@ -1432,6 +1435,9 @@ typedef struct ccx_qfl_ie ccx_qfl_ie_t;
 #define DOT11_MNG_TIM_BITMAP_CTL		2	/* d11 management TIM BITMAP control  */
 #define DOT11_MNG_TIM_PVB			3	/* d11 management TIM PVB */
 
+#define DOT11_MNG_TIM_BITMAP_CTL_BCMC_MASK	0x01	/* Mask for bcmc bit in tim bitmap ctrl */
+#define DOT11_MNG_TIM_BITMAP_CTL_PVBOFF_MASK	0xFE	/* Mask for partial virtual bitmap */
+
 /* TLV defines */
 #define TLV_TAG_OFF		0	/* tag offset */
 #define TLV_LEN_OFF		1	/* length offset */
@@ -1575,9 +1581,10 @@ typedef struct ccx_qfl_ie ccx_qfl_ie_t;
 #define DOT11_MNG_SRPS_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_SRPS_ID)
 #define EXT_MNG_BSSCOLOR_CHANGE_ID		42u	/* BSS Color Change Announcement */
 #define DOT11_MNG_BSSCOLOR_CHANGE_ID		(DOT11_MNG_ID_EXT_ID + EXT_MNG_BSSCOLOR_CHANGE_ID)
+#define EXT_MNG_SHORT_SSID_ID			58u	/* SHORT SSID ELEMENT */
+#define DOT11_MNG_SHORT_SSID_LIST_ID		(DOT11_MNG_ID_EXT_ID + EXT_MNG_SHORT_SSID_ID)
 #define EXT_MNG_HE_6G_CAP_ID			59u	/* HE Extended Capabilities, 11ax */
 #define DOT11_MNG_HE_6G_CAP_ID			(DOT11_MNG_ID_EXT_ID + EXT_MNG_HE_6G_CAP_ID)
-
 /* FILS and OCE ext ids */
 #define FILS_EXTID_MNG_REQ_PARAMS		2u	/* FILS Request Parameters element */
 #define DOT11_MNG_FILS_REQ_PARAMS		(DOT11_MNG_ID_EXT_ID + FILS_EXTID_MNG_REQ_PARAMS)
@@ -1599,10 +1606,11 @@ typedef struct ccx_qfl_ie ccx_qfl_ie_t;
 #define DOT11_MNG_ESP				(DOT11_MNG_ID_EXT_ID + OCE_EXTID_MNG_ESP_ID)
 #define FILS_EXTID_MNG_NONCE_ID			13u	/* FILS Nonce element */
 #define DOT11_MNG_FILS_NONCE			(DOT11_MNG_ID_EXT_ID + FILS_EXTID_MNG_NONCE_ID)
-
-/* FIXME: Use these temporary IDs until ANA assigns IDs */
-#define EXT_REJECTED_GROUPS_ID			14u /* Rejected Groups element */
-#define DOT11_MNG_REJECTED_GROUPS_ID		(DOT11_MNG_ID_EXT_ID + EXT_REJECTED_GROUPS_ID)
+#define SAE_EXT_REJECTED_GROUPS_ID		92u	/* SAE Rejected Groups element */
+#define DOT11_MNG_REJECTED_GROUPS_ID		(DOT11_MNG_ID_EXT_ID + SAE_EXT_REJECTED_GROUPS_ID)
+#define SAE_EXT_ANTICLOG_TOKEN_CONTAINER_ID	93u	/* SAE Anti-clogging token container */
+#define DOT11_MNG_ANTICLOG_TOKEN_CONTAINER_ID	(DOT11_MNG_ID_EXT_ID +\
+		SAE_EXT_ANTICLOG_TOKEN_CONTAINER_ID)
 
 /* deprecated definitions, do not use, to be deleted later */
 #define FILS_HLP_CONTAINER_EXT_ID	FILS_EXTID_MNG_HLP_CONTAINER_ID
@@ -3871,7 +3879,7 @@ enum {
 };
 
 /* Action frame type for vendor specific action frames */
-#define	VS_AF_TYPE	16
+#define	VS_AF_TYPE	221
 
 /*
  * This BRCM_PROP_OUI types is intended for use in events to embed additional
@@ -5427,6 +5435,17 @@ BWL_PRE_PACKED_STRUCT struct hs20_ie {
 } BWL_POST_PACKED_STRUCT;
 typedef struct hs20_ie hs20_ie_t;
 #define HS20_IE_LEN 5	/* HS20 IE length */
+
+/* Short SSID list Extended Capabilities element */
+BWL_PRE_PACKED_STRUCT struct short_ssid_list_ie {
+	uint8 id;
+	uint8 len;
+	uint8 id_ext;
+	uint8 data[1];    /* Capabilities Information */
+} BWL_POST_PACKED_STRUCT;
+
+typedef struct short_ssid_list_ie short_ssid_list_ie_t;
+#define SHORT_SSID_LIST_IE_FIXED_LEN	3	/* SHORT SSID LIST IE LENGTH */
 
 /** IEEE 802.11 Annex E */
 typedef enum {

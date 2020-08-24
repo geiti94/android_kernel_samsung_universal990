@@ -509,6 +509,7 @@ static int abox_rdma_compr_open(struct snd_compr_stream *stream)
 	pm_runtime_get_sync(dev);
 	abox_request_cpu_gear_dai(dev, abox_data, rtd->cpu_dai,
 			abox_data->cpu_gear_min);
+	abox_set_system_state(abox_data, SYSTEM_OFFLOAD, true);
 
 	return 0;
 }
@@ -563,6 +564,7 @@ static int abox_rdma_compr_free(struct snd_compr_stream *stream)
 #endif
 }
 #endif
+	abox_set_system_state(abox_data, SYSTEM_OFFLOAD, false);
 	abox_request_cpu_gear_dai(dev, abox_data, rtd->cpu_dai, 0);
 	pm_runtime_mark_last_busy(dev);
 	pm_runtime_put(dev);
@@ -1267,6 +1269,13 @@ static void abox_rdma_disable_barrier(struct device *dev,
 	}
 }
 
+static int abox_rdma_backend(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+
+	return (rtd->cpu_dai->id >= ABOX_RDMA0_BE);
+}
+
 static int abox_rdma_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params)
 {
@@ -1285,6 +1294,10 @@ static int abox_rdma_hw_params(struct snd_pcm_substream *substream,
 	ABOX_IPC_MSG msg;
 	struct IPC_PCMTASK_MSG *pcmtask_msg = &msg.msg.pcmtask;
 
+	if (abox_rdma_backend(substream) && !abox_dma_can_params(substream)) {
+		dev_info(dev, "%s skip\n", __func__);
+		return 0;
+	}
 	dev_dbg(dev, "%s\n", __func__);
 
 	data->hw_params = *params;
@@ -1313,7 +1326,7 @@ static int abox_rdma_hw_params(struct snd_pcm_substream *substream,
 		dev_err(dev, "buf_type is not defined\n");
 	}
 
-	if (cpu_dai->id < ABOX_RDMA0_BE) {
+	if (!abox_rdma_backend(substream)) {
 		snd_pcm_set_runtime_buffer(substream, &data->dmab);
 		runtime->dma_bytes = params_buffer_bytes(params);
 	} else {
@@ -1322,7 +1335,7 @@ static int abox_rdma_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	sbank_size = abox_cmpnt_adjust_sbank(data->abox_data,
-			rtd->cpu_dai->id, params);
+			cpu_dai->id, params);
 	if (sbank_size > 0 && sbank_size < SZ_128)
 		burst_len = 0x1;
 	else
@@ -1358,15 +1371,15 @@ static int abox_rdma_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 
 	if (params_rate(params) > 48000)
-		abox_request_cpu_gear_dai(dev, abox_data, rtd->cpu_dai,
+		abox_request_cpu_gear_dai(dev, abox_data, cpu_dai,
 				abox_data->cpu_gear_min - 1);
 
 	freq = data->pm_qos_cl0[abox_get_rate_type(params_rate(params))];
-	abox_request_cl0_freq_dai(dev, rtd->cpu_dai, freq);
+	abox_request_cl0_freq_dai(dev, cpu_dai, freq);
 	freq = data->pm_qos_cl1[abox_get_rate_type(params_rate(params))];
-	abox_request_cl1_freq_dai(dev, rtd->cpu_dai, freq);
+	abox_request_cl1_freq_dai(dev, cpu_dai, freq);
 	freq = data->pm_qos_cl2[abox_get_rate_type(params_rate(params))];
-	abox_request_cl2_freq_dai(dev, rtd->cpu_dai, freq);
+	abox_request_cl2_freq_dai(dev, cpu_dai, freq);
 
 	dev_info(dev, "%s:Total=%u PrdSz=%u(%u) #Prds=%u rate=%u, width=%d, channels=%u\n",
 			snd_pcm_stream_str(substream),
@@ -1388,15 +1401,19 @@ static int abox_rdma_hw_free(struct snd_pcm_substream *substream)
 	ABOX_IPC_MSG msg;
 	struct IPC_PCMTASK_MSG *pcmtask_msg = &msg.msg.pcmtask;
 
+	if (abox_rdma_backend(substream) && !abox_dma_can_free(substream)) {
+		dev_dbg(dev, "%s skip\n", __func__);
+		return 0;
+	}
 	dev_dbg(dev, "%s\n", __func__);
 
 	msg.ipcid = IPC_PCMPLAYBACK;
 	pcmtask_msg->msgtype = PCM_PLTDAI_HW_FREE;
 	msg.task_id = pcmtask_msg->channel_id = id;
 	abox_rdma_request_ipc(data, &msg, 0, 0);
-	abox_request_cl0_freq_dai(dev, rtd->cpu_dai, 0);
-	abox_request_cl1_freq_dai(dev, rtd->cpu_dai, 0);
-	abox_request_cl2_freq_dai(dev, rtd->cpu_dai, 0);
+	abox_request_cl0_freq_dai(dev, cpu_dai, 0);
+	abox_request_cl1_freq_dai(dev, cpu_dai, 0);
+	abox_request_cl2_freq_dai(dev, cpu_dai, 0);
 
 	switch (data->type) {
 	default:
@@ -1421,6 +1438,10 @@ static int abox_rdma_prepare(struct snd_pcm_substream *substream)
 	ABOX_IPC_MSG msg;
 	struct IPC_PCMTASK_MSG *pcmtask_msg = &msg.msg.pcmtask;
 
+	if (abox_rdma_backend(substream) && !abox_dma_can_prepare(substream)) {
+		dev_dbg(dev, "%s skip\n", __func__);
+		return 0;
+	}
 	dev_dbg(dev, "%s\n", __func__);
 
 	ret = abox_cmpnt_sifsm_prepare(dev, data->abox_data, data->dai_drv->id);
@@ -1428,6 +1449,11 @@ static int abox_rdma_prepare(struct snd_pcm_substream *substream)
 		return ret;
 
 	data->pointer = IOVA_RDMA_BUFFER(id);
+
+	/* set auto fade in before dma enable */
+	snd_soc_component_update_bits(data->cmpnt, DMA_REG_CTRL,
+			ABOX_DMA_AUTO_FADE_IN_MASK,
+			data->auto_fade_in ? ABOX_DMA_AUTO_FADE_IN_MASK : 0);
 
 	msg.ipcid = IPC_PCMPLAYBACK;
 	pcmtask_msg->msgtype = PCM_PLTDAI_PREPARE;
@@ -1447,7 +1473,7 @@ static int abox_rdma_trigger(struct snd_pcm_substream *substream, int cmd)
 	ABOX_IPC_MSG msg;
 	struct IPC_PCMTASK_MSG *pcmtask_msg = &msg.msg.pcmtask;
 
-	dev_info(dev, "%s(%d)\n", __func__, cmd);
+	dev_dbg(dev, "%s(%d)\n", __func__, cmd);
 
 	msg.ipcid = IPC_PCMPLAYBACK;
 	pcmtask_msg->msgtype = PCM_PLTDAI_TRIGGER;
@@ -1457,12 +1483,24 @@ static int abox_rdma_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		if (abox_rdma_backend(substream) &&
+				!abox_dma_can_start(substream)) {
+			dev_info(dev, "%s(%d) skip\n", __func__, cmd);
+			return 0;
+		}
+		dev_info(dev, "%s(%d)\n", __func__, cmd);
 		pcmtask_msg->param.trigger = 1;
 		ret = abox_rdma_request_ipc(data, &msg, 1, 0);
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		if (abox_rdma_backend(substream) &&
+				!abox_dma_can_stop(substream)) {
+			dev_info(dev, "%s(%d) skip\n", __func__, cmd);
+			return 0;
+		}
+		dev_info(dev, "%s(%d)\n", __func__, cmd);
 		pcmtask_msg->param.trigger = 0;
 		ret = abox_rdma_request_ipc(data, &msg, 1, 0);
 		switch (data->type) {
@@ -1476,6 +1514,7 @@ static int abox_rdma_trigger(struct snd_pcm_substream *substream, int cmd)
 		}
 		break;
 	default:
+		dev_info(dev, "%s(%d)\n", __func__, cmd);
 		ret = -EINVAL;
 		break;
 	}
@@ -1546,6 +1585,10 @@ static int abox_rdma_open(struct snd_pcm_substream *substream)
 	ABOX_IPC_MSG msg;
 	struct IPC_PCMTASK_MSG *pcmtask_msg = &msg.msg.pcmtask;
 
+	if (abox_rdma_backend(substream) && !abox_dma_can_open(substream)) {
+		dev_info(dev, "%s skip\n", __func__);
+		return 0;
+	}
 	dev_info(dev, "%s\n", __func__);
 
 	abox_wait_restored(abox_data);
@@ -1587,6 +1630,10 @@ static int abox_rdma_close(struct snd_pcm_substream *substream)
 	ABOX_IPC_MSG msg;
 	struct IPC_PCMTASK_MSG *pcmtask_msg = &msg.msg.pcmtask;
 
+	if (abox_rdma_backend(substream) && !abox_dma_can_close(substream)) {
+		dev_info(dev, "%s skip\n", __func__);
+		return 0;
+	}
 	dev_info(dev, "%s\n", __func__);
 
 	data->substream = NULL;
@@ -1633,10 +1680,13 @@ static int abox_rdma_mmap(struct snd_pcm_substream *substream,
 	abox_request_cpu_gear_dai(dev, abox_data, rtd->cpu_dai,
 			abox_data->cpu_gear_min - 1);
 
-	return dma_mmap_writecombine(dev, vma,
-			runtime->dma_area,
-			runtime->dma_addr,
-			runtime->dma_bytes);
+	if (data->buf_type == BUFFER_TYPE_ION)
+		return dma_buf_mmap(data->ion_buf->dma_buf, vma, 0);
+	else
+		return dma_mmap_writecombine(dev, vma,
+				runtime->dma_area,
+				runtime->dma_addr,
+				runtime->dma_bytes);
 }
 
 static int abox_rdma_ack(struct snd_pcm_substream *substream)
@@ -1922,15 +1972,16 @@ static const struct snd_kcontrol_new abox_rdma_controls[] = {
 			abox_dma_hw_params_get, abox_dma_hw_params_put),
 	SOC_SINGLE_EXT("Channel", DMA_CHANNEL, 0, 8, 0,
 			abox_dma_hw_params_get, abox_dma_hw_params_put),
-	SOC_SINGLE_EXT("Period", DMA_PERIOD, 0, UINT_MAX, 0,
+	SOC_SINGLE_EXT("Period", DMA_PERIOD, 0, INT_MAX, 0,
 			abox_dma_hw_params_get, abox_dma_hw_params_put),
-	SOC_SINGLE_EXT("Periods", DMA_PERIODS, 0, UINT_MAX, 0,
+	SOC_SINGLE_EXT("Periods", DMA_PERIODS, 0, INT_MAX, 0,
 			abox_dma_hw_params_get, abox_dma_hw_params_put),
 	SOC_SINGLE_EXT("Packed", DMA_PACKED, 0, 1, 0,
 			abox_dma_hw_params_get, abox_dma_hw_params_put),
 	SOC_SINGLE("Dummy Start", DMA_REG_CTRL0, ABOX_DMA_DUMMY_START_L, 1, 0),
-	SOC_SINGLE("Auto Fade In", DMA_REG_CTRL0,
-			ABOX_DMA_AUTO_FADE_IN_L, 1, 0),
+	SOC_SINGLE_EXT("Auto Fade In", DMA_REG_CTRL0,
+			ABOX_DMA_AUTO_FADE_IN_L, 1, 0,
+			abox_dma_auto_fade_in_get, abox_dma_auto_fade_in_put),
 	SOC_SINGLE("Vol Factor", DMA_REG_VOL_FACTOR,
 			ABOX_DMA_VOL_FACTOR_L, 0xffffff, 0),
 	SOC_SINGLE("Vol Change", DMA_REG_VOL_CHANGE,

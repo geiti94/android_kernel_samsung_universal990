@@ -30,6 +30,7 @@
 #include <linux/of_platform.h>
 #include "../../soc/samsung/cal-if/acpm_dvfs.h"
 #include <soc/samsung/exynos-pd.h>
+#include <soc/samsung/exynos-bcm_dbg.h>
 
 #include <soc/samsung/exynos-devfreq.h>
 #include <soc/samsung/ect_parser.h>
@@ -57,6 +58,22 @@ static struct exynos_devfreq_data **devfreq_data;
 
 static u32 freq_array[6];
 static u32 boot_array[2];
+
+#if defined(CONFIG_ARM_EXYNOS_DEVFREQ_DISABLE_BOOT_LOCK)
+/*
+ * disable exynos devfreq boot qos lock
+ */
+static int devfreq_disable_boot_qos;
+static int __init get_devfreq_boot_disable(char *str)
+{
+	int disable_idx;
+
+	if (get_option(&str, &disable_idx))
+		devfreq_disable_boot_qos = disable_idx;
+	return 0;
+}
+early_param("flexable.devboot", get_devfreq_boot_disable);
+#endif
 
 #ifdef CONFIG_EXYNOS_ALT_DVFS
 static struct srcu_notifier_head exynos_alt_notifier;
@@ -1403,6 +1420,7 @@ static int exynos_devfreq_parse_dt(struct device_node *np, struct exynos_devfreq
 	const char *pd_name;
 	const char *update_fvp;
 	const char *use_dtm;
+	const char *use_migov;
 	int ntokens;
 	int not_using_ect = true;
 
@@ -1461,6 +1479,13 @@ static int exynos_devfreq_parse_dt(struct device_node *np, struct exynos_devfreq
 	} else {
 		data->boot_qos_timeout = boot_array[0];
 		data->boot_freq = boot_array[1];
+
+#if defined(CONFIG_ARM_EXYNOS_DEVFREQ_DISABLE_BOOT_LOCK)
+		if (devfreq_disable_boot_qos) {
+			dev_info(data->dev, "%s skip boot qos lock\n", devfreq_domain_name);
+			data->boot_qos_timeout = 0;
+		}
+#endif
 	}
 
 	if (of_property_read_u32(np, "governor", &data->gov_type))
@@ -1694,6 +1719,17 @@ static int exynos_devfreq_parse_dt(struct device_node *np, struct exynos_devfreq
 		data->use_dtm = false;
 	}
 
+	if (!of_property_read_string(np, "use_migov", &use_migov)) {
+		if (!strcmp(use_migov, "true")) {
+			data->profile = kzalloc(sizeof(struct exynos_devfreq_profile), GFP_KERNEL);
+			dev_info(data->dev, "This domain controlled by MIGOV\n");
+		} else {
+			data->profile = NULL;
+		}
+	} else {
+		data->profile = NULL;
+	}
+
 #ifdef CONFIG_EXYNOS_DVFS_MANAGER
 	if (of_property_read_u32(np, "dm-index", &data->dm_type)) {
 		dev_err(data->dev, "not support dvfs manager\n");
@@ -1785,6 +1821,75 @@ static int exynos_devfreq_notifier(struct notifier_block *nb, unsigned long val,
 }
 
 #endif
+
+void exynos_devfreq_get_freq_infos(unsigned int devfreq_type, struct exynos_devfreq_freq_infos *infos)
+{
+	struct exynos_devfreq_data *data = devfreq_data[devfreq_type];
+
+	infos->max_freq = data->max_freq;
+	infos->min_freq = data->min_freq;
+	infos->cur_freq = &data->old_freq;
+	infos->pm_qos_class = data->pm_qos_class;
+	infos->pm_qos_class_max = data->pm_qos_class_max;
+	infos->max_state = data->max_state;
+}
+EXPORT_SYMBOL(exynos_devfreq_get_freq_infos);
+
+static int exynos_devfreq_update_profile(struct exynos_devfreq_data *data, int prev_lev);
+
+void exynos_devfreq_get_profile(unsigned int devfreq_type, ktime_t **time_in_state, u64 **tables)
+{
+	struct exynos_devfreq_data *data = devfreq_data[devfreq_type];
+	u32 max_state = data->max_state;
+
+	mutex_lock(&data->lock);
+
+	exynos_devfreq_update_profile(data, exynos_devfreq_get_opp_idx(data->opp_list, data->max_state, data->old_freq));
+
+	memcpy(time_in_state[0], data->profile->active_time_in_state, sizeof(ktime_t) * max_state);
+	memcpy(time_in_state[1], data->profile->time_in_state, sizeof(ktime_t) * max_state);
+	memcpy(tables[0], data->profile->freq_stats[0], sizeof(u64) * max_state);
+	memcpy(tables[1], data->profile->freq_stats[1], sizeof(u64) * max_state);
+	memcpy(tables[2], data->profile->freq_stats[2], sizeof(u64) * max_state);
+	memcpy(tables[3], data->profile->freq_stats[3], sizeof(u64) * max_state);
+
+	mutex_unlock(&data->lock);
+}
+EXPORT_SYMBOL(exynos_devfreq_get_profile);
+
+static int exynos_devfreq_update_profile(struct exynos_devfreq_data *data, int prev_lev)
+{
+	struct exynos_devfreq_profile *profile = data->profile;
+	u64 freq_stats0, freq_stats1, freq_stats2, freq_stats3;
+	ktime_t cur_time, cur_active;
+
+	exynos_bcm_get_data(&freq_stats0, &freq_stats2, &freq_stats3, &freq_stats1);
+
+	cur_active = exynos_devfreq_get_ppc_status(data);
+
+	cur_time = ktime_get();
+
+	profile->time_in_state[prev_lev] += cur_time - profile->last_time_in_state;
+	profile->last_time_in_state = cur_time;
+
+	profile->active_time_in_state[prev_lev] += cur_active;
+	profile->last_active_time_in_state = cur_active;
+
+	profile->freq_stats[0][prev_lev] += freq_stats0 - profile->last_freq_stats[0];
+	profile->last_freq_stats[0] = freq_stats0;
+
+	profile->freq_stats[1][prev_lev] += freq_stats1 - profile->last_freq_stats[1];
+	profile->last_freq_stats[1] = freq_stats1;
+
+	profile->freq_stats[2][prev_lev] += freq_stats2 - profile->last_freq_stats[2];
+	profile->last_freq_stats[2] = freq_stats2;
+
+	profile->freq_stats[3][prev_lev] += freq_stats3 - profile->last_freq_stats[3];
+	profile->last_freq_stats[3] = freq_stats3;
+
+	return 0;
+}
+
 static int exynos_devfreq_target(struct device *dev, unsigned long *target_freq, u32 flags)
 {
 	struct platform_device *pdev = container_of(dev, struct platform_device, dev);
@@ -1847,6 +1952,9 @@ static int exynos_devfreq_target(struct device *dev, unsigned long *target_freq,
 	dbg_snapshot_freq(data->ess_flag, data->old_freq, data->new_freq, DSS_FLAG_OUT);
 #endif
 	trace_exynos_devfreq(data->old_freq, data->new_freq, dev_name(data->dev));
+
+	if (data->profile)
+		exynos_devfreq_update_profile(data, exynos_devfreq_get_opp_idx(data->opp_list, data->max_state, data->old_freq));
 
 	data->old_freq = data->new_freq;
 	data->old_idx = data->new_idx;
@@ -2095,6 +2203,23 @@ static int exynos_devfreq_probe(struct platform_device *pdev)
 		 data->new_volt);
 
 	data->old_volt = data->new_volt;
+
+	if (data->profile) {
+		int i;
+		data->profile->num_stats = 4;
+		
+		data->profile->time_in_state = kzalloc(sizeof(ktime_t) * data->max_state, GFP_KERNEL);
+		data->profile->active_time_in_state = kzalloc(sizeof(ktime_t) * data->max_state, GFP_KERNEL);
+		data->profile->freq_stats = kzalloc(sizeof(u64 *) * data->profile->num_stats, GFP_KERNEL);
+		data->profile->last_freq_stats = kzalloc(sizeof(u64) * data->profile->num_stats, GFP_KERNEL);
+
+		for (i = 0; i < data->profile->num_stats; i++) {
+			data->profile->freq_stats[i] = kzalloc(sizeof(u64) * data->max_state, GFP_KERNEL);
+			data->profile->last_freq_stats[i] = 0;
+		}
+		data->profile->last_time_in_state = 0;
+		data->profile->last_active_time_in_state = 0;
+	}
 #ifdef CONFIG_EXYNOS_DVFS_MANAGER
 	ret = exynos_dm_data_init(data->dm_type, data, data->min_freq, data->max_freq, data->old_freq);
 	if (ret) {

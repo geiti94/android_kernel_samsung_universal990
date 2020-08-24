@@ -104,23 +104,27 @@ struct smtc_reg_data {
 };
 
 enum {
+	SX9360_REGGNRLCTL2_REG_IDX = 2,
 	SX9360_REFRESOLUTION_REG_IDX = 4,
 	SX9360_REFAGAINFREQ_REG_IDX = 5,
 	SX9360_RESOLUTION_REG_IDX = 6,
 	SX9360_AGAINFREQ_REG_IDX = 7,
 	SX9360_REFGAINRAWFILT_REG_IDX = 8,
 	SX9360_GAINRAWFILT_REG_IDX = 9,
+	SX9360_REGPROXCTRL3_REG_IDX = 12,
 	SX9360_HYST_REG_IDX = 13,
 	SX9360_PROXTHRESH_REG_IDX = 14,
 };
 
 /* for device tree parse */
+#define SX9360_REGGNRLCTL2	"sx9360,reggnrlctrl2_reg"
 #define SX9360_REFRESOLUTION	"sx9360,refresolution_reg"
 #define SX9360_REFAGAINFREQ	"sx9360,refagainfreq_reg"
 #define SX9360_RESOLUTION	"sx9360,resolution_reg"
 #define SX9360_AGAINFREQ	"sx9360,againfreq_reg"
 #define SX9360_REFGAINRAWFILT	"sx9360,refgainrawfilt_reg"
 #define SX9360_GAINRAWFILT	"sx9360,gainrawfilt_reg"
+#define SX9360_REGPROXCTRL3	"sx9360,regproxctrl3_reg"
 #define SX9360_HYST		"sx9360,hyst_reg"
 #define SX9360_PROXTHRESH	"sx9360,proxthresh_reg"
 #define SX9360_HALLIC_CERT      "sx9360,hallic_cert_detect"
@@ -224,7 +228,7 @@ static struct smtc_reg_data setup_reg[] = {
     /* 0x02~0x03, Interrupt */ 
     {
         .reg = SX9360_IRQ_ENABLE_REG,
-        .val = 0x0C,
+        .val = 0x00,
     },
     {
         .reg = SX9360_IRQCFG_REG,

@@ -2,7 +2,7 @@
  * Process CIS information from OTP for customer platform
  * (Handle the MAC address and module information)
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -43,10 +43,14 @@
 #ifdef DHD_USE_CISINFO
 
 /* File Location to keep each information */
-#define MACINFO "/data/.mac.info"
-#define MACINFO_EFS "/efs/wifi/.mac.info"
+#define MACINFO PLATFORM_PATH".mac.info"
 #define CIDINFO PLATFORM_PATH".cid.info"
+#ifdef PLATFORM_SLP
+#define MACINFO_EFS "/csa/.mac.info"
+#else
+#define MACINFO_EFS "/efs/wifi/.mac.info"
 #define CIDINFO_DATA "/data/.cid.info"
+#endif /* PLATFORM_SLP */
 
 /* Definitions for MAC address */
 #define MAC_BUF_SIZE 20
@@ -100,6 +104,7 @@ static tuple_entry_t *dhd_alloc_tuple_entry(dhd_pub_t *dhdp, const int idx);
 static void dhd_free_tuple_entry(dhd_pub_t *dhdp, struct list_head *head);
 static int dhd_find_tuple_list_from_otp(dhd_pub_t *dhdp, int req_tup,
 	unsigned char* req_tup_len, struct list_head *head);
+#endif /* GET_MAC_FROM_OTP || USE_CID_CHECK */
 
 /* otp region read/write information */
 typedef struct otp_rgn_rw_info {
@@ -117,8 +122,6 @@ typedef struct otp_rgn_stat_info {
 	uint16 rgnstart;
 	uint16 rgnsize;
 } otp_rgn_stat_info_t;
-
-#endif /* GET_MAC_FROM_OTP || USE_CID_CHECK */
 
 typedef int (pack_handler_t)(void *ctx, uint8 *buf, uint16 *buflen);
 
@@ -609,11 +612,13 @@ dhd_set_macaddr_from_file(dhd_pub_t *dhdp)
 #ifdef PLATFORM_SLP
 	/* Write random MAC address for framework */
 	if (dhd_write_file(filepath_mac, mac_buf, strlen(mac_buf)) < 0) {
-		DHD_ERROR(("%s: MAC address [%s] Failed to write into File:"
-			" %s\n", __FUNCTION__, mac_buf, filepath_mac));
+		DHD_ERROR(("%s: MAC address [%c%c:xx:xx:xx:x%c:%c%c] Failed to write into File:"
+			" %s\n", __FUNCTION__, mac_buf[0], mac_buf[1],
+			mac_buf[13], mac_buf[15], mac_buf[16], filepath_mac));
 	} else {
-		DHD_ERROR(("%s: MAC address [%s] written into File: %s\n",
-			__FUNCTION__, mac_buf, filepath_mac));
+		DHD_ERROR(("%s: MAC address [%c%c:xx:xx:xx:x%c:%c%c] written into File: %s\n",
+			__FUNCTION__, mac_buf[0], mac_buf[1], mac_buf[13],
+			mac_buf[15], mac_buf[16], filepath_mac));
 	}
 #endif /* PLATFORM_SLP */
 
@@ -1118,9 +1123,15 @@ vid_info_t vid_info[] = {
 #if defined(SUPPORT_BCM4389_MIXED_MODULES)
 	{ 3, { 0x11, 0x33, }, { "semco_sem_e51_es11" } },
 	{ 3, { 0x12, 0x33, }, { "semco_sem_e51_es12" } },
+	{ 3, { 0x21, 0x33, }, { "semco_sem_e53_esxx" } },
 	{ 3, { 0x23, 0x33, }, { "semco_sem_e53_es23" } },
-	{ 3, { 0x21, 0x22, }, { "murata_mur_1wk_es21" } }
-#endif /* SUPPORT_BCM4375_MIXED_MODULES */
+	{ 3, { 0x24, 0x33, }, { "semco_sem_e53_es20" } },
+	{ 3, { 0x25, 0x33, }, { "semco_sem_e53_es21" } },
+	{ 3, { 0x21, 0x22, }, { "murata_mur_1wk_es21" } },
+	{ 3, { 0x30, 0x22, }, { "murata_mur_1wk_es30" } },
+	{ 3, { 0x31, 0x22, }, { "murata_mur_1wk_es31" } },
+	{ 3, { 0x32, 0x22, }, { "murata_mur_1wk_es32" } }
+#endif /* SUPPORT_BCM4389_MIXED_MODULES */
 };
 #else
 vid_info_t vid_info[] = {

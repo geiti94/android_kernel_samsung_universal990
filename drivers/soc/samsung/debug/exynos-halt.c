@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/cpu_pm.h>
+#include <linux/debug-snapshot.h>
 #include <soc/samsung/exynos-halt.h>
 
 struct exynos_halt_data {
@@ -27,7 +28,7 @@ struct exynos_halt_data {
 	struct device *dev;
 };
 
-static struct exynos_halt_data *exynos_halt_data;
+static struct exynos_halt_data *exynos_halt_data = NULL;
 
 static void set_cti_break_enable(int cpu)
 {
@@ -46,6 +47,11 @@ static void set_cti_break_disable(int cpu)
 void set_stop_cpu(void)
 {
 	int cpu;
+
+	if (!exynos_halt_data) {
+		pr_err("halt driver is not initialized.\n");
+		return;
+	}
 
 	local_irq_disable();
 	cpu = raw_smp_processor_id();
@@ -126,6 +132,11 @@ static int exynos_halt_probe(struct platform_device *pdev)
 	char name[SZ_16];
 
 	dev_set_socdata(&pdev->dev, "Exynos", "HALT");
+	if (dbg_snapshot_get_sjtag_status()) {
+		dev_err(&pdev->dev, "Skip init (sjtag enabled)\n");
+		goto out_halt_init;
+	}
+
 	data = devm_kzalloc(&pdev->dev, sizeof(struct exynos_halt_data), GFP_KERNEL);
 	if (!data) {
 		dev_err(&pdev->dev, "can not alloc memory\n");
@@ -187,6 +198,7 @@ static int exynos_halt_probe(struct platform_device *pdev)
 
 err_free:
 	kfree(data);
+	exynos_halt_data = NULL;
 err_no_free:
 out_halt_init:
 	return ret;

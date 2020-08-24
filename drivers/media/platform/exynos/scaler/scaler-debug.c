@@ -70,7 +70,7 @@ void sc_print_dbg_snapshot(struct sc_ctx *ctx)
 	s_frame = &ctx->s_frame;
 	d_frame = &ctx->d_frame;
 
-	__dbg_snapshot_printk("MSCL : src([%s], [%dx%d], [%dx%d@%dx%d])-dst([%s], [%dx%d], [%dx%d@%dx%d])\n",
+	dbg_snapshot_printk("MSCL : src([%s], [%dx%d], [%dx%d@%dx%d])-dst([%s], [%dx%d], [%dx%d@%dx%d])\n",
 			s_frame->sc_fmt->name, s_frame->width, s_frame->height,
 			s_frame->crop.width, s_frame->crop.height,
 			s_frame->crop.left, s_frame->crop.top,

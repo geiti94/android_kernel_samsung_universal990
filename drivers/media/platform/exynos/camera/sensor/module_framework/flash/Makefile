@@ -5,6 +5,7 @@ obj-$(CONFIG_CAMERA_FLASH_S2MU106_OBJ) += is-flash-s2mu106.o
 obj-$(CONFIG_CAMERA_FLASH_GPIO_OBJ) += is-flash-gpio.o
 obj-$(CONFIG_CAMERA_FLASH_KTD2692_OBJ) += is-flash-ktd2692.o
 obj-$(CONFIG_CAMERA_FLASH_S2MU107_OBJ) += is-flash-s2mu107.o
+obj-$(CONFIG_CAMERA_FLASH_RT8547_OBJ) += is-flash-rt8547.o
 obj-$(CONFIG_CAMERA_FLASH_I2C_OBJ) += is-helper-flash-i2c.o \
 				      is-flash-i2c.o
 

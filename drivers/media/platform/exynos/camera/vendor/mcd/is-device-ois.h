@@ -118,4 +118,8 @@ bool is_aperture_hall_test(struct is_core *core, u16 *hall_value);
 #endif
 #endif
 void is_ois_get_hall_pos(struct is_core *core, u16 *targetPos, u16 *hallPos);
+void is_ois_set_mode(struct is_core *core, int mode);
+void is_ois_check_cross_talk(struct is_core *core, u16 *hall_data);
+int is_ois_read_ext_clock(struct is_core *core, u32 *clock);
+void is_ois_init_rear2(struct is_core *core);
 #endif

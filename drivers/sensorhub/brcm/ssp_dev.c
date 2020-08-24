@@ -174,6 +174,7 @@ u64 get_current_timestamp(void)
 static void initialize_variable(struct ssp_data *data)
 {
 	int iSensorIndex;
+	int i = 0;
 
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING
 	data->cameraGyroSyncMode = false;
@@ -304,6 +305,9 @@ static void initialize_variable(struct ssp_data *data)
 	data->ois_reset = &ois_reset;
 
 	data->svc_octa_change = false;
+
+	for (i = 0; i < SENSOR_MAX; i++)
+		memset(&data->sensor_name[i], 0, sizeof(data->sensor_name[i]));
 }
 
 int initialize_mcu(struct ssp_data *data)
@@ -409,9 +413,10 @@ int initialize_mcu(struct ssp_data *data)
 		ois_control.ois_func(ois_control.core);
 		ois_control.ois_func = NULL;
 	} 
-        
+#ifdef CONFIG_SENSORS_SSP_LIGHT_COLORID        
 	pr_err("[SSP]: %s - data->light_efs_file_status %d\n",
 			__func__, data->light_efs_file_status);
+#endif
 
 out:
 	return iRet;
@@ -462,6 +467,7 @@ irqreturn_t ssp_shub_int_handler(int irq, void *device)
 	ssp_debug_time("[SSP_IRQ] ts_stacked_cnt %d timestamp %llu\n", data->ts_stacked_cnt, timestamp);
 	
 	gpio_set_value(data->pin_ap_sleep, 0);
+	udelay(5);
 	gpio_set_value(data->pin_ap_sleep, 1);
 
 	return IRQ_HANDLED;
@@ -558,7 +564,8 @@ static int ssp_parse_dt(struct device *dev, struct ssp_data *data)
 	if (current_hw_rev != -1)
 		data->ap_rev = current_hw_rev;
 	pr_info("[SSP] ap-rev = %d\n", data->ap_rev);
-#if defined(CONFIG_SENSORS_SSP_PROX_AUTOCAL_AMS)
+
+
 #ifndef CONFIG_SENSORS_SSP_LIGHT_COLORID
 	if (of_property_read_u32(np, "ssp,prox-hi_thresh",
 			&data->uProxHiThresh))
@@ -581,29 +588,6 @@ static int ssp_parse_dt(struct device *dev, struct ssp_data *data)
 
 	pr_info("[SSP] detect-hi[%u] detect-low[%u]\n",
 		data->uProxHiThresh_detect, data->uProxLoThresh_detect);
-#endif
-#else /* CONFIG_SENSORS_SSP_PROX_FACTORYCAL */
-	if (of_property_read_u32(np, "ssp,prox-hi_thresh",
-			&data->uProxHiThresh_default))
-		data->uProxHiThresh_default = DEFAULT_HIGH_THRESHOLD;
-
-	if (of_property_read_u32(np, "ssp,prox-low_thresh",
-			&data->uProxLoThresh_default))
-		data->uProxLoThresh_default = DEFAULT_LOW_THRESHOLD;
-
-	pr_info("[SSP] hi-thresh[%u] low-thresh[%u]\n",
-		data->uProxHiThresh_default, data->uProxLoThresh_default);
-
-	if (of_property_read_u32(np, "ssp,prox-cal_hi_thresh",
-			&data->uProxHiThresh_cal))
-		data->uProxHiThresh_cal = DEFAULT_CAL_HIGH_THRESHOLD;
-
-	if (of_property_read_u32(np, "ssp,prox-cal_LOW_thresh",
-			&data->uProxLoThresh_cal))
-		data->uProxLoThresh_cal = DEFAULT_CAL_LOW_THRESHOLD;
-
-	pr_info("[SSP] cal-hi[%u] cal-low[%u]\n",
-		data->uProxHiThresh_cal, data->uProxLoThresh_cal);
 #endif
 
 	data->uProxAlertHiThresh = DEFAULT_PROX_ALERT_HIGH_THRESHOLD;
@@ -788,18 +772,25 @@ int send_panel_information(struct panel_bl_event_data *evdata){
 
 static int panel_notifier_callback(struct notifier_block *self, unsigned long event, void *data){
 	struct panel_bl_event_data *evdata = data;
-/*
-	if (event == PANEL_EVENT_BL_CHANGED) {
-		pr_info("[SSP] %s PANEL_EVENT_BL_CHANGED %d %d\n",
-				__func__, evdata->brightness, evdata->aor_ratio);
-	} else {
-		pr_info("[SSP] %s unknown event %d\n", __func__, event);
-	}
-*/
-	// store these values for reset
-	memcpy(&ssp_data_info->panel_event_data, evdata, sizeof(struct panel_bl_event_data));
 
-	return send_panel_information(evdata);
+	if (event == PANEL_EVENT_BL_CHANGED) {
+		//pr_info("[SSP] %s PANEL_EVENT_BL_CHANGED %d %d\n", __func__, evdata->brightness, evdata->aor_ratio);
+		// store these values for reset
+		memcpy(&ssp_data_info->panel_event_data, evdata, sizeof(struct panel_bl_event_data));
+		send_panel_information(evdata);
+	} else if (event == PANEL_EVENT_UB_CON_CHANGED) {
+		int i = *((char *)data);
+		if(i < 0 || i  > 1){
+			pr_info("[SSP] %s PANEL_EVENT_UB_CON_CHANGED, event errno(%d)\n", __func__, i);
+		} else {
+			ssp_data_info->ub_disabled = i;
+			if (ssp_data_info->ub_disabled) {
+				ssp_send_cmd(ssp_data_info, get_copr_status(ssp_data_info), 0);
+			}
+		}
+	}
+
+	return 0;
 }
 
 static int copr_fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data) {
@@ -828,7 +819,7 @@ static int copr_fb_notifier_callback(struct notifier_block *self, unsigned long 
 		goto skip_to_send_cmd;
 	}
 	
-	ssp_send_cmd(ssp_data_info, ssp_data_info->uLastAPState, 0);
+	ssp_send_cmd(ssp_data_info, get_copr_status(ssp_data_info), 0);
 
 skip_to_send_cmd:
 	return 0;
@@ -1259,31 +1250,20 @@ exit:
 
 int get_patch_version(int ap_type, int hw_rev)
 {
-#if defined(CONFIG_SENSORS_SSP_BEYOND)
-        if (ap_type == 3) { // 3 == beyondxlte
-                if (hw_rev >= 4)
-                        return bbd_current;
-                else
-                        return bbd_new_old;
-        } else if (ap_type == 0) { // 0 == beyond0lte
-                if (hw_rev > 22)
-                        return bbd_current;
-                else if (hw_rev < 20)
-                        return bbd_old;
-                else
-                        return bbd_new_old;
-        }else {
-                if( hw_rev == 23 || hw_rev > 24)
-                        return bbd_current;
-                else if (hw_rev < 20)
-                        return bbd_old;
-                else
-                        return bbd_new_old;
-        }
-#else
-	return bbd_current;
+#if defined(CONFIG_SENSORS_SSP_CANVAS)
+	if (ap_type == 0) {			//	c1lte, c1ltex
+		if (hw_rev >= 18 && hw_rev <= 19)
+			return bbd_old;
+		else
+			return bbd_current;
+	} else if (ap_type == 1) { //	c2lte, c2ltex
+		if (hw_rev >= 17 && hw_rev <= 20)
+			return bbd_old;
+		else
+			return bbd_current;
+	}
 #endif
-
+	return bbd_current;
 }
 
 
@@ -1329,6 +1309,13 @@ static void ssp_late_resume(struct early_suspend *handler)
 }
 
 #else /* no early suspend */
+
+#ifdef CONFIG_PANEL_NOTIFY
+char get_copr_status(struct ssp_data *data){
+	return !data->ub_disabled && data->uLastAPState == MSG2SSP_AP_STATUS_WAKEUP ? 
+		MSG2SSP_AP_STATUS_WAKEUP : MSG2SSP_AP_STATUS_SLEEP;
+}
+#endif
 
 static int ssp_suspend(struct device *dev)
 {

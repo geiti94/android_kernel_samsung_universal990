@@ -181,7 +181,7 @@ err:
 	return ret;
 }
 
-int gpu_control_set_dvfs(struct kbase_device *kbdev, int clock)
+int gpu_control_set_dvfs(struct kbase_device *kbdev, int clock, bool force)
 {
 	int ret = 0;
 	bool is_up = false;
@@ -219,7 +219,10 @@ int gpu_control_set_dvfs(struct kbase_device *kbdev, int clock)
 		gpu_pm_qos_command(platform, GPU_CONTROL_PM_QOS_SET);
 #endif /* CONFIG_MALI_PM_QOS */
 
-	gpu_dvfs_update_time_in_state(prev_clock);
+	/* Exception Routine on force clock set */
+	if (!force)
+		gpu_dvfs_update_time_in_state(prev_clock);
+
 	prev_clock = clock;
 
 	return ret;
@@ -455,6 +458,10 @@ int gpu_inter_frame_power_off(struct exynos_context *platform)
 
 	mutex_unlock(&platform->exynos_pm_domain->access_lock);
 	GPU_LOG(DVFS_DEBUG, LSI_IFPM_POWER_OFF, 0u, 0u, "gpu inter frame power off\n");
+#ifdef CONFIG_MALI_DYNAMIC_IFPO
+	if (platform->gpu_ifpo_get_flag == true)
+		platform->gpu_ifpo_cnt++;
+#endif
 #endif
 	return 0;
 }
@@ -527,7 +534,6 @@ int gpu_power_force_off(struct exynos_context *platform)
 	return 0;
 }
 
-
 int gpu_control_enable_customization(struct kbase_device *kbdev)
 {
 	int ret = 0;
@@ -545,6 +551,10 @@ int gpu_control_enable_customization(struct kbase_device *kbdev)
 		platform->inter_frame_pm_status = false;
 #ifdef CONFIG_MALI_SEC_CL_BOOST
 	else if (kbdev->pm.backend.metrics.is_full_compute_util)
+		platform->inter_frame_pm_status = false;
+#endif
+#ifdef CONFIG_MALI_DYNAMIC_IFPO
+	else if (platform->env_data.utilization >= platform->gpu_dynamic_ifpo_util && platform->cur_clock >= platform->gpu_dynamic_ifpo_freq)
 		platform->inter_frame_pm_status = false;
 #endif
 	else

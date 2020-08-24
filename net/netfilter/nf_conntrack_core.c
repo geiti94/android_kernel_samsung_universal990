@@ -1495,15 +1495,15 @@ init_conntrack(struct net *net, struct nf_conn *tmpl,
 	ct = __nf_conntrack_alloc(net, zone, tuple, &repl_tuple, GFP_ATOMIC,
 				  hash);
 
+	if (IS_ERR(ct))
+		return (struct nf_conntrack_tuple_hash *)ct;
+
 #ifdef CONFIG_HW_FORWARD
 	ct->netdev = skb->dev;
 #endif
 #ifdef CONFIG_LINK_FORWARD
 	ct->netdev = skb->dev;
 #endif
-
-	if (IS_ERR(ct))
-		return (struct nf_conntrack_tuple_hash *)ct;
 
 	if (!nf_ct_add_synproxy(ct, tmpl)) {
 		nf_conntrack_free(ct);

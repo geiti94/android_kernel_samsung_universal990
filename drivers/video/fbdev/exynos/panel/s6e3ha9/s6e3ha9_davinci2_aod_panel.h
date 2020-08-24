@@ -22,7 +22,8 @@
 #include "s6e3ha9_digital_clock_img.h"
 
 /* DAVINCI2 */
-static DEFINE_STATIC_PACKET(s6e3ha9_davinci2_aod_self_mask_img_pkt, DSI_PKT_TYPE_WR_SR, DAVINCI2_SELF_MASK_IMG, 0);
+static DEFINE_STATIC_PACKET_WITH_OPTION(s6e3ha9_davinci2_aod_self_mask_img_pkt,
+		DSI_PKT_TYPE_WR_SR, DAVINCI2_SELF_MASK_IMG, 0, PKT_OPTION_SR_ALIGN_16);
 
 static void *s6e3ha9_davinci2_aod_self_mask_img_cmdtbl[] = {
 	&KEYINFO(s6e3ha9_aod_l2_key_enable),
@@ -31,6 +32,28 @@ static void *s6e3ha9_davinci2_aod_self_mask_img_cmdtbl[] = {
 	&PKTINFO(s6e3ha9_davinci2_aod_self_mask_img_pkt),
 	&PKTINFO(s6e3ha9_aod_reset_sd_path),
 	&KEYINFO(s6e3ha9_aod_l2_key_disable),
+};
+
+static void *s6e3ha9_davinci2_a3_s0_self_mask_checksum_cmdtbl[] = {
+	&KEYINFO(s6e3ha9_aod_l1_key_enable),
+	&KEYINFO(s6e3ha9_aod_l2_key_enable),
+	&KEYINFO(s6e3ha9_aod_l3_key_enable),
+	&PKTINFO(s6e3ha9_aod_self_mask_crc_on1),
+	&PKTINFO(s6e3ha9_aod_self_mask_crc_on2),
+	&PKTINFO(s6e3ha9_aod_self_mask_dbist_on),
+	&PKTINFO(s6e3ha9_aod_self_mask_disable),
+	&DLYINFO(s6e3ha9_aod_self_mask_checksum_1frame_delay),
+	&PKTINFO(s6e3ha9_aod_self_mask_sd_path),
+	&PKTINFO(s6e3ha9_davinci2_aod_self_mask_img_pkt),
+	&PKTINFO(s6e3ha9_aod_sd_path_analog),
+	&PKTINFO(s6e3ha9_aod_self_mask_for_checksum),
+	&DLYINFO(s6e3ha9_aod_self_mask_checksum_2frame_delay),
+	&s6e3ha9_restbl[RES_SELF_MASK_CHECKSUM],
+	&PKTINFO(s6e3ha9_aod_self_mask_restore),
+	&PKTINFO(s6e3ha9_aod_self_mask_dbist_off),
+	&KEYINFO(s6e3ha9_aod_l3_key_disable),
+	&KEYINFO(s6e3ha9_aod_l2_key_disable),
+	&KEYINFO(s6e3ha9_aod_l1_key_disable),
 };
 
 static struct seqinfo s6e3ha9_davinci2_aod_seqtbl[MAX_AOD_SEQ] = {
@@ -58,6 +81,7 @@ static struct seqinfo s6e3ha9_davinci2_aod_seqtbl[MAX_AOD_SEQ] = {
 	[ENABLE_SELF_MOVE_SEQ] = SEQINFO_INIT("enable_self_move", s6e3ha9_enable_self_move),
 	[DISABLE_SELF_MOVE_SEQ] = SEQINFO_INIT("disable_self_move", s6e3ha9_disable_self_move),
 #endif
+	[SELF_MASK_CHECKSUM_SEQ] = SEQINFO_INIT("self_mask_checksum", s6e3ha9_davinci2_a3_s0_self_mask_checksum_cmdtbl),
 };
 
 static struct aod_tune s6e3ha9_davinci2_aod = {

@@ -546,7 +546,7 @@ void displayport_msg_rx(u32 msg_type)
 
 MSG_RX_READ_RETRY:
 	for (i = 0; i < max_msg_size; i += msg_rx_buf_size) {
-		if((displayport_msg_aux_wait_rep_rdy(msg_type) < 0) && (retry_cnt > 0)) {
+		if ((displayport_msg_aux_wait_rep_rdy(msg_type) < 0) && (retry_cnt > 0)) {
 			msg_rx_buf_size = 0;
 			total_msg_rx_buf_size = 0;
 			retry_cnt--;
@@ -788,7 +788,7 @@ void displayport_msg_aux_remote_i2c_read(u8 *edid_buf)
 
 REMOTE_I2C_READ_RETRY:
 	for (i = 0; i < max_msg_size; i += msg_rx_buf_size) {
-		if((displayport_msg_aux_wait_rep_rdy(DOWN_REP) < 0) && (retry_cnt > 0)) {
+		if ((displayport_msg_aux_wait_rep_rdy(DOWN_REP) < 0) && (retry_cnt > 0)) {
 			msg_rx_buf_size = 0;
 			total_msg_rx_buf_size = 0;
 			retry_cnt--;

@@ -37,6 +37,7 @@ void __iomem		*usb3_portsc;
 static u32 pp_set_delayed;
 static u32 portsc_control_priority;
 static spinlock_t xhcioff_lock;
+static int is_rewa_enabled;
 #if defined(CONFIG_USB_PORT_POWER_OPTIMIZATION)
 static int port_off_done;
 #endif
@@ -180,22 +181,7 @@ xhci_platg_store_ss_compliance(struct device *dev,
 static DEVICE_ATTR(ss_compliance, S_IWUSR | S_IRUSR | S_IRGRP,
 	xhci_plat_show_ss_compliance, xhci_platg_store_ss_compliance);
 
-static ssize_t
-xhci_plat_show_l2_state(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct usb_hcd *hcd = dev_get_drvdata(dev);
-	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
-
-	return snprintf(buf, PAGE_SIZE, "%d\n",
-			xhci->l2_state);
-}
-
-static DEVICE_ATTR(l2_state, S_IRUSR | S_IRGRP | S_IROTH,
-	xhci_plat_show_l2_state, NULL);
-
 static struct attribute *exynos_xhci_attributes[] = {
-	&dev_attr_l2_state.attr,
 	&dev_attr_ss_compliance.attr,
 	NULL
 };
@@ -384,19 +370,26 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	int			ret;
 	int			irq;
 
-	struct wake_lock	*wakelock;
+	struct wake_lock	*main_wakelock, *shared_wakelock;
 	int			value;
 
 	dev_info(&pdev->dev, "XHCI PLAT START\n");
 
-	wakelock = kzalloc(sizeof(struct wake_lock), GFP_KERNEL);
-	wake_lock_init(wakelock, WAKE_LOCK_SUSPEND, dev_name(&pdev->dev));
-	wake_lock(wakelock);
+	/* Initialization main wakelock for HS HCD */
+	main_wakelock = kzalloc(sizeof(struct wake_lock), GFP_KERNEL);
+	wake_lock_init(main_wakelock, WAKE_LOCK_SUSPEND, dev_name(&pdev->dev));
+	wake_lock(main_wakelock);
+
+	/* Initialization shared wakelock for SS HCD */
+	shared_wakelock = kzalloc(sizeof(struct wake_lock), GFP_KERNEL);
+	wake_lock_init(shared_wakelock, WAKE_LOCK_SUSPEND, dev_name(&pdev->dev));
+	wake_lock(shared_wakelock);
 
 #if defined(CONFIG_USB_PORT_POWER_OPTIMIZATION)
 	port_off_done = 0;
 #endif
 	portsc_control_priority = 0;
+	is_rewa_enabled = 0;
 
 	if (usb_disabled())
 		return -ENODEV;
@@ -522,7 +515,8 @@ static int xhci_plat_probe(struct platform_device *pdev)
 
 	xhci->clk = clk;
 	xhci->reg_clk = reg_clk;
-	xhci->wakelock = wakelock;
+	xhci->main_wakelock = main_wakelock;
+	xhci->shared_wakelock = shared_wakelock;
 	xhci->main_hcd = hcd;
 	xhci->shared_hcd = __usb_create_hcd(driver, sysdev, &pdev->dev,
 			dev_name(&pdev->dev), hcd);
@@ -580,7 +574,41 @@ static int xhci_plat_probe(struct platform_device *pdev)
 			"can't get xhci l2 support, error = %d\n", ret);
 	}
 
+	ret = of_property_read_u32(parent->of_node,
+				"xhci_use_uram_for_audio", &value);
+	if (ret == 0 && value == 1) {
+		/*
+		 * Check URAM address. At least the following address should
+		 * be defined.(Otherwise, URAM feature will be disabled.)
+		 */
+		if (EXYNOS_URAM_DCBAA_ADDR == 0x0 ||
+				EXYNOS_URAM_ABOX_ERST_SEG_ADDR == 0x0 ||
+				EXYNOS_URAM_ABOX_EVT_RING_ADDR == 0x0 ||
+				EXYNOS_URAM_DEVICE_CTX_ADDR == 0x0 ||
+				EXYNOS_URAM_ISOC_OUT_RING_ADDR == 0x0) {
+			dev_info(&pdev->dev,
+				"Some URAM addresses are not defiend!\n");
+			goto skip_uram;
+		}
+
+		dev_info(&pdev->dev, "Support URAM for USB audio.\n");
+		xhci->quirks |= XHCI_USE_URAM_FOR_EXYNOS_AUDIO;
+		/* Initialization Default Value */
+		xhci->exynos_uram_ctx_alloc = false;
+		xhci->exynos_uram_isoc_out_alloc = false;
+		xhci->exynos_uram_isoc_in_alloc = false;
+		xhci->usb_audio_ctx_addr = NULL;
+		xhci->usb_audio_isoc_out_addr = NULL;
+		xhci->usb_audio_isoc_in_addr = NULL;
+	} else {
+		dev_err(&pdev->dev, "URAM is not used.\n");
+	}
+skip_uram:
+
 	xhci->xhci_alloc = &xhci_pre_alloc;
+
+	xhci->main_hcd->skip_phy_initialization = 1;
+	xhci->shared_hcd->skip_phy_initialization = 1;
 
 	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (ret)
@@ -700,8 +728,11 @@ static int xhci_plat_remove(struct platform_device *dev)
 	xhci->xhci_alloc->offset = 0;
 
 	dev_info(&dev->dev, "WAKE UNLOCK\n");
-	wake_unlock(xhci->wakelock);
-	wake_lock_destroy(xhci->wakelock);
+	wake_unlock(xhci->main_wakelock);
+	wake_lock_destroy(xhci->main_wakelock);
+
+	wake_unlock(xhci->shared_wakelock);
+	wake_lock_destroy(xhci->shared_wakelock);
 
 	pr_info("%s %d xhci->main_hcd = %pS\n", __func__, __LINE__, xhci->main_hcd);
 	usb_remove_hcd(xhci->shared_hcd);
@@ -729,10 +760,12 @@ static int xhci_plat_remove(struct platform_device *dev)
 	return 0;
 }
 
+extern u32 otg_is_connect(void);
 static int __maybe_unused xhci_plat_suspend(struct device *dev)
 {
 	struct usb_hcd	*hcd = dev_get_drvdata(dev);
 	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
+	int ret;
 
 	pr_info("[%s] \n",__func__);
 
@@ -745,7 +778,20 @@ static int __maybe_unused xhci_plat_suspend(struct device *dev)
 	 * also applies to runtime suspend.
 	 */
 
-	return  xhci_suspend(xhci, device_may_wakeup(dev));
+	ret = xhci_suspend(xhci, device_may_wakeup(dev));
+	if (ret)
+		return ret;
+
+
+	if (otg_is_connect() != 1) { /* If it is not OTG_CONNECT_ONLY */
+		/* Enable HS ReWA */
+		phy_vendor_set(xhci->main_hcd->phy, 1, 0);
+		/* Enable SS ReWA */
+		phy_vendor_set(xhci->shared_hcd->phy, 1, 0);
+		is_rewa_enabled = 1;
+	}
+
+	return  ret;
 }
 
 static int __maybe_unused xhci_plat_resume(struct device *dev)
@@ -759,6 +805,15 @@ static int __maybe_unused xhci_plat_resume(struct device *dev)
 	ret = xhci_priv_resume_quirk(hcd);
 	if (ret)
 		return ret;
+
+	if (is_rewa_enabled == 1) {
+		/* Disable SS ReWA */
+		phy_vendor_set(xhci->shared_hcd->phy, 1, 1);
+		/* Disablee HS ReWA */
+		phy_vendor_set(xhci->main_hcd->phy, 1, 1);
+		phy_vendor_set(xhci->main_hcd->phy, 0, 0);
+		is_rewa_enabled = 0;
+	}
 
 	return xhci_resume(xhci, 0);
 }

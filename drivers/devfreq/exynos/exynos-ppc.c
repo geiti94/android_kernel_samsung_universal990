@@ -33,6 +33,14 @@
 #define BIT_RESETALL		(0x6)
 #define BIT_GLBCNTEN		(0x1)
 
+static u64 ppc_dvfs_total_ccnt;
+static u64 ppc_dvfs_total_pmcnt;
+static u64 ppc_dvfs_total_ccnt_alt;
+static u64 ppc_dvfs_total_pmcnt_alt;
+ktime_t last_updated_time;
+
+DEFINE_MUTEX(ppc_dvfs_lock);
+
 static void exynos_init_ppc(void __iomem *base)
 {
 	/* Initialize Q-CH, OP Mode */
@@ -104,6 +112,44 @@ void exynos_devfreq_um_exit(struct exynos_devfreq_data *data)
 		exynos_clear_ppc(data->um_data.va_base[i]);
 }
 
+ktime_t exynos_devfreq_get_ppc_status(struct exynos_devfreq_data *data)
+{
+	int i;
+	unsigned int ccnt = 0, pmcnt = 0, max_ccnt = 0, max_pmcnt = 0;
+	ktime_t active_time, cur_time;
+
+	mutex_lock(&ppc_dvfs_lock);
+
+	for (i = 0; i < data->um_data.um_count; i++)
+		exynos_stop_ppc(data->um_data.va_base[i]);
+
+	/* Read current counter */
+	for (i = 0 ; i < data->um_data.um_count; i++) {
+		ccnt = __raw_readl(data->um_data.va_base[i] + CCNT);
+		pmcnt = __raw_readl(data->um_data.va_base[i] + PMCNT);
+
+		if (max_pmcnt < pmcnt) {
+			max_ccnt = ccnt;
+			max_pmcnt = pmcnt;
+		}
+	}
+
+	for (i = 0; i < data->um_data.um_count; i++)
+		exynos_start_ppc(data->um_data.va_base[i]);
+
+	cur_time = ktime_get();
+	active_time = (cur_time - last_updated_time) * (max_pmcnt + ppc_dvfs_total_pmcnt_alt - ppc_dvfs_total_pmcnt) / (max_ccnt + ppc_dvfs_total_ccnt_alt - ppc_dvfs_total_ccnt);
+
+	ppc_dvfs_total_pmcnt = max_pmcnt + ppc_dvfs_total_pmcnt_alt;
+	ppc_dvfs_total_ccnt = max_ccnt + ppc_dvfs_total_ccnt_alt;
+	last_updated_time = cur_time;
+
+	mutex_unlock(&ppc_dvfs_lock);
+
+	return active_time;
+
+}
+
 static int exynos_devfreq_get_dev_status(struct device *dev, struct devfreq_dev_status *stat)
 {
 	struct platform_device *pdev = container_of(dev, struct platform_device, dev);
@@ -113,6 +159,8 @@ static int exynos_devfreq_get_dev_status(struct device *dev, struct devfreq_dev_
 
 	if (data->devfreq_disabled)
 		return -EAGAIN;
+
+	mutex_lock(&ppc_dvfs_lock);
 
 	cur_time = sched_clock();
 	data->last_monitor_period = (cur_time - data->last_monitor_time);
@@ -131,10 +179,15 @@ static int exynos_devfreq_get_dev_status(struct device *dev, struct devfreq_dev_
 
 	data->last_um_usage_rate = div64_u64(stat->busy_time * 100, stat->total_time);
 
+	ppc_dvfs_total_ccnt_alt += data->um_data.val_ccnt;
+	ppc_dvfs_total_pmcnt_alt += data->um_data.val_pmcnt;
+
 	for (i = 0; i < data->um_data.um_count; i++) {
 		exynos_reset_ppc(data->um_data.va_base[i]);
 		exynos_start_ppc(data->um_data.va_base[i]);
 	}
+
+	mutex_unlock(&ppc_dvfs_lock);
 
 	return 0;
 }
@@ -142,4 +195,5 @@ static int exynos_devfreq_get_dev_status(struct device *dev, struct devfreq_dev_
 void register_get_dev_status(struct exynos_devfreq_data *data)
 {
 	data->devfreq_profile.get_dev_status = exynos_devfreq_get_dev_status;
+	mutex_init(&ppc_dvfs_lock);
 }

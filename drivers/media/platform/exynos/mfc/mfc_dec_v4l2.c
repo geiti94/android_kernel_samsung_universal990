@@ -597,6 +597,7 @@ static int mfc_dec_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 							struct v4l2_format *f)
 {
 	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
+	struct mfc_fmt *dst_fmt;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
 
 	mfc_debug_enter();
@@ -606,11 +607,12 @@ static int mfc_dec_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 		return -EBUSY;
 	}
 
-	ctx->dst_fmt = __mfc_dec_find_format(ctx, pix_fmt_mp->pixelformat);
-	if (!ctx->dst_fmt) {
+	dst_fmt = __mfc_dec_find_format(ctx, pix_fmt_mp->pixelformat);
+	if (!dst_fmt) {
 		mfc_err_ctx("Unsupported format for destination\n");
 		return -EINVAL;
 	}
+	ctx->dst_fmt = dst_fmt;
 	ctx->raw_buf.num_planes = ctx->dst_fmt->num_planes;
 	mfc_info_ctx("[FRAME] dec dst pixelformat : %s\n", ctx->dst_fmt->name);
 
@@ -656,6 +658,7 @@ static int mfc_dec_s_fmt_vid_out_mplane(struct file *file, void *priv,
 	struct mfc_dev *dev = video_drvdata(file);
 	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
 	struct mfc_dec *dec = ctx->dec_priv;
+	struct mfc_fmt *src_fmt;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
 	int ret = 0;
 
@@ -666,12 +669,12 @@ static int mfc_dec_s_fmt_vid_out_mplane(struct file *file, void *priv,
 		return -EBUSY;
 	}
 
-	ctx->src_fmt = __mfc_dec_find_format(ctx, pix_fmt_mp->pixelformat);
-	if (!ctx->src_fmt) {
+	src_fmt = __mfc_dec_find_format(ctx, pix_fmt_mp->pixelformat);
+	if (!src_fmt) {
 		mfc_err_ctx("Unsupported format for source\n");
 		return -EINVAL;
 	}
-
+	ctx->src_fmt=src_fmt;
 	ctx->codec_mode = ctx->src_fmt->codec_mode;
 	mfc_info_ctx("[STREAM] Dec src codec(%d): %s\n",
 			ctx->codec_mode, ctx->src_fmt->name);

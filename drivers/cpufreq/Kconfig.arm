@@ -308,6 +308,16 @@ config ARM_EXYNOS_ACME
 
 	  If in doubt, say N.
 
+config ARM_EXYNOS_ACME_DISABLE_BOOT_LOCK
+	bool "disable boot qos lock of SAMSUNG EXYNOS ACME driver"
+	depends on ARM_EXYNOS_ACME && SEC_FACTORY
+	default n
+	help
+	  This feature disables the cpu qos lock in
+	  acme driver during boot.
+	  This feature support flexable boot.
+	  The config creates a lot of clk when device boot up.
+
 config ARM_EXYNOS_UFC
 	bool "SAMSUNG EXYNOS UFC(User Frequency Control) driver"
 	depends on ARM_EXYNOS_ACME

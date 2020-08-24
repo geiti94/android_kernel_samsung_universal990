@@ -95,6 +95,7 @@
 #define FW_2LD_L		"R12LL"		/* HST1 HST2 */
 #define FW_HM1_L		"SA8XL"		/* HST3 */
 #define FW_3J1_X		"X10LL"		/* BSS DNS PST */
+#define FW_IMX616_S	"K32LS"		/* RST8 */
 
 #define SDCARD_FW
 
@@ -112,6 +113,7 @@
 /* Front setfile */
 #define IS_3J1_SETF			"setfile_3j1.bin"
 #define IS_4HA_SETF			"setfile_4ha.bin"
+#define IS_IMX616_SETF		"setfile_imx616.bin"
 
 #define IS_CAL_SDCARD_FRONT		"/data/cal_data_front.bin"
 #define IS_FW_FROM_SDCARD		"/data/media/0/CamFW_Main.bin"
@@ -269,8 +271,6 @@ struct is_rom_info {
 	int32_t		rom_dualcal_slave2_size;
 
 	int32_t		rom_pdxtc_cal_data_start_addr;
-	int32_t		rom_pdxtc_cal_data_coef_size;
-	int32_t		rom_pdxtc_cal_data_val_size;
 	int32_t		rom_pdxtc_cal_data_0_size;
 	int32_t		rom_pdxtc_cal_data_1_size;
 
@@ -300,6 +300,9 @@ struct is_rom_info {
 
 	u16		rom_dualcal_slave1_cropshift_x_addr;
 	u16		rom_dualcal_slave1_cropshift_y_addr;
+
+	u16		rom_dualcal_slave1_oisshift_x_addr;
+	u16		rom_dualcal_slave1_oisshift_y_addr;
 
 	u16		rom_dualcal_slave1_dummy_flag_addr;
 

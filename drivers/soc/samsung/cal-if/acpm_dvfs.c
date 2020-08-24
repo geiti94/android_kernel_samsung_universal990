@@ -100,10 +100,11 @@ unsigned long exynos_acpm_get_rate(unsigned int id)
 	return config.cmd[1];
 }
 
+/* This list have to follow the enum margin_id in cmucal.h */
 const char *margin_list[MAX_MARGIN_ID] = {
 		"MIF", "INT", "BIG", "LIT", "G3D",
 		"INTCAM", "CAM", "DISP", "G3DM",
-		"CP", "FSYS0", "AUD", "IVA", "SCORE", "NPU", "MFC", "MID",
+		"CP", "FSYS0", "AUD", "IVA", "SCORE", "MFC", "NPU", "MID",
 		"DSP", "DNC", "TNR"};
 
 int exynos_acpm_set_volt_margin(unsigned int id, int volt)

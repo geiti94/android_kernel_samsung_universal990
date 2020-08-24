@@ -12,3 +12,6 @@ obj-				:=
 
 # Samsung Mobile Power Management Debugging Support
 obj-$(CONFIG_SEC_PM_DEBUG)		+= sec_pm_debug.o
+obj-$(CONFIG_SEC_PM_CPUFREQ)		+= sec_pm_cpufreq.o
+
+ccflags-y := -Wformat

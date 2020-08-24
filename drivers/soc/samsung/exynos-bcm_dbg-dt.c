@@ -630,6 +630,166 @@ static int exynos_bcm_init_control_parse_dt(struct device_node *np,
 	return 0;
 }
 
+static int exynos_bcm_calc_info_parse_dt(struct device_node *np,
+				struct exynos_bcm_dbg_data *data)
+{
+	int i, size, value, ret;
+	data->bcm_calc = kzalloc(sizeof(struct exynos_bcm_calc), GFP_KERNEL);
+	data->bcm_calc->data = data;
+
+	/* num ip */
+	ret = of_property_read_u32(np, "bcm_calc_num_ip", &data->bcm_calc->num_ip);
+	if (ret) {
+		BCM_ERR("%s: Failed get bcm_calc_num_ip\n", __func__);
+		return ret;
+	}
+
+	/* bcm calc ip idx */
+	data->bcm_calc->ip_idx =
+		kzalloc(sizeof(unsigned int) * data->bcm_calc->num_ip, GFP_KERNEL);
+
+	if (data->bcm_calc->ip_idx == NULL) {
+		BCM_ERR("%s: failed to allocate bcm_calc_ip_idx\n", __func__);
+		return -ENOMEM;
+	}
+
+	size = of_property_count_u32_elems(np, "bcm_calc_ip_idx");
+	if (size < 0) {
+		BCM_ERR("%s: Failed get number of bcm_calc_ip_idx\n", __func__);
+		kfree(data->bcm_calc->ip_idx);
+		return size;
+	} else if (size > data->bcm_calc->num_ip) {
+		BCM_ERR("%s: Invalid bcm_calc_ip_idx size, size(%d):ip_nr(%u)\n",
+				__func__, size, data->bcm_calc->num_ip);
+		kfree(data->bcm_calc->ip_idx);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < size; i++) {
+		ret = of_property_read_u32_index(np, "bcm_calc_ip_idx", i, &value);
+		if (ret) {
+			BCM_ERR("%s: Failed get bcm_calc_ip_idx(%d)\n",	__func__, i);
+			kfree(data->bcm_calc->ip_idx);
+			return ret;
+		}
+		data->bcm_calc->ip_idx[i] = value;
+	}
+
+	/* bcm calc ip cnt */
+	data->bcm_calc->ip_cnt =
+		kzalloc(sizeof(unsigned int) * data->bcm_calc->num_ip, GFP_KERNEL);
+
+	if (data->bcm_calc->ip_cnt == NULL) {
+		BCM_ERR("%s: failed to allocate bcm_calc_ip_cnt\n", __func__);
+		return -ENOMEM;
+	}
+
+	size = of_property_count_u32_elems(np, "bcm_calc_ip_cnt");
+	if (size < 0) {
+		BCM_ERR("%s: Failed get number of bcm_calc_ip_cnt\n", __func__);
+		kfree(data->bcm_calc->ip_cnt);
+		return size;
+	} else if (size > data->bcm_calc->num_ip) {
+		BCM_ERR("%s: Invalid bcm_calc_ip_cnt size, size(%d):ip_nr(%u)\n",
+				__func__, size, data->bcm_calc->num_ip);
+		kfree(data->bcm_calc->ip_cnt);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < size; i++) {
+		ret = of_property_read_u32_index(np, "bcm_calc_ip_cnt", i, &value);
+		if (ret) {
+			BCM_ERR("%s: Failed get bcm_calc_ip_cnt(%d)\n",	__func__, i);
+			kfree(data->bcm_calc->ip_cnt);
+			return ret;
+		}
+		data->bcm_calc->ip_cnt[i] = value;
+	}
+
+	/* bcm calc bus_width */
+	data->bcm_calc->bus_width =
+		kzalloc(sizeof(unsigned int) * data->bcm_calc->num_ip, GFP_KERNEL);
+
+	if (data->bcm_calc->bus_width == NULL) {
+		BCM_ERR("%s: failed to allocate bcm_calc_bus_width\n", __func__);
+		return -ENOMEM;
+	}
+
+	size = of_property_count_u32_elems(np, "bcm_calc_bus_width");
+	if (size < 0) {
+		BCM_ERR("%s: Failed get number of bcm_calc_bus_width\n", __func__);
+		kfree(data->bcm_calc->bus_width);
+		return size;
+	} else if (size > data->bcm_calc->num_ip) {
+		BCM_ERR("%s: Invalid bcm_calc_bus_width size, size(%d):ip_nr(%u)\n",
+				__func__, size, data->bcm_calc->num_ip);
+		kfree(data->bcm_calc->bus_width);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < size; i++) {
+		ret = of_property_read_u32_index(np, "bcm_calc_bus_width", i, &value);
+		if (ret) {
+			BCM_ERR("%s: Failed get bcm_calc_bus_width(%d)\n",	__func__, i);
+			kfree(data->bcm_calc->bus_width);
+			return ret;
+		}
+		data->bcm_calc->bus_width[i] = value;
+	}
+
+	/* bcm calc ip name */
+	data->bcm_calc->ip_name =
+		kzalloc(sizeof(unsigned int) * data->bcm_calc->num_ip, GFP_KERNEL);
+
+	if (data->bcm_calc->ip_name == NULL) {
+		BCM_ERR("%s: failed to allocate bcm_calc_ip_name\n", __func__);
+		return -ENOMEM;
+	}
+
+	size = of_property_count_strings(np, "bcm_calc_ip_name");
+	if (size < 0) {
+		BCM_ERR("%s: Failed get number of bcm_calc_ip_name\n", __func__);
+		return size;
+	}
+
+	size = of_property_read_string_array(np, "bcm_calc_ip_name", list, size);
+	if (size < 0) {
+		BCM_ERR("%s: Failed get bcm_calc_ip_name\n", __func__);
+		return size;
+	}
+
+	for (i = 0; i < size; i++)
+		data->bcm_calc->ip_name[i] = (char *)list[i];
+
+	/* sample time */
+	ret = of_property_read_u32(np, "bcm_calc_sample_time",
+			&data->bcm_calc->sample_time);
+	if (ret) {
+		BCM_ERR("%s: Failed get bcm_calc_sample_time\n", __func__);
+		return ret;
+	}
+
+	ret = of_property_read_u32(np, "perf_define_event",
+					&data->bcm_calc->perf_define_event);
+	if (ret) {
+		BCM_ERR("%s: Failed get perf define event\n", __func__);
+		data->bcm_calc->perf_define_event = BCM_CALC_FMT_EVT;
+		BCM_INFO("%s: replaced perf define event: %u\n",
+				__func__, data->bcm_calc->perf_define_event);
+	} else {
+		if (data->bcm_calc->perf_define_event >= data->define_event_max) {
+			BCM_ERR("%s: Invalid perf define event(%u), max(%u)\n",
+					__func__, data->bcm_calc->perf_define_event,
+					data->define_event_max);
+			data->bcm_calc->perf_define_event = BCM_CALC_FMT_EVT;
+			BCM_INFO("%s: replaced perf define event: %u\n",
+					__func__, data->bcm_calc->perf_define_event);
+		}
+	}
+
+	return 0;
+}
+
 int exynos_bcm_dbg_parse_dt(struct device_node *np,
 				struct exynos_bcm_dbg_data *data)
 {
@@ -689,6 +849,13 @@ int exynos_bcm_dbg_parse_dt(struct device_node *np,
 
 	/* Get initial Control information */
 	ret = exynos_bcm_init_control_parse_dt(np, data);
+	if (ret) {
+		BCM_ERR("%s: Failed parse Control info\n", __func__);
+		return ret;
+	}
+
+	/* Get initial BCM calc information */
+	ret = exynos_bcm_calc_info_parse_dt(np, data);
 	if (ret) {
 		BCM_ERR("%s: Failed parse Control info\n", __func__);
 		return ret;

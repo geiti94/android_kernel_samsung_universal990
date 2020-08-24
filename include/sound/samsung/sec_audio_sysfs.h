@@ -1,11 +1,17 @@
 #ifndef _SEC_AUDIO_SYSFS_H
 #define _SEC_AUDIO_SYSFS_H
 
+/*
+ * 1 AMP project - mono(AMP_0)
+ * 2 AMP project - L(AMP_0), R(AMP_1)
+ * 3 AMP project - L(AMP_0), R(AMP_1), receiver(AMP_2)
+ * 4 AMP project - FL(AMP_1), FR(AMP_2), RL(AMP_3), RR(AMP_4)
+ */
 enum amp_id {
-	LEFT_AMP,
-	RIGHT_AMP,
-	BOTTOM_LEFT_AMP,
-	BOTTOM_RIGHT_AMP,
+	AMP_0,
+	AMP_1,
+	AMP_2,
+	AMP_3,
 	AMP_ID_MAX,
 };
 
@@ -19,12 +25,12 @@ struct sec_audio_sysfs_data {
 	int (*get_key_state)(void);
 	int (*set_jack_state)(int);
 	int (*get_mic_adc)(void);
-	int (*get_water_state)(void);
 	int (*get_codec_id_state)(void);
 	int (*set_force_enable_antenna)(int);
 	int (*get_antenna_state)(void);
 
 	/* bigdata */
+	unsigned int num_amp;
 	int (*get_amp_temperature_max)(enum amp_id);
 	int (*get_amp_temperature_keep_max)(enum amp_id);
 	int (*get_amp_temperature_overcount)(enum amp_id);

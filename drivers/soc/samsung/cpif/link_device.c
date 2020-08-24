@@ -242,10 +242,8 @@ static void set_modem_state(struct mem_link_device *mld, enum modem_state state)
 	struct io_device *iod;
 
 	spin_lock_irqsave(&mc->lock, flags);
-	list_for_each_entry(iod, &mc->modem_state_notify_list, list) {
-		if (iod && atomic_read(&iod->opened) > 0)
-			iod->modem_state_changed(iod, state);
-	}
+	list_for_each_entry(iod, &mc->modem_state_notify_list, list)
+		iod->modem_state_changed(iod, state);
 	spin_unlock_irqrestore(&mc->lock, flags);
 }
 
@@ -346,8 +344,7 @@ static void link_trigger_cp_crash(struct mem_link_device *mld, u32 crash_type, c
 	iowrite32(ld->magic_crash, mld->legacy_link_dev.magic);
 	iowrite32(0, mld->legacy_link_dev.mem_access);
 
-	/* Disable debug Snapshot */
-	mif_set_snapshot(false);
+	mif_stop_logging();
 
 	memset(string, 0, CP_CRASH_INFO_SIZE);
 	if (crash_reason_string)
@@ -365,6 +362,7 @@ static void link_trigger_cp_crash(struct mem_link_device *mld, u32 crash_type, c
 		case CRASH_REASON_MIF_RIL_BAD_CH:
 		case CRASH_REASON_MIF_RX_BAD_DATA:
 		case CRASH_REASON_MIF_FORCED:
+		case CRASH_REASON_CLD:
 			if (strlen(string))
 				strlcat(ld->crash_reason.string, string,
 						CP_CRASH_INFO_SIZE);
@@ -731,8 +729,7 @@ static void cmd_crash_exit_handler(struct mem_link_device *mld)
 	struct modem_ctl *mc = ld->mc;
 	unsigned long flags;
 
-	/* Disable debug Snapshot */
-	mif_set_snapshot(false);
+	mif_stop_logging();
 
 	spin_lock_irqsave(&mld->state_lock, flags);
 	mld->state = LINK_STATE_CP_CRASH;
@@ -3213,6 +3210,7 @@ static ssize_t rb_info_store(struct device *dev,
 	return ret;
 }
 
+#if defined(CONFIG_CP_ZEROCOPY)
 static ssize_t zmc_count_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -3244,6 +3242,9 @@ static ssize_t zmc_count_store(struct device *dev,
 static ssize_t mif_buff_mng_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
+	if (!g_mif_buff_mng)
+		return 0;
+
 	return sprintf(buf, "used(%d)/free(%d)/total(%d)\n",
 			g_mif_buff_mng->used_cell_count, g_mif_buff_mng->free_cell_count,
 			g_mif_buff_mng->cell_count);
@@ -3274,6 +3275,7 @@ static ssize_t force_use_memcpy_store(struct device *dev,
 		modem->mld->force_use_memcpy = 1;
 	return count;
 }
+#endif
 
 #if defined(CONFIG_SEC_MODEM_S5000AP) && defined(CONFIG_SEC_MODEM_S5100)
 static ssize_t ul_data_path_store(struct device *dev,
@@ -3371,9 +3373,11 @@ static ssize_t cp_uart_sel_store(struct device *dev,
 #endif /* End of CONFIG_SEC_MODEM_S5000AP && CONFIG_SEC_MODEM_S5100 */
 static DEVICE_ATTR_RW(tx_period_ms);
 static DEVICE_ATTR_RW(rb_info);
+#if defined(CONFIG_CP_ZEROCOPY)
 static DEVICE_ATTR_RO(mif_buff_mng);
 static DEVICE_ATTR_RW(zmc_count);
 static DEVICE_ATTR_RW(force_use_memcpy);
+#endif
 #if defined(CONFIG_SEC_MODEM_S5000AP) && defined(CONFIG_SEC_MODEM_S5100)
 static DEVICE_ATTR_RW(ul_data_path);
 static DEVICE_ATTR_RW(cp_uart_sel);
@@ -3382,9 +3386,11 @@ static DEVICE_ATTR_RW(cp_uart_sel);
 static struct attribute *shmem_attrs[] = {
 	&dev_attr_tx_period_ms.attr,
 	&dev_attr_rb_info.attr,
+#if defined(CONFIG_CP_ZEROCOPY)
 	&dev_attr_mif_buff_mng.attr,
 	&dev_attr_zmc_count.attr,
 	&dev_attr_force_use_memcpy.attr,
+#endif
 #if defined(CONFIG_SEC_MODEM_S5000AP) && defined(CONFIG_SEC_MODEM_S5100)
 	&dev_attr_ul_data_path.attr,
 	&dev_attr_cp_uart_sel.attr,
@@ -3778,6 +3784,8 @@ struct link_device *create_link_device(struct platform_device *pdev, enum modem_
 		ld->is_uts_ch = NULL;
 		ld->is_wfs0_ch = NULL;
 		ld->is_wfs1_ch = NULL;
+		ld->get_rmnet_type = sipc_get_rmnet_type;
+		ld->get_ch_from_cid = sipc_get_ch_from_cid;
 		break;
 	case PROTOCOL_SIT:
 		ld->chid_fmt_0 = EXYNOS_CH_ID_FMT_0;
@@ -3811,6 +3819,8 @@ struct link_device *create_link_device(struct platform_device *pdev, enum modem_
 		ld->is_uts_ch = exynos_uts_ch;
 		ld->is_wfs0_ch = exynos_wfs0_ch;
 		ld->is_wfs1_ch = exynos_wfs1_ch;
+		ld->get_rmnet_type = exynos_get_rmnet_type;
+		ld->get_ch_from_cid = exynos_get_ch_from_cid;
 		break;
 	default:
 		mif_err("protocol error %d\n", ld->protocol);

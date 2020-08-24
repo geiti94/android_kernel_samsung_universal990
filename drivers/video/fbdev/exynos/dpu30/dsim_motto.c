@@ -23,7 +23,7 @@ static int dsim_set_swing_level(struct dsim_device *dsim, int level)
 	int ret = 0;
 
 	if (level < 0 || level > DSIM_SUPPORT_SWING_LEVEL) {
-		dsim_err("[DSIM:ERR]:%s invaild level : %d\n", __func__, level);
+		dsim_err("[DSIM:ERR]:%s invalid level : %d\n", __func__, level);
 		goto err_set;
 	}
 
@@ -41,7 +41,7 @@ static int dsim_set_impedance_level(struct dsim_device *dsim, int level)
 	int ret = 0;
 
 	if (level < 0 || level > DSIM_SUPPORT_IMPEDANCE_LEVEL) {
-		dsim_err("[DSIM:ERR]:%s invaild level : %d\n", __func__, level);
+		dsim_err("[DSIM:ERR]:%s invalid level : %d\n", __func__, level);
 		goto err_set;
 	}
 
@@ -61,7 +61,7 @@ static int dsim_set_emphasis_level(struct dsim_device *dsim, int level)
 	int ret = 0;
 
 	if (level < 0 || level > DSIM_SUPPORT_EMPHASIS_LEVEL) {
-		dsim_err("[DSIM:ERR]:%s invaild level : %d\n", __func__, level);
+		dsim_err("[DSIM:ERR]:%s invalid level : %d\n", __func__, level);
 		goto err_set;
 	}
 
@@ -112,7 +112,7 @@ static ssize_t swing_store(struct device *dev,
 
 	ret = dsim_set_swing_level(dsim, value);
 	if (ret) {
-		dsim_err("[DSIM:ERR]:%s: faield to set dsim's swing level\n", __func__);
+		dsim_err("[DSIM:ERR]:%s: failed to set dsim's swing level\n", __func__);
 	}
 
 err_store:
@@ -156,7 +156,7 @@ static ssize_t impedance_store(struct device *dev,
 
 	ret = dsim_set_impedance_level(dsim, value);
 	if (ret) {
-		dsim_err("[DSIM:ERR]:%s: faield to set dsim's swing level\n", __func__);
+		dsim_err("[DSIM:ERR]:%s: failed to set dsim's swing level\n", __func__);
 	}
 
 err_store:
@@ -171,7 +171,7 @@ static ssize_t emphasis_show(struct device *dev,
 	struct dsim_device *dsim = container_of(motto, struct dsim_device, motto_info);
 
 	dsim_info("[DSIM:INFO]:%s Deemphasis : %d\n", __func__, dsim->motto_info.tune_emphasis);
-	
+
 	len = sprintf(buf, "%d %d ",
 		DSIM_SUPPORT_EMPHASIS_LEVEL + 1, dsim->motto_info.init_emphasis);
 
@@ -200,7 +200,7 @@ static ssize_t emphasis_store(struct device *dev,
 
 	ret = dsim_set_emphasis_level(dsim, value);
 	if (ret) {
-		dsim_err("[DSIM:ERR]:%s: faield to set dsim's swing level\n", __func__);
+		dsim_err("[DSIM:ERR]:%s: failed to set dsim's swing level\n", __func__);
 	}
 
 err_store:
@@ -220,7 +220,7 @@ static struct attribute *motto_tune_attrs[] = {
 	NULL,
 };
 
-static const struct attribute_group motto_tune_group = { 
+static const struct attribute_group motto_tune_group = {
 	.attrs = motto_tune_attrs
 };
 
@@ -248,7 +248,7 @@ int create_motto_tune_sysfs(struct dsim_motto_info *motto)
 
 	ret = sysfs_create_group(&motto->dev->kobj, &motto_tune_group);
 	if (ret) {
-		dsim_err("[DSIM:ERR]:%s faield to create motto's nodes\n", __func__);
+		dsim_err("[DSIM:ERR]:%s failed to create motto's nodes\n", __func__);
 		goto err_create;
 	}
 err_create:
@@ -277,7 +277,7 @@ int dsim_motto_probe(struct dsim_device *dsim)
 	}
 
 	dev_set_drvdata(motto->dev, motto);
-	
+
 	create_motto_tune_sysfs(motto);
 
 /* create symlink into panel */

@@ -33,6 +33,7 @@
 #include <asm/core_regs.h>
 
 #include "debug-snapshot-local.h"
+#include <linux/debug-snapshot.h>
 #include <linux/debug-snapshot-helper.h>
 
 #include <linux/sec_debug.h>
@@ -151,6 +152,20 @@ static void dbg_snapshot_report_reason(unsigned int val)
 {
 	if (dbg_snapshot_get_enable())
 		__raw_writel(val, dbg_snapshot_get_base_vaddr() + DSS_OFFSET_EMERGENCY_REASON);
+}
+
+int dbg_snapshot_get_debug_level_reg(void)
+{
+	int ret = DSS_DEBUG_LEVEL_MID;
+
+	if (dbg_snapshot_get_enable()) {
+		int val = __raw_readl(dbg_snapshot_get_base_vaddr() + DSS_OFFSET_DEBUG_LEVEL);
+
+		if ((val & GENMASK(31, 16)) == DSS_DEBUG_LEVEL_PREFIX)
+			ret = val & GENMASK(15, 0);
+	}
+
+	return ret;
 }
 
 void dbg_snapshot_set_sjtag_status(void)

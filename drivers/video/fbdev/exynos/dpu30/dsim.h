@@ -275,7 +275,7 @@ struct dsim_device {
 
 int dsim_call_panel_ops(struct dsim_device *dsim, u32 cmd, void *arg);
 int dsim_write_data(struct dsim_device *dsim, u32 id, unsigned long d0, u32 d1, bool wait_empty);
-int dsim_sr_write_data(struct dsim_device *dsim, const u8 *cmd, u32 size);
+int dsim_sr_write_data(struct dsim_device *dsim, const u8 *cmd, u32 size, u32 align);
 
 
 

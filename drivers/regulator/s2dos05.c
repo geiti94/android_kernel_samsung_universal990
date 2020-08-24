@@ -72,7 +72,7 @@ int s2dos05_read_reg(struct i2c_client *i2c, u8 reg, u8 *dest)
 	ret = i2c_smbus_read_byte_data(i2c, reg);
 	mutex_unlock(&s2dos05->i2c_lock);
 	if (ret < 0) {
-		pr_info("%s:%s reg(0x%x), ret(%d)\n",
+		pr_info("%s:%s reg(0x%02hhx), ret(%d)\n",
 			 MFD_DEV_NAME, __func__, reg, ret);
 		return ret;
 	}
@@ -122,7 +122,7 @@ int s2dos05_write_reg(struct i2c_client *i2c, u8 reg, u8 value)
 	ret = i2c_smbus_write_byte_data(i2c, reg, value);
 	mutex_unlock(&s2dos05->i2c_lock);
 	if (ret < 0)
-		pr_info("%s:%s reg(0x%x), ret(%d)\n",
+		pr_info("%s:%s reg(0x%02hhx), ret(%d)\n",
 				MFD_DEV_NAME, __func__, reg, ret);
 
 	return ret;
@@ -430,7 +430,7 @@ static irqreturn_t s2dos05_irq_thread(int irq, void *irq_data)
 #endif /* CONFIG_SEC_PM_DEBUG */
 
 	s2dos05_read_reg(s2dos05->iodev->i2c, S2DOS05_REG_IRQ, &val);
-	pr_info("%s:irq(%d) S2DOS05_REG_IRQ : 0x%x\n", __func__, irq, val);
+	pr_info("%s:irq(%d) S2DOS05_REG_IRQ : 0x%02hhx\n", __func__, irq, val);
 
 #ifdef CONFIG_SEC_PM_DEBUG
 	tmp = val;
@@ -563,7 +563,7 @@ static ssize_t s2dos05_read_store(struct device *dev,
 	if (ret < 0)
 		pr_info("%s: fail to read i2c address\n", __func__);
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg_addr, val);
+	pr_info("%s: reg(0x%02hhx) data(0x%02hhx)\n", __func__, reg_addr, val);
 	s2dos05->read_addr = reg_addr;
 	s2dos05->read_val = val;
 
@@ -575,7 +575,7 @@ static ssize_t s2dos05_read_show(struct device *dev,
 				 char *buf)
 {
 	struct s2dos05_data *s2dos05 = dev_get_drvdata(dev);
-	return sprintf(buf, "0x%02x: 0x%02x\n", s2dos05->read_addr,
+	return sprintf(buf, "0x%02hhx: 0x%02hhx\n", s2dos05->read_addr,
 		       s2dos05->read_val);
 }
 
@@ -585,20 +585,20 @@ static ssize_t s2dos05_write_store(struct device *dev,
 {
 	struct s2dos05_data *s2dos05 = dev_get_drvdata(dev);
 	int ret;
-	u8 reg, data;
+	u8 reg = 0, data = 0;
 
 	if (buf == NULL) {
 		pr_info("%s: empty buffer\n", __func__);
 		return size;
 	}
 
-	ret = sscanf(buf, "%02x %02x", &reg, &data);
+	ret = sscanf(buf, "0x%02hhx 0x%02hhx", &reg, &data);
 	if (ret != 2) {
 		pr_info("%s: input error\n", __func__);
 		return size;
 	}
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg, data);
+	pr_info("%s: reg(0x%02hhxx) data(0x%02hhx)\n", __func__, reg, data);
 
 	ret = s2dos05_write_reg(s2dos05->iodev->i2c, reg, data);
 	if (ret < 0)
@@ -1061,11 +1061,15 @@ static int s2dos05_pmic_resume(struct device *dev)
 
 	pr_info("%s adc_mode : %d\n", __func__, s2dos05->adc_mode);
 	if (s2dos05->adc_mode > 0) {
-		int ret = s2dos05_update_reg(s2dos05->i2c, S2DOS05_REG_PWRMT_CTRL2,
-				s2dos05->adc_en_val & 0x80, ADC_EN_MASK);
 #ifdef CONFIG_SEC_PM_DEBUG
+		int ret;
+		ret = s2dos05_update_reg(s2dos05->i2c, S2DOS05_REG_PWRMT_CTRL2,
+				s2dos05->adc_en_val & 0x80, ADC_EN_MASK);
 		if (ret < 0)
 			pr_err("%s: Failed to update_reg: %d\n", __func__, ret);
+#else
+		s2dos05_update_reg(s2dos05->i2c, S2DOS05_REG_PWRMT_CTRL2,
+				s2dos05->adc_en_val & 0x80, ADC_EN_MASK);
 #endif /* CONFIG_SEC_PM_DEBUG */
 	}
 

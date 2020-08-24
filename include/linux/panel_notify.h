@@ -19,6 +19,17 @@ enum panel_notifier_event_t {
 	PANEL_EVENT_BL_CHANGED,
 	PANEL_EVENT_VRR_CHANGED,
 	PANEL_EVENT_STATE_CHANGED,
+	PANEL_EVENT_LFD_CHANGED,
+	PANEL_EVENT_UB_CON_CHANGED,
+};
+
+enum panel_notifier_event_ub_con_state {
+	PANEL_EVENT_UB_CON_CONNECTED = 0,
+	PANEL_EVENT_UB_CON_DISCONNECTED = 1,
+};
+
+struct panel_ub_con_event_data {
+   enum panel_notifier_event_ub_con_state state;
 };
 
 struct panel_bl_event_data {
@@ -28,6 +39,8 @@ struct panel_bl_event_data {
 
 struct panel_dms_data {
 	int fps;
+	int lfd_min_freq;
+	int lfd_max_freq;
 };
 
 #ifdef CONFIG_PANEL_NOTIFY

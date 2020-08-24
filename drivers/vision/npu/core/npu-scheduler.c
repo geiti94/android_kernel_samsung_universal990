@@ -49,7 +49,7 @@ void npu_scheduler_activate_peripheral_dvfs(unsigned long freq)
 	list_for_each_entry(d, &info->ip_list, ip_list) {
 		is_core = false;
 		/* check for core DVFS */
-		for (i = 0; i < ARRAY_SIZE(npu_scheduler_core_name); i++)
+		for (i = 0; i < (int)ARRAY_SIZE(npu_scheduler_core_name); i++)
 			if (!strcmp(npu_scheduler_core_name[i], d->name)) {
 				is_core = true;
 				break;
@@ -67,6 +67,22 @@ void npu_scheduler_activate_peripheral_dvfs(unsigned long freq)
 		}
 	}
 	mutex_unlock(&info->exec_lock);
+}
+
+s32 npu_scheduler_get_freq_ceil(struct npu_scheduler_dvfs_info *d, s32 freq) {
+	struct dev_pm_opp *opp;
+	unsigned long f;
+
+	/* Calculate target frequency */
+	f = (unsigned long) freq;
+	opp = dev_pm_opp_find_freq_ceil(&d->dvfs_dev->dev, &f);
+
+	if (IS_ERR(opp))
+		return 0;
+	else {
+		dev_pm_opp_put(opp);
+		return (s32)f;
+	}
 }
 
 void npu_scheduler_set_bts(struct npu_scheduler_info *info)
@@ -266,6 +282,8 @@ static int npu_scheduler_init_dt(struct npu_scheduler_info *info)
 		dinfo->delay = 0;
 		dinfo->limit_min = 0;
 		dinfo->limit_max = INT_MAX;
+		dinfo->curr_up_delay = 0;
+		dinfo->curr_down_delay = 0;
 
 		/* get governor property slot */
 		dinfo->gov_prop = (void *)g->ops->init_prop(dinfo, info->dev, pa.args);
@@ -296,8 +314,10 @@ static int npu_scheduler_init_info(s64 now, struct npu_scheduler_info *info)
 {
 	int i, ret = 0;
 	const char *mode_name;
+	struct npu_qos_setting *qos_setting;
 
 	npu_info("scheduler info init\n");
+	qos_setting = &(info->device->system.qos_setting);
 
 	info->enable = 1;	/* default enable */
 	ret = of_property_read_string(info->dev->of_node,
@@ -308,6 +328,10 @@ static int npu_scheduler_init_info(s64 now, struct npu_scheduler_info *info)
 		for (i = 0; i < ARRAY_SIZE(npu_perf_mode_name); i++)
 			if (!strcmp(npu_perf_mode_name[i], mode_name))
 				break;
+		if (i == ARRAY_SIZE(npu_perf_mode_name)) {
+			npu_err("Fail on npu_scheduler_init_info, number out of bounds in array=[%lu]\n", ARRAY_SIZE(npu_perf_mode_name));
+			return -1;
+		}
 		info->mode = i;
 	}
 	npu_info("NPU mode : %s\n", npu_perf_mode_name[info->mode]);
@@ -366,6 +390,21 @@ static int npu_scheduler_init_info(s64 now, struct npu_scheduler_info *info)
 	INIT_LIST_HEAD(&info->gov_list);
 	INIT_LIST_HEAD(&info->ip_list);
 
+	ret = of_property_read_u32(info->dev->of_node,
+			"samsung,npusched-dsp-type", &qos_setting->dsp_type);
+	if (ret)
+		qos_setting->dsp_type = 0;
+
+	ret = of_property_read_u32(info->dev->of_node,
+			"samsung,npusched-dsp-max-freq", &qos_setting->dsp_max_freq);
+	if (ret)
+		qos_setting->dsp_max_freq = 0;
+
+	ret = of_property_read_u32(info->dev->of_node,
+			"samsung,npusched-npu-max-freq", &qos_setting->npu_max_freq);
+	if (ret)
+		qos_setting->npu_max_freq = 0;
+
 	/* de-activated scheduler */
 	info->activated = 0;
 	mutex_init(&info->exec_lock);
@@ -412,7 +451,7 @@ void npu_scheduler_gate(
 			if (!info->used_count) {
 				/* gating activated */
 				/* HWACG */
-				npu_hwacg(&device->system, true);
+				//npu_hwacg(&device->system, true);
 				/* clock OSC switch */
 				ret = npu_core_clock_off(&device->system);
 				if (ret)
@@ -428,7 +467,7 @@ void npu_scheduler_gate(
 				if (ret)
 					npu_err("fail(%d) in npu_core_clock_on\n", ret);
 				/* HWACG */
-				npu_hwacg(&device->system, false);
+				//npu_hwacg(&device->system, false);
 			}
 			info->used_count++;
 		}
@@ -445,9 +484,16 @@ void npu_scheduler_fps_update_idle(
 	struct npu_scheduler_fps_load *l;
 	struct npu_scheduler_fps_load *tl;
 	struct list_head *p;
+	s64 new_init_freq, old_init_freq;
+	struct npu_scheduler_dvfs_info *d;
 
 	BUG_ON(!device);
 	info = device->sched;
+
+	if (list_empty(&info->ip_list)) {
+		npu_err("no device for scheduler\n");
+		return;
+	}
 
 	now = npu_get_time_us();
 
@@ -480,6 +526,26 @@ void npu_scheduler_fps_update_idle(
 					frame_time = now - f->start_time;
 					tl->tpf = frame_time / tl->frame_count + info->tpf_others;
 
+					/* get current freqency of NPU */
+					mutex_lock(&info->exec_lock);
+					list_for_each_entry(d, &info->ip_list, ip_list) {
+						if (!d->activated) {
+							npu_trace("%s deactivated\n", d->name);
+							continue;
+						}
+						/* calculate the initial frequency */
+						if (!strcmp("NPU", d->name)) {
+							new_init_freq = tl->tpf * (s64)d->cur_freq / tl->requested_tpf;
+							old_init_freq = (s64) tl->init_freq_ratio * (s64) d->max_freq / 10000;
+							/* calculate exponential moving average */
+							tl->init_freq_ratio = (old_init_freq / 2 + new_init_freq / 2) * 10000 / (s64) d->max_freq;
+							if (tl->init_freq_ratio > 10000)
+								tl->init_freq_ratio = 10000;
+							break;
+						}
+					}
+					mutex_unlock(&info->exec_lock);
+
 					if (info->load_policy == NPU_SCHEDULER_LOAD_FPS ||
 							info->load_policy == NPU_SCHEDULER_LOAD_FPS_RQ)
 						info->freq_interval = tl->frame_count /
@@ -489,8 +555,8 @@ void npu_scheduler_fps_update_idle(
 					tl->fps_load = tl->tpf * 10000 / tl->requested_tpf;
 					tl->time_stamp = now;
 
-					npu_trace("load (uid %d) %d/%d updated\n",
-							tl->uid, tl->tpf, tl->requested_tpf);
+					npu_trace("load (uid %d) (%lld)/%lld %lld updated\n",
+							tl->uid, tl->tpf, tl->requested_tpf, tl->init_freq_ratio);
 				}
 				/* delete frame entry */
 				list_del(p);
@@ -498,7 +564,7 @@ void npu_scheduler_fps_update_idle(
 					npu_trace("uid %d fid %d / %d frames left\n",
 						tl->uid, f->frame_id, tl->tfc);
 				else
-					npu_trace("uid %d fid %d / %d us per frame\n",
+					npu_trace("uid %d fid %d / %lld us per frame\n",
 						tl->uid, f->frame_id, tl->tpf);
 				kfree(f);
 				break;
@@ -570,7 +636,8 @@ static int npu_scheduler_calculate_fps_load(s64 now, struct npu_scheduler_info *
 		info->fps_load = tmp_load / tmp_load_count;
 		break;
 	case NPU_SCHEDULER_FPS_AVG:
-		info->fps_load = tmp_load / tmp_load_count;
+		if (tmp_load_count > 0)
+			info->fps_load = tmp_load / tmp_load_count;
 		break;
 	default:
 		npu_err("Invalid FPS policy : %d\n", info->fps_policy);
@@ -681,7 +748,7 @@ static int npu_scheduler_execute_policy(struct npu_scheduler_info *info)
 		} else {
 			/* no emergency status but delay */
 			if (d->delay > 0) {
-				npu_info("no update by delay %ld\n", d->delay);
+				npu_info("no update by delay %d\n", d->delay);
 				continue;
 			}
 		}
@@ -703,8 +770,10 @@ static int npu_scheduler_execute_policy(struct npu_scheduler_info *info)
 	return 0;
 }
 
-static int npu_scheduler_set_mode_freq(struct npu_scheduler_info *info)
+static int npu_scheduler_set_mode_freq(struct npu_scheduler_info *info, int uid)
 {
+	struct npu_scheduler_fps_load *l;
+	struct npu_scheduler_fps_load *tl;
 	struct npu_scheduler_dvfs_info *d;
 	s32	freq = 0;
 
@@ -720,6 +789,34 @@ static int npu_scheduler_set_mode_freq(struct npu_scheduler_info *info)
 		/* check mode limit */
 		if (freq < d->mode_min_freq[info->mode])
 			freq = d->mode_min_freq[info->mode];
+
+		if (info->mode == NPU_PERF_MODE_NORMAL) {
+			if (uid == -1) {
+				/* requested through sysfs */
+				freq = d->max_freq;
+			} else {
+				/* requested through ioctl() */
+				tl = NULL;
+				/* find load entry */
+				list_for_each_entry(l, &info->fps_load_list, list) {
+					if (l->uid == uid) {
+						tl = l;
+						break;
+					}
+				}
+				/* if not, error !! */
+				if (!tl) {
+					npu_err("fps load data for uid %d NOT found\n", uid);
+					freq = d->max_freq;
+				} else {
+					freq = tl->init_freq_ratio * d->max_freq / 10000;
+					freq = npu_scheduler_get_freq_ceil(d, freq);
+					if (freq < d->cur_freq)
+						freq = d->cur_freq;
+				}
+			}
+			d->is_init_freq = 1;
+		}
 
 		/* set frequency */
 		npu_scheduler_set_freq(d, freq);
@@ -801,7 +898,7 @@ static void __npu_scheduler_work(struct npu_scheduler_info *info)
 
 	info->tfi++;
 	npu_trace("__npu scheduler work : tfi %d freq interval %d "
-			"timestamp %ld (diff %ld), idle time %ld %s\n",
+			"timestamp %llu (diff %llu), idle time %llu %s\n",
 			info->tfi, info->freq_interval,
 			info->time_stamp, info->time_diff, info->load_idle_time,
 			is_last_idle ? "last" : "");
@@ -907,11 +1004,11 @@ ssize_t npu_show_attrs_scheduler(struct device *dev,
 		break;
 
 	case NPU_SCHEDULER_TIMESTAMP:
-		i += scnprintf(buf + i, PAGE_SIZE - i, "%ld\n",
+		i += scnprintf(buf + i, PAGE_SIZE - i, "%llu\n",
 			g_npu_scheduler_info->time_stamp);
 		break;
 	case NPU_SCHEDULER_TIMEDIFF:
-		i += scnprintf(buf + i, PAGE_SIZE - i, "%ld\n",
+		i += scnprintf(buf + i, PAGE_SIZE - i, "%llu\n",
 			g_npu_scheduler_info->time_diff);
 		break;
 	case NPU_SCHEDULER_PERIOD:
@@ -919,7 +1016,7 @@ ssize_t npu_show_attrs_scheduler(struct device *dev,
 			g_npu_scheduler_info->period);
 		break;
 	case NPU_SCHEDULER_LOAD_IDLE_TIME:
-		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n",
+		i += scnprintf(buf + i, PAGE_SIZE - i, "%llu\n",
 			g_npu_scheduler_info->load_idle_time);
 		break;
 	case NPU_SCHEDULER_LOAD:
@@ -943,11 +1040,11 @@ ssize_t npu_show_attrs_scheduler(struct device *dev,
 		break;
 
 	case NPU_SCHEDULER_FPS_TPF:
-		i += scnprintf(buf + i, PAGE_SIZE - i, " uid\ttpf\tKPI\n");
+		i += scnprintf(buf + i, PAGE_SIZE - i, " uid\ttpf\tKPI\tinit\n");
 		mutex_lock(&g_npu_scheduler_info->fps_lock);
 		list_for_each_entry(l, &g_npu_scheduler_info->fps_load_list, list) {
-			i += scnprintf(buf + i, PAGE_SIZE - i, " %d\t%dus\t%dus\n",
-			l->uid, l->tpf, l->requested_tpf);
+			i += scnprintf(buf + i, PAGE_SIZE - i, " %d\t%lld\t%lld\t%lld\n",
+			l->uid, l->tpf, l->requested_tpf, l->init_freq_ratio);
 		}
 		mutex_unlock(&g_npu_scheduler_info->fps_lock);
 		break;
@@ -978,7 +1075,7 @@ ssize_t npu_show_attrs_scheduler(struct device *dev,
 		i += scnprintf(buf + i, PAGE_SIZE - i, " uid\ttarget\n");
 		mutex_lock(&g_npu_scheduler_info->fps_lock);
 		list_for_each_entry(l, &g_npu_scheduler_info->fps_load_list, list) {
-			i += scnprintf(buf + i, PAGE_SIZE - i, " %d\t%dus\n",
+			i += scnprintf(buf + i, PAGE_SIZE - i, " %d\t%lld\n",
 			l->uid, l->requested_tpf);
 		}
 		mutex_unlock(&g_npu_scheduler_info->fps_lock);
@@ -1025,7 +1122,7 @@ ssize_t npu_store_attrs_scheduler(struct device *dev,
 			}
 			g_npu_scheduler_info->mode = x;
 			if (g_npu_scheduler_info->activated)
-				npu_scheduler_set_mode_freq(g_npu_scheduler_info);
+				npu_scheduler_set_mode_freq(g_npu_scheduler_info, -1);
 			npu_scheduler_set_bts(g_npu_scheduler_info);
 			npu_set_llc(g_npu_scheduler_info);
 		}
@@ -1109,6 +1206,7 @@ int npu_scheduler_probe(struct npu_device *device)
 	info = kzalloc(sizeof(struct npu_scheduler_info), GFP_KERNEL);
 	memset(info, 0, sizeof(struct npu_scheduler_info));
 	device->sched = info;
+	device->system.qos_setting.info = info;
 	info->device = device;
 	info->dev = device->dev;
 
@@ -1200,6 +1298,7 @@ int npu_scheduler_load(struct npu_device *device, const struct npu_session *sess
 	l->frame_count = 0;
 	l->tpf = 0;		/* time per frame */
 	l->requested_tpf = NPU_SCHEDULER_DEFAULT_TPF;
+	l->init_freq_ratio = 10000; /* 100%, max frequency */
 	list_add(&l->list, &info->fps_load_list);
 
 	npu_info("load for uid %d (p %d b %d) added\n",
@@ -1210,6 +1309,10 @@ int npu_scheduler_load(struct npu_device *device, const struct npu_session *sess
 		npu_info("DVFS start : %s (%s)\n",
 				d->name, d->gov->name);
 		d->gov->ops->start(d);
+
+		/* set frequency */
+		npu_scheduler_set_freq(d, d->max_freq);
+		d->is_init_freq = 1;
 		d->activated = 1;
 	}
 	mutex_unlock(&info->exec_lock);
@@ -1245,6 +1348,7 @@ int npu_scheduler_unload(struct npu_device *device, const struct npu_session *se
 					d->name, d->gov->name);
 			d->activated = 0;
 			d->gov->ops->stop(d);
+			d->is_init_freq = 0;
 		}
 	}
 	mutex_unlock(&info->exec_lock);
@@ -1274,6 +1378,53 @@ void npu_scheduler_update_sched_param(struct npu_device *device, struct npu_sess
 			break;
 		}
 	}
+	mutex_unlock(&info->fps_lock);
+}
+
+void npu_scheduler_set_init_freq(
+		struct npu_device *device, npu_uid_t session_uid)
+{
+	s32 init_freq;
+	struct npu_scheduler_info *info;
+	struct npu_scheduler_dvfs_info *d;
+	struct npu_scheduler_fps_load *l;
+	struct npu_scheduler_fps_load *tl;
+
+	BUG_ON(!device);
+	info = device->sched;
+
+	mutex_lock(&info->fps_lock);
+	tl = NULL;
+	/* find load entry */
+	list_for_each_entry(l, &info->fps_load_list, list) {
+		if (l->uid == session_uid) {
+			tl = l;
+			break;
+		}
+	}
+
+	/* if not, error !! */
+	if (!tl) {
+		npu_err("fps load data for uid %d NOT found\n", session_uid);
+		mutex_unlock(&info->fps_lock);
+		return;
+	}
+
+	mutex_lock(&info->exec_lock);
+	list_for_each_entry(d, &info->ip_list, ip_list) {
+		if (d->is_init_freq == 0) {
+			init_freq = tl->init_freq_ratio * d->max_freq / 10000;
+			init_freq = npu_scheduler_get_freq_ceil(d, init_freq);
+
+			if (init_freq < d->cur_freq)
+				init_freq = d->cur_freq;
+
+			/* set frequency */
+			npu_scheduler_set_freq(d, init_freq);
+			d->is_init_freq = 1;
+		}
+	}
+	mutex_unlock(&info->exec_lock);
 	mutex_unlock(&info->fps_lock);
 }
 
@@ -1427,11 +1578,10 @@ npu_s_param_ret npu_scheduler_param_handler(struct npu_session *sess, struct vs4
 
 	switch (param->target) {
 	case NPU_S_PARAM_PERF_MODE:
-		if (param->offset >= NPU_PERF_MODE_NONE &&
-				param->offset < NPU_PERF_MODE_NUM) {
+		if (param->offset < NPU_PERF_MODE_NUM) {
 			g_npu_scheduler_info->mode = param->offset;
 			if (g_npu_scheduler_info->activated)
-				npu_scheduler_set_mode_freq(g_npu_scheduler_info);
+				npu_scheduler_set_mode_freq(g_npu_scheduler_info, sess->uid);
 			npu_scheduler_set_bts(g_npu_scheduler_info);
 			npu_set_llc(g_npu_scheduler_info);
 			npu_dbg("new NPU performance mode : %s\n",
@@ -1444,8 +1594,7 @@ npu_s_param_ret npu_scheduler_param_handler(struct npu_session *sess, struct vs4
 		break;
 
 	case NPU_S_PARAM_PRIORITY:
-		if (param->offset < NPU_SCHEDULER_PRIORITY_MIN ||
-				param->offset > NPU_SCHEDULER_PRIORITY_MAX) {
+		if (param->offset > NPU_SCHEDULER_PRIORITY_MAX) {
 			npu_err("Invalid priority : %d\n", param->offset);
 			ret = S_PARAM_NOMB;
 		} else {
@@ -1461,13 +1610,10 @@ npu_s_param_ret npu_scheduler_param_handler(struct npu_session *sess, struct vs4
 	case NPU_S_PARAM_TPF:
 		if (param->offset == 0)
 			npu_err("No TPF setting : %d\n", param->offset);
-		else if (param->offset < 0) {
-			npu_err("Invalid TPF : %d\n", param->offset);
-			ret = S_PARAM_NOMB;
-		} else {
+		else {
 			l->requested_tpf = param->offset;
 
-			npu_dbg("set tpf of uid %d as %d\n",
+			npu_dbg("set tpf of uid %d as %lld\n",
 					l->uid, l->requested_tpf);
 		}
 		break;

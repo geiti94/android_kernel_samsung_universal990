@@ -13,11 +13,11 @@
 #include <linux/module.h>
 #include <linux/io.h>
 #include <linux/sec_class.h>
-#include <linux/sec_bps.h>
+#include <linux/kq/sec_bps.h>
 #if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SEC_NAD) && defined(CONFIG_SEC_NAD_BPS_CLASSIFIER)
 #include <linux/fs.h>
 #include <linux/sec_nad.h>
-#include <linux/sec_nad_bps_classifier.h>
+#include <linux/kq/sec_nad_bps_classifier.h>
 #endif
 
 #if defined(CONFIG_SEC_FACTORY)
@@ -108,6 +108,9 @@ static void sec_print_bps_info(struct bps_info *bfo, char *info)
 	printk("%s:%s rbps_magic:0x%x, rbpsp:%d, rbpsf:%d, n1bps:%d, n2bps:%d, n3bps:%d, n4bps:%d\n",
 		__func__, info, bfo->rbps_magic, bfo->rbpsp, bfo->rbpsf,
 		bfo->n1bps, bfo->n2bps, bfo->n3bps, bfo->n4bps);
+#if defined(CONFIG_SEC_BPS_INFO_ADD)
+	printk("%s:%s fac info:%d\n", __func__, info, bfo->fac_info);
+#endif
 }
 
 static void sec_bps_param_init(void)
@@ -202,8 +205,26 @@ static void sec_bps_param_update(int idx, int value)
 		bps_envs.n4bps = value;
 		printk("%s: SEC_BPS_N4BPS, val = %d\n", __func__, bps_envs.n4bps);
 		break;
+#if defined(CONFIG_SEC_BPS_INFO_ADD)
+	case SEC_BPS_FACINFO:
+		if (value > bps_envs.fac_info && value <= SEC_BPS_INFO_FAC_STEP_ASSEMBLED) {
+			printk("%s: SEC_BPS_FACINFO, val = %d\n", __func__, bps_envs.fac_info);
+			bps_envs.fac_info = value;
+			printk("%s: SEC_BPS_FACINFO, val = %d\n", __func__, bps_envs.fac_info);
+		} else {
+			printk("%s: SEC_BPS_FACINFO, skip update cur[%d], upd[%d]\n",
+				__func__, bps_envs.fac_info, value);
+			goto close_fp_out;
+		}
+		break;
+#endif
 	}
+#if defined(CONFIG_SEC_BPS_INFO_ADD)
+	if (idx != SEC_BPS_FACINFO)
+		bps_envs.rbps_magic = NAD_BPS_INFO_MAGIC;
+#else
 	bps_envs.rbps_magic = NAD_BPS_INFO_MAGIC;
+#endif
 
 	ret = vfs_write(fp, (char *)&bps_envs, sizeof(struct bps_info), &(fp->f_pos));
 	if (ret < 0) {
@@ -352,6 +373,56 @@ create_attr_fail:
 create_attr_success:
 	return rc;
 }
+
+#if defined(CONFIG_SEC_BPS_INFO_ADD)
+static ssize_t store_bps_fac_info(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	int ret, val;
+
+	printk("%s: ++", __func__);
+
+	/* read var and convert to int */
+	ret = kstrtoint(buf, 0, &val);
+	if (ret < 0)
+		return -EINVAL;
+
+	printk("%s: val = %d", __func__, val);
+
+	sec_bps_param_data.idx = SEC_BPS_FACINFO;
+	sec_bps_param_data.val = val;
+	schedule_work(&sec_bps_param_data.sec_bps_work);
+
+	return count;
+}
+
+static ssize_t show_bps_fac_info(struct device *dev,
+		struct device_attribute *attr,
+		char *buf)
+{
+	printk("%s: ++", __func__);
+
+	/* check if param successfully read */
+	if (bps_info_initialized == false) {
+		printk("%s: skip show bps fac info : not initialized!\n", __func__);
+		return sprintf(buf, "NG\n");
+	}
+
+	printk("%s: fac info [%d]", __func__, bps_envs.fac_info);
+
+	if (bps_envs.fac_info == SEC_BPS_INFO_FAC_STEP_ASSEMBLED)
+		return sprintf(buf, "ASSEMBLED\n");
+	else if (bps_envs.fac_info == SEC_BPS_INFO_FAC_STEP_SEMI_ASSEMBLED)
+		return sprintf(buf, "SEMI-ASSEMBLED\n");
+	else if (bps_envs.fac_info == SEC_BPS_INFO_FAC_STEP_PBA)
+		return sprintf(buf, "SMD\n");
+	else
+ 		return sprintf(buf, "FAIL\n");
+}
+
+static DEVICE_ATTR(factory, S_IRUGO | S_IWUSR, show_bps_fac_info, store_bps_fac_info);
+#endif
 #endif	//CONFIG_SEC_FACTORY
 
 static int __init sec_bps_init(void)
@@ -373,6 +444,14 @@ static int __init sec_bps_init(void)
 		pr_err("%s: failed to create attrs (sec_bps)\n", __func__);
 		goto err_create_bps_sysfs;
 	}
+#if defined(CONFIG_SEC_BPS_INFO_ADD)
+	ret = device_create_file(sec_bps, &dev_attr_factory);
+	if (ret) {
+		pr_err("%s: failed to create factory attrs (sec_bps)\n", __func__);
+		goto err_create_bps_sysfs;
+	} else
+		printk("%s: support factory bps sys file\n", __func__);
+#endif
 
 #if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SEC_NAD) && defined(CONFIG_SEC_NAD_BPS_CLASSIFIER)
 	INIT_WORK(&sec_bps_param_data.sec_bps_work, sec_bps_param_work);

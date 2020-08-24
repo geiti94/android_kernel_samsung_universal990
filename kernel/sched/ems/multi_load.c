@@ -152,6 +152,24 @@ unsigned long __ml_cpu_util(int cpu, int sse)
 }
 
 /*
+ * _ml_cpu_util_est - sse/uss utilization in cpu
+ *
+ * Cpu utilization. This function returns bigger value between util and util.est in
+ * the cpu according to "sse" parameter.
+ */
+unsigned long _ml_cpu_util_est(int cpu, int sse)
+{
+	unsigned long util;
+
+	util = __ml_cpu_util(cpu, sse);
+
+	if (sched_feat(UTIL_EST))
+		util = max_t(unsigned long, util, __ml_cpu_util_est(cpu, sse));
+
+	return min_t(unsigned long, util, capacity_cpu_orig(cpu, sse));
+}
+
+/*
  * _ml_cpu_util - sse/uss combined cpu utilization
  *
  * Sse and uss combined cpu utilization. This function returns combined cpu
@@ -929,7 +947,7 @@ void util_est_dequeue_multi_load(struct cfs_rq *cfs_rq,
 	 */
 	ue.enqueued = (ml_task_util(p) | UTIL_AVG_UNCHANGED);
 	last_ewma_diff = ue.enqueued - ue.ewma;
-	if (within_margin(last_ewma_diff, SCHED_CAPACITY_SCALE / 100))
+	if (within_margin(last_ewma_diff, capacity_cpu(task_cpu(p), USS) / 100))
 		return;
 
 	/*

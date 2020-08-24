@@ -4,7 +4,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -21,7 +21,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef wlioctl_defs_h
@@ -216,6 +216,7 @@
 
 /* Mask bit for LOW power scan, High accuracy scan, LOW span scan bit defines */
 #define WL_SCANFLAGS_SCAN_MODE_MASK	0x7000u
+#define WL_SCANFLAGS_SCAN_MODE_SHIFT	12u
 
 /* Bitmask for scan_type */
 /* Reserved flag precludes the use of 0xff for scan_type which is
@@ -1430,8 +1431,7 @@
 #define BCMIO_NBBY		8
 #define WL_EVENTING_MASK_LEN	16		/* Don't increase this without wl review */
 
-#define WL_EVENTING_MASK_EXT_LEN \
-    MAX(WL_EVENTING_MASK_LEN, (ROUNDUP(WLC_E_LAST, NBBY)/NBBY))
+#define WL_EVENTING_MASK_EXT_LEN	ROUNDUP(WLC_E_LAST, NBBY)/NBBY
 
 /* join preference types */
 #define WL_JOIN_PREF_RSSI	1	/* by RSSI */

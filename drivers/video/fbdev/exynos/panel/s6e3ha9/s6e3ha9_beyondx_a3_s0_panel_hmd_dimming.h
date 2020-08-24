@@ -178,6 +178,7 @@ static struct brightness_table s6e3ha9_beyondx_a3_s0_panel_hmd_brightness_table 
 	.sz_brt_to_step = ARRAY_SIZE(beyondx_a3_s0_hmd_brt_tbl),
 };
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static struct panel_dimming_info s6e3ha9_beyondx_a3_s0_preliminary_panel_hmd_dimming_info = {
 	.name = "s6e3ha9_beyondx_a3_s0_preliminary_hmd",
 	.dim_init_info = {
@@ -211,6 +212,7 @@ static struct panel_dimming_info s6e3ha9_beyondx_a3_s0_preliminary_panel_hmd_dim
 	.dimming_maptbl = beyondx_a3_s0_hmd_dimming_param_maptbl,
 	.dim_flash_on = false,	/* read dim flash when probe or not */
 };
+#endif
 
 static struct panel_dimming_info s6e3ha9_beyondx_a3_s0_panel_hmd_dimming_info = {
 	.name = "s6e3ha9_beyondx_a3_s0_hmd",

@@ -38,8 +38,9 @@
 #include "is-dt.h"
 #include "is-cis-2l3.h"
 #include "is-cis-2l3-setA.h"
+#if 0
 #include "is-cis-2l3-setB.h"
-
+#endif
 #include "is-helper-i2c.h"
 
 #define SENSOR_NAME "S5K2L3"
@@ -60,6 +61,10 @@ static const u32 **sensor_2l3_setfiles;
 static const u32 *sensor_2l3_setfile_sizes;
 static const struct sensor_pll_info_compact **sensor_2l3_pllinfos;
 static u32 sensor_2l3_max_setfile_num;
+static const u32 *sensor_2l3_dualsync_slave;
+static u32 sensor_2l3_dualsync_slave_size;
+static const u32 *sensor_2l3_dualsync_single;
+static u32 sensor_2l3_dualsync_single_size;
 #ifdef CONFIG_SENSOR_RETENTION_USE
 static const u32 *sensor_2l3_global_retention;
 static u32 sensor_2l3_global_retention_size;
@@ -70,6 +75,7 @@ static const u32 **sensor_2l3_load_sram;
 static const u32 *sensor_2l3_load_sram_size;
 #endif
 
+static bool sensor_2l3_fake_retention_status;
 static int ln_mode_delay_count;
 static u8 ln_mode_frame_count;
 
@@ -783,9 +789,6 @@ int sensor_2l3_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 	struct is_module_enum *module;
 	struct is_device_sensor_peri *sensor_peri = NULL;
 	struct sensor_open_extended *ext_info = NULL;
-	struct is_device_sensor *device;
-	u32 ex_mode;
-#ifdef CONFIG_SEC_FACTORY
 	struct is_core *core = NULL;
 
 	core = (struct is_core *)dev_get_drvdata(is_dev);
@@ -793,7 +796,6 @@ int sensor_2l3_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 		err("core device is null");
 		return -EINVAL;
 	}
-#endif
 
 	WARN_ON(!subdev);
 
@@ -826,12 +828,6 @@ int sensor_2l3_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 	}
 #endif
 
-	device = (struct is_device_sensor *)v4l2_get_subdev_hostdata(subdev);
-	if (unlikely(!device)) {
-		err("device sensor is null");
-		return -EINVAL;
-	}
-
 #if 0 /* cis_data_calculation is called in module_s_format */
 	sensor_2l3_cis_data_calculation(sensor_2l3_pllinfos[mode], cis->cis_data);
 #endif
@@ -863,22 +859,19 @@ int sensor_2l3_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 			err("sensor_2l3_set_registers fail!!");
 			goto p_err_i2c_unlock;
 		}
-	}
 
-	info("[%s] mode changed(%d)\n", __func__, mode);
+		if (test_bit(IS_SENSOR_OPEN, &(core->sensor[0].state))) {
+			info("[%s] dual sync slave mode\n", __func__);
+			ret = sensor_cis_set_registers(subdev, sensor_2l3_dualsync_slave, sensor_2l3_dualsync_slave_size);
+		} else {
+			info("[%s] dual sync single mode\n", __func__);
+			ret = sensor_cis_set_registers(subdev, sensor_2l3_dualsync_single, sensor_2l3_dualsync_single_size);
+		}
 
-	/* dual sync for live focus */
-	ex_mode = is_sensor_g_ex_mode(device);
-	if (ex_mode == EX_LIVEFOCUS
-#ifdef CONFIG_SEC_FACTORY
-		|| test_bit(IS_SENSOR_OPEN, &(core->sensor[0].state))
-#endif
-		) {
-		info("[%s]dual sync slave mode\n", __func__);
-		ret = sensor_cis_set_registers(subdev, sensor_2l3_cis_dual_slave_settings, sensor_2l3_cis_dual_slave_settings_size);
-	} else {
-		info("[%s]dual sync single mode\n", __func__);
-		ret = sensor_cis_set_registers(subdev, sensor_2l3_cis_dual_single_settings, sensor_2l3_cis_dual_single_settings_size);
+		if (ret < 0) {
+			err("2l3 dual slave mode fail");
+			goto p_err;
+		}
 	}
 
 	if (sensor_2l3_cis_get_lownoise_supported(cis->cis_data)) {
@@ -952,36 +945,42 @@ p_err:
 int sensor_2l3_cis_set_global_setting(struct v4l2_subdev *subdev)
 {
 	int ret = 0;
+
+	if (sensor_2l3_fake_retention_status) {
+		info("[%s] skip global setting\n", __func__);
+		sensor_2l3_fake_retention_status = false;
+	} else {
 #ifdef CONFIG_SENSOR_RETENTION_USE
-	struct is_cis *cis = NULL;
-	struct is_module_enum *module;
-	struct is_device_sensor_peri *sensor_peri = NULL;
-	struct sensor_open_extended *ext_info;
+		struct is_cis *cis = NULL;
+		struct is_module_enum *module;
+		struct is_device_sensor_peri *sensor_peri = NULL;
+		struct sensor_open_extended *ext_info;
 
-	WARN_ON(!subdev);
+		WARN_ON(!subdev);
 
-	cis = (struct is_cis *)v4l2_get_subdevdata(subdev);
-	WARN_ON(!cis);
+		cis = (struct is_cis *)v4l2_get_subdevdata(subdev);
+		WARN_ON(!cis);
 
-	sensor_peri = container_of(cis, struct is_device_sensor_peri, cis);
-	module = sensor_peri->module;
-	ext_info = &module->ext;
-	WARN_ON(!ext_info);
+		sensor_peri = container_of(cis, struct is_device_sensor_peri, cis);
+		module = sensor_peri->module;
+		ext_info = &module->ext;
+		WARN_ON(!ext_info);
 
-	/* setfile global setting is at camera entrance */
-	if (ext_info->use_retention_mode == SENSOR_RETENTION_INACTIVE) {
-		sensor_2l3_cis_set_global_setting_internal(subdev);
-		sensor_2l3_cis_retention_prepare(subdev);
-		ext_info->use_retention_mode = SENSOR_RETENTION_ACTIVATED;
-	} else if (ext_info->use_retention_mode == SENSOR_RETENTION_ACTIVATED) {
-		sensor_2l3_cis_retention_crc_check(subdev);
-	} else { /* SENSOR_RETENTION_UNSUPPORTED */
-		sensor_2l3_cis_set_global_setting_internal(subdev);
-	}
+		/* setfile global setting is at camera entrance */
+		if (ext_info->use_retention_mode == SENSOR_RETENTION_INACTIVE) {
+			sensor_2l3_cis_set_global_setting_internal(subdev);
+			sensor_2l3_cis_retention_prepare(subdev);
+			ext_info->use_retention_mode = SENSOR_RETENTION_ACTIVATED;
+		} else if (ext_info->use_retention_mode == SENSOR_RETENTION_ACTIVATED) {
+			sensor_2l3_cis_retention_crc_check(subdev);
+		} else { /* SENSOR_RETENTION_UNSUPPORTED */
+			sensor_2l3_cis_set_global_setting_internal(subdev);
+		}
 #else
-	WARN_ON(!subdev);
-	sensor_2l3_cis_set_global_setting_internal(subdev);
+		WARN_ON(!subdev);
+		sensor_2l3_cis_set_global_setting_internal(subdev);
 #endif
+	}
 
 	return ret;
 }
@@ -1321,7 +1320,7 @@ int sensor_2l3_cis_stream_on(struct v4l2_subdev *subdev)
 	 * then 8 ms waiting is needed before the StreamOn of a sensor (SAK2L3).
 	 */
 	if (test_bit(IS_SENSOR_PREPROCESSOR_AVAILABLE, &sensor_peri->peri_state))
-		mdelay(8);
+		usleep_range(8000, 8100);
 
 	/* Sensor stream on */
 	info("%s\n", __func__);
@@ -2777,6 +2776,22 @@ int sensor_2l3_cis_get_super_slow_motion_threshold(struct v4l2_subdev *subdev, u
 	return ret;
 }
 
+int sensor_2l3_cis_set_fake_retention(struct v4l2_subdev *subdev, bool enable)
+{
+	struct is_cis *cis = NULL;
+
+	FIMC_BUG(!subdev);
+
+	cis = (struct is_cis *)v4l2_get_subdevdata(subdev);
+	FIMC_BUG(!cis);
+	FIMC_BUG(!cis->cis_data);
+
+	info("%s(%d)\n", __func__, enable);
+	sensor_2l3_fake_retention_status = enable;
+
+	return 0;
+}
+
 static struct is_cis_ops cis_ops_2l3 = {
 	.cis_init = sensor_2l3_cis_init,
 	.cis_log_status = sensor_2l3_cis_log_status,
@@ -2818,6 +2833,7 @@ static struct is_cis_ops cis_ops_2l3 = {
 	.cis_check_rev_on_init = sensor_cis_check_rev_on_init,
 	.cis_set_super_slow_motion_threshold = sensor_2l3_cis_set_super_slow_motion_threshold,
 	.cis_get_super_slow_motion_threshold = sensor_2l3_cis_get_super_slow_motion_threshold,
+	.cis_set_fake_retention = sensor_2l3_cis_set_fake_retention,
 };
 
 static int cis_2l3_probe(struct i2c_client *client,
@@ -2953,6 +2969,8 @@ static int cis_2l3_probe(struct i2c_client *client,
 		setfile = "default";
 	}
 
+	sensor_2l3_fake_retention_status = false;
+
 	if (strcmp(setfile, "default") == 0 ||
 			strcmp(setfile, "setA") == 0) {
 		probe_info("%s setfile_A\n", __func__);
@@ -2968,6 +2986,10 @@ static int cis_2l3_probe(struct i2c_client *client,
 		sensor_2l3_setfile_sizes = sensor_2l3_setfile_A_sizes;
 		sensor_2l3_pllinfos = sensor_2l3_pllinfos_A;
 		sensor_2l3_max_setfile_num = ARRAY_SIZE(sensor_2l3_setfiles_A);
+		sensor_2l3_dualsync_slave = sensor_2l3_dual_slave_A_settings;
+		sensor_2l3_dualsync_slave_size = ARRAY_SIZE(sensor_2l3_dual_slave_A_settings);
+		sensor_2l3_dualsync_single = sensor_2l3_dual_single_A_settings;
+		sensor_2l3_dualsync_single_size = ARRAY_SIZE(sensor_2l3_dual_single_A_settings);
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
 		sensor_2l3_mipi_sensor_mode = sensor_2l3_setfile_A_mipi_sensor_mode;
 		sensor_2l3_mipi_sensor_mode_size = ARRAY_SIZE(sensor_2l3_setfile_A_mipi_sensor_mode);
@@ -2983,7 +3005,9 @@ static int cis_2l3_probe(struct i2c_client *client,
 		sensor_2l3_load_sram = sensor_2l3_setfile_A_load_sram;
 		sensor_2l3_load_sram_size = sensor_2l3_setfile_A_sizes_load_sram;
 #endif
-	} else if (strcmp(setfile, "setB") == 0) {
+	}
+#if 0
+	else if (strcmp(setfile, "setB") == 0) {
 		probe_info("%s setfile_B\n", __func__);
 		sensor_2l3_reset = sensor_2l3_setfile_B_Reset;
 		sensor_2l3_reset_size = ARRAY_SIZE(sensor_2l3_setfile_B_Reset);
@@ -2993,11 +3017,13 @@ static int cis_2l3_probe(struct i2c_client *client,
 		sensor_2l3_setfile_sizes = sensor_2l3_setfile_B_sizes;
 		sensor_2l3_pllinfos = sensor_2l3_pllinfos_B;
 		sensor_2l3_max_setfile_num = ARRAY_SIZE(sensor_2l3_setfiles_B);
+		sensor_2l3_dualsync_slave = sensor_2l3_dual_slave_B_settings;
+		sensor_2l3_dualsync_slave_size = ARRAY_SIZE(sensor_2l3_dual_slave_B_settings);
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
-		sensor_2l3_mipi_sensor_mode = sensor_2l3_setfile_A_mipi_sensor_mode;
-		sensor_2l3_mipi_sensor_mode_size = ARRAY_SIZE(sensor_2l3_setfile_A_mipi_sensor_mode);
-		sensor_2l3_verify_sensor_mode = sensor_2l3_setfile_A_verify_sensor_mode;
-		sensor_2l3_verify_sensor_mode_size = ARRAY_SIZE(sensor_2l3_setfile_A_verify_sensor_mode);
+		sensor_2l3_mipi_sensor_mode = sensor_2l3_setfile_B_mipi_sensor_mode;
+		sensor_2l3_mipi_sensor_mode_size = ARRAY_SIZE(sensor_2l3_setfile_B_mipi_sensor_mode);
+		sensor_2l3_verify_sensor_mode = sensor_2l3_setfile_B_verify_sensor_mode;
+		sensor_2l3_verify_sensor_mode_size = ARRAY_SIZE(sensor_2l3_setfile_B_verify_sensor_mode);
 #endif
 #ifdef CONFIG_SENSOR_RETENTION_USE
 		sensor_2l3_global_retention = sensor_2l3_setfile_B_Global_retention;
@@ -3008,16 +3034,22 @@ static int cis_2l3_probe(struct i2c_client *client,
 		sensor_2l3_load_sram = sensor_2l3_setfile_B_load_sram;
 		sensor_2l3_load_sram_size = sensor_2l3_setfile_B_sizes_load_sram;
 #endif
-	} else {
-		err("%s setfile index out of bound, take default (setfile_B)", __func__);
-		sensor_2l3_reset = sensor_2l3_setfile_B_Reset;
-		sensor_2l3_reset_size = ARRAY_SIZE(sensor_2l3_setfile_B_Reset);
-		sensor_2l3_global = sensor_2l3_setfile_B_Global;
-		sensor_2l3_global_size = ARRAY_SIZE(sensor_2l3_setfile_B_Global);
-		sensor_2l3_setfiles = sensor_2l3_setfiles_B;
-		sensor_2l3_setfile_sizes = sensor_2l3_setfile_B_sizes;
-		sensor_2l3_pllinfos = sensor_2l3_pllinfos_B;
-		sensor_2l3_max_setfile_num = ARRAY_SIZE(sensor_2l3_setfiles_B);
+	}
+#endif
+	else {
+		err("%s setfile index out of bound, take default (setfile_A)", __func__);
+		sensor_2l3_reset = sensor_2l3_setfile_A_Reset;
+		sensor_2l3_reset_size = ARRAY_SIZE(sensor_2l3_setfile_A_Reset);
+		sensor_2l3_global = sensor_2l3_setfile_A_Global;
+		sensor_2l3_global_size = ARRAY_SIZE(sensor_2l3_setfile_A_Global);
+		sensor_2l3_setfiles = sensor_2l3_setfiles_A;
+		sensor_2l3_setfile_sizes = sensor_2l3_setfile_A_sizes;
+		sensor_2l3_pllinfos = sensor_2l3_pllinfos_A;
+		sensor_2l3_max_setfile_num = ARRAY_SIZE(sensor_2l3_setfiles_A);
+		sensor_2l3_dualsync_slave = sensor_2l3_dual_slave_A_settings;
+		sensor_2l3_dualsync_slave_size = ARRAY_SIZE(sensor_2l3_dual_slave_A_settings);
+		sensor_2l3_dualsync_single = sensor_2l3_dual_single_A_settings;
+		sensor_2l3_dualsync_single_size = ARRAY_SIZE(sensor_2l3_dual_single_A_settings);
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION
 		sensor_2l3_mipi_sensor_mode = sensor_2l3_setfile_A_mipi_sensor_mode;
 		sensor_2l3_mipi_sensor_mode_size = ARRAY_SIZE(sensor_2l3_setfile_A_mipi_sensor_mode);
@@ -3025,13 +3057,13 @@ static int cis_2l3_probe(struct i2c_client *client,
 		sensor_2l3_verify_sensor_mode_size = ARRAY_SIZE(sensor_2l3_setfile_A_verify_sensor_mode);
 #endif
 #ifdef CONFIG_SENSOR_RETENTION_USE
-		sensor_2l3_global_retention = sensor_2l3_setfile_B_Global_retention;
-		sensor_2l3_global_retention_size = ARRAY_SIZE(sensor_2l3_setfile_B_Global_retention);
-		sensor_2l3_retention = sensor_2l3_setfiles_B_retention;
-		sensor_2l3_retention_size = sensor_2l3_setfile_B_sizes_retention;
-		sensor_2l3_max_retention_num = ARRAY_SIZE(sensor_2l3_setfiles_B_retention);
-		sensor_2l3_load_sram = sensor_2l3_setfile_B_load_sram;
-		sensor_2l3_load_sram_size = sensor_2l3_setfile_B_sizes_load_sram;
+		sensor_2l3_global_retention = sensor_2l3_setfile_A_Global_retention;
+		sensor_2l3_global_retention_size = ARRAY_SIZE(sensor_2l3_setfile_A_Global_retention);
+		sensor_2l3_retention = sensor_2l3_setfiles_A_retention;
+		sensor_2l3_retention_size = sensor_2l3_setfile_A_sizes_retention;
+		sensor_2l3_max_retention_num = ARRAY_SIZE(sensor_2l3_setfiles_A_retention);
+		sensor_2l3_load_sram = sensor_2l3_setfile_A_load_sram;
+		sensor_2l3_load_sram_size = sensor_2l3_setfile_A_sizes_load_sram;
 #endif
 	}
 #ifdef USE_CAMERA_MIPI_CLOCK_VARIATION

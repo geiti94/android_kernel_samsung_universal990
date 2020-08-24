@@ -499,7 +499,7 @@ static int s2mps19_i2c_probe(struct i2c_client *i2c,
 	i2c_set_clientdata(s2mps19->rtc, s2mps19);
 	i2c_set_clientdata(s2mps19->debug_i2c, s2mps19);
 
-	pr_info("%s device found: rev.0x%2x\n", __func__, s2mps19->pmic_rev);
+	pr_info("%s device found: rev.0x%02hhx\n", __func__, s2mps19->pmic_rev);
 
 	ret = s2mps19_irq_init(s2mps19);
 	if (ret < 0)

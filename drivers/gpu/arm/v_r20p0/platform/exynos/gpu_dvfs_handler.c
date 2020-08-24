@@ -29,6 +29,9 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 {
 	struct exynos_context *platform;
 	char *env[2] = {"FEATURE=GPUI", NULL};
+#ifdef CONFIG_MALI_SEC_G3D_PERF_STABLE_PMQOS
+	unsigned long util_mul_freq;
+#endif
 
 	platform = (struct exynos_context *) kbdev->platform_context;
 
@@ -45,6 +48,22 @@ int kbase_platform_dvfs_event(struct kbase_device *kbdev, u32 utilisation)
 		int clk = 0;
 		gpu_dvfs_calculate_env_data(kbdev);
 		clk = gpu_dvfs_decide_next_freq(kbdev, platform->env_data.utilization);
+#ifdef CONFIG_MALI_SEC_G3D_PERF_STABLE_PMQOS
+		util_mul_freq = (unsigned long)clk * platform->env_data.utilization;
+#ifdef CONFIG_MALI_SEC_CL_BOOST
+		if (!kbdev->pm.backend.metrics.is_full_compute_util && util_mul_freq > STAY_COUNT_NO_PEAK_MODE_UTIL_MUL_FREQ) {
+#else
+		if (util_mul_freq > STAY_COUNT_NO_PEAK_MODE_UTIL_MUL_FREQ) {
+#endif
+			platform->stay_count_no_peak_mode++;
+			if (platform->stay_count_no_peak_mode >= STAY_COUNT_NO_PEAK_MODE_PERIOD)
+				platform->stay_count_no_peak_mode = STAY_COUNT_NO_PEAK_MODE_PERIOD;
+			GPU_LOG(DVFS_DEBUG, DUMMY, 0u, 0u, "Peak mode count enable start %llu, %d, %d, %d\n", util_mul_freq, platform->env_data.utilization, clk, platform->stay_count_no_peak_mode);
+		} else {
+			platform->stay_count_no_peak_mode = 0;
+			GPU_LOG(DVFS_DEBUG, DUMMY, 0u, 0u, "Peak mode disable %llu, %d, %d, %d\n", util_mul_freq, platform->env_data.utilization, clk, platform->stay_count_no_peak_mode);
+		}
+#endif
 		gpu_set_target_clk_vol(clk, true, false);
 	}
 	mutex_unlock(&platform->gpu_dvfs_handler_lock);

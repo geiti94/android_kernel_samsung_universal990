@@ -25,6 +25,7 @@
 
 #include "mali_kbase_platform.h"
 #include "gpu_dvfs_handler.h"
+#include "gpu_dvfs_api.h"
 #include "gpu_dvfs_governor.h"
 #include "gpu_control.h"
 #ifdef CONFIG_CPU_THERMAL_IPA
@@ -72,6 +73,8 @@ static ssize_t show_clock(struct device *dev, struct device_attribute *attr, cha
 		mutex_lock(&platform->exynos_pm_domain->access_lock);
 		if(!platform->dvs_is_enabled && gpu_is_power_on())
 			clock = gpu_get_cur_clock(platform);
+		else if(!platform->dvs_is_enabled && platform->power_status == true && platform->inter_frame_pm_status == true && platform->inter_frame_pm_is_poweron == false)	/* IFPO off case */
+			clock = 0;
 		mutex_unlock(&platform->exynos_pm_domain->access_lock);
 	}
 #else
@@ -174,6 +177,127 @@ static ssize_t show_vol(struct device *dev, struct device_attribute *attr, char 
 
 	return ret;
 }
+#ifdef CONFIG_MALI_DYNAMIC_IFPO
+static ssize_t show_ifpo_count(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->gpu_ifpo_cnt);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	platform->gpu_ifpo_cnt = 0;
+
+	return ret;
+}
+
+static ssize_t set_ifpo_count(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	if (sysfs_streq("0", buf))
+		platform->gpu_ifpo_get_flag = false;
+	else if (sysfs_streq("1", buf))
+		platform->gpu_ifpo_get_flag = true;
+
+	return count;
+}
+
+static ssize_t set_dynamic_ifpo_util(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &platform->gpu_dynamic_ifpo_util);
+	if (ret) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
+		return -ENOENT;
+	}
+
+	GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "%s: gpu_dynamic_ifpo_util %d\n", __func__, platform->gpu_dynamic_ifpo_util);
+
+	return count;
+}
+
+static ssize_t set_dynamic_ifpo_freq(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &platform->gpu_dynamic_ifpo_freq);
+	if (ret) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
+		return -ENOENT;
+	}
+
+	GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "%s: gpu_dynamic_ifpo_util %d\n", __func__, platform->gpu_dynamic_ifpo_freq);
+
+	return count;
+}
+
+static ssize_t show_dynamic_ifpo_util(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->gpu_dynamic_ifpo_util);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+
+}
+
+static ssize_t show_dynamic_ifpo_freq(struct device *dev, struct device_attribute *attr, char *buf)
+{
+        ssize_t ret = 0;
+        struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+        if (!platform)
+                return -ENODEV;
+
+        ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->gpu_dynamic_ifpo_freq);
+
+        if (ret < PAGE_SIZE - 1) {
+                ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+        } else {
+                buf[PAGE_SIZE-2] = '\n';
+                buf[PAGE_SIZE-1] = '\0';
+                ret = PAGE_SIZE-1;
+        }
+
+        return ret;
+
+}
+#endif
 
 static ssize_t show_power_state(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -343,9 +467,10 @@ static ssize_t show_time_in_state(struct device *dev, struct device_attribute *a
 	gpu_dvfs_update_time_in_state(gpu_control_is_power_on(pkbdev) * platform->cur_clock);
 
 	for (i = gpu_dvfs_get_level(platform->gpu_min_clock); i >= gpu_dvfs_get_level(platform->gpu_max_clock); i--) {
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d %llu\n",
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d %llu %llu\n",
 				platform->table[i].clock,
-				platform->table[i].time);
+				platform->table[i].time,
+				platform->table[i].time_busy / 100);
 	}
 
 	if (ret >= PAGE_SIZE - 1) {
@@ -372,7 +497,10 @@ static ssize_t show_utilization(struct device *dev, struct device_attribute *att
 	if (!platform)
 		return -ENODEV;
 
-	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", gpu_control_is_power_on(pkbdev) * platform->env_data.utilization);
+	if (platform->power_status == true && platform->inter_frame_pm_status == true && platform->inter_frame_pm_is_poweron == false) /* IFPO off case */
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", 0);
+	else
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", gpu_control_is_power_on(pkbdev) * platform->env_data.utilization);
 
 	if (ret < PAGE_SIZE - 1) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
@@ -1027,7 +1155,7 @@ static ssize_t set_polling_speed(struct device *dev, struct device_attribute *at
 		return -ENOENT;
 	}
 
-	if ((polling_speed < 100) || (polling_speed > 1000)) {
+	if ((polling_speed < 4) || (polling_speed > 1000)) {
 		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: out of range [100~1000] (%d)\n", __func__, polling_speed);
 		return -ENOENT;
 	}
@@ -1076,6 +1204,106 @@ static ssize_t set_tmu_control(struct device *dev, struct device_attribute *attr
 		platform->tmu_status = true;
 	else
 		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value - only [0 or 1] is available\n", __func__);
+
+	return count;
+}
+
+static ssize_t show_feedback_governor_impl(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+	int i;
+	unsigned int *freqs;
+	unsigned int *volts;
+	ktime_t *time_in_state;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "feedback governer implementation\n");
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, " +- unsigned int exynos_stats_get_gpu_table_size(void)\n");
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "     +- int gpu_dvfs_get_step(void)\n");
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "         +- %u\n", exynos_stats_get_gpu_table_size());
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, " +- unsigned int exynos_stats_get_gpu_cur_idx(void)\n");
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "     +- int gpu_dvfs_get_cur_level(void)\n");
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "         +- clock=%u\n", gpu_dvfs_get_cur_clock());
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "         +- level=%d\n", exynos_stats_get_gpu_cur_idx());
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, " +- unsigned int exynos_stats_get_gpu_coeff(void)\n");
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "     +- int gpu_dvfs_get_coefficient_value(void)\n");
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "         +- %u\n", exynos_stats_get_gpu_coeff());
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, " +- unsigned int *exynos_stats_get_gpu_freq_table(void)\n");
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "     +- unsigned int *gpu_dvfs_get_freqs(void)\n");
+	freqs = exynos_stats_get_gpu_freq_table();
+	for (i = 0; i < exynos_stats_get_gpu_table_size(); i++) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "         +- %u\n", freqs[i]);
+	}
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, " +- unsigned int *exynos_stats_get_gpu_volt_table(void)\n");
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "     +- unsigned int *gpu_dvfs_get_volts(void)\n");
+	volts = exynos_stats_get_gpu_volt_table();
+	for (i = 0; i < exynos_stats_get_gpu_table_size(); i++) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "         +- %u\n", volts[i]);
+	}
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, " +- ktime_t *exynos_stats_get_gpu_time_in_state(void)\n");
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "     +- ktime_t *gpu_dvfs_get_time_in_state(void)\n");
+	time_in_state = exynos_stats_get_gpu_time_in_state();
+	for (i = 0; i < exynos_stats_get_gpu_table_size(); i++) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "         +- %lld\n", time_in_state[i]);
+	}
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, " +- ktime_t *exynos_stats_get_gpu_queued_job_time(void)\n");
+	time_in_state = exynos_stats_get_gpu_queued_job_time();
+	for (i = 0; i < 2; i++) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "         +- %lld\n", time_in_state[i]);
+	}
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, " +- queued_threshold_check\n");
+	for (i = 0; i < 2; i++) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "         +- %lld\n", pkbdev->queued_threshold[i]);
+	}
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, " +- int exynos_stats_get_gpu_polling_speed(void)\n");
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "         +- %d\n", exynos_stats_get_gpu_polling_speed());
+
+	return ret;
+}
+
+static ssize_t set_queued_threshold_0(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned int threshold = 0;
+	int ret;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &threshold);
+	if (ret) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
+		return -ENOENT;
+	}
+
+	pkbdev->queued_threshold[0] = threshold;
+
+	GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "%s: queued_threshold_0 = %d\n", __func__, pkbdev->queued_threshold[0]);
+
+	return count;
+}
+
+static ssize_t set_queued_threshold_1(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned int threshold = 0;
+	int ret;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &threshold);
+	if (ret) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
+		return -ENOENT;
+	}
+
+	pkbdev->queued_threshold[1] = threshold;
+
+	GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "%s: queued_threshold_1 = %d\n", __func__, pkbdev->queued_threshold[1]);
 
 	return count;
 }
@@ -1418,6 +1646,66 @@ static ssize_t show_cl_boost_disable(struct device *dev, struct device_attribute
 }
 #endif
 
+static ssize_t show_gpu_oper_mode(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	if (platform->gpu_operation_mode_info == GL_NORMAL)
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "GL_NORMAL");
+	else if (platform->gpu_operation_mode_info == GL_PEAK_MODE1)
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "GL_PEAK_MODE1");
+	else if (platform->gpu_operation_mode_info == GL_PEAK_MODE2)
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "GL_PEAK_MODE2");
+	else if (platform->gpu_operation_mode_info == CL_FULL)
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "CL_FULL");
+	else if (platform->gpu_operation_mode_info == CL_UNFULL)
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "CL_UNFULL");
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t show_gpu_logical_power_mode(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	if (platform->power_status == false) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "RPM off");
+	} else if (platform->inter_frame_pm_feature == true) {
+		if (platform->power_status == true && platform->inter_frame_pm_is_poweron == false)
+			ret += snprintf(buf+ret, PAGE_SIZE-ret, "RPM on + IFPO off");
+		else if (platform->power_status == true && platform->inter_frame_pm_is_poweron == true)
+			ret += snprintf(buf+ret, PAGE_SIZE-ret, "RPM on + IFPO on");
+	} else if (platform->inter_frame_pm_feature == false) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "RPM on");
+	}
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
 /** The sysfs file @c clock, fbdev.
  *
  * This is used for obtaining information about the mali t series operating clock & framebuffer address,
@@ -1445,6 +1733,9 @@ DEVICE_ATTR(highspeed_delay, S_IRUGO|S_IWUSR, show_highspeed_delay, set_highspee
 DEVICE_ATTR(wakeup_lock, S_IRUGO|S_IWUSR, show_wakeup_lock, set_wakeup_lock);
 DEVICE_ATTR(polling_speed, S_IRUGO|S_IWUSR, show_polling_speed, set_polling_speed);
 DEVICE_ATTR(tmu, S_IRUGO|S_IWUSR, show_tmu, set_tmu_control);
+DEVICE_ATTR(feedback_governor_impl, S_IRUGO, show_feedback_governor_impl, NULL);
+DEVICE_ATTR(queued_threshold_0, S_IWUSR, NULL, set_queued_threshold_0);
+DEVICE_ATTR(queued_threshold_1, S_IWUSR, NULL, set_queued_threshold_1);
 #ifdef CONFIG_CPU_THERMAL_IPA
 DEVICE_ATTR(norm_utilization, S_IRUGO, show_norm_utilization, NULL);
 DEVICE_ATTR(utilization_stats, S_IRUGO, show_utilization_stats, NULL);
@@ -1465,9 +1756,16 @@ DEVICE_ATTR(vk_boost_status, S_IRUGO, show_vk_boost_status, NULL);
 #ifdef CONFIG_MALI_SUSTAINABLE_OPT
 DEVICE_ATTR(sustainable_status, S_IRUGO, show_sustainable_status, NULL);
 #endif
+#ifdef CONFIG_MALI_DYNAMIC_IFPO
+DEVICE_ATTR(ifpo_count, S_IRUGO|S_IWUSR, show_ifpo_count, set_ifpo_count);
+DEVICE_ATTR(dynamic_ifpo_util, S_IRUGO|S_IWUSR, show_dynamic_ifpo_util, set_dynamic_ifpo_util);
+DEVICE_ATTR(dynamic_ifpo_freq, S_IRUGO|S_IWUSR, show_dynamic_ifpo_freq, set_dynamic_ifpo_freq);
+#endif
 #ifdef CONFIG_MALI_SEC_CL_BOOST
 DEVICE_ATTR(cl_boost_disable, S_IRUGO|S_IWUSR, show_cl_boost_disable, set_cl_boost_disable);
 #endif
+DEVICE_ATTR(gpu_oper_mode, S_IRUGO|S_IWUSR, show_gpu_oper_mode, NULL);
+DEVICE_ATTR(gpu_logical_power_mode, S_IRUGO|S_IWUSR, show_gpu_logical_power_mode, NULL);
 
 #ifdef CONFIG_MALI_DEBUG_KERNEL_SYSFS
 #ifdef CONFIG_MALI_DVFS
@@ -1678,7 +1976,10 @@ static ssize_t show_kernel_sysfs_utilization(struct kobject *kobj, struct kobj_a
 	if (!platform)
 		return -ENODEV;
 
-	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%3d%%", platform->env_data.utilization);
+	if (platform->power_status == true && platform->inter_frame_pm_status == true && platform->inter_frame_pm_is_poweron == false) /* IFPO off case */
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", 0);
+	else
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", gpu_control_is_power_on(pkbdev) * platform->env_data.utilization);
 
 	if (ret < PAGE_SIZE - 1) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
@@ -1705,6 +2006,8 @@ static ssize_t show_kernel_sysfs_clock(struct kobject *kobj, struct kobj_attribu
 		mutex_lock(&platform->exynos_pm_domain->access_lock);
 		if (!platform->dvs_is_enabled && gpu_is_power_on())
 			clock = gpu_get_cur_clock(platform);
+		else if(!platform->dvs_is_enabled && platform->power_status == true && platform->inter_frame_pm_status == true && platform->inter_frame_pm_is_poweron == false)	/* IFPO off case */
+			clock = 0;
 		mutex_unlock(&platform->exynos_pm_domain->access_lock);
 	}
 #else
@@ -2137,7 +2440,44 @@ int gpu_create_sysfs_file(struct device *dev)
 		goto out;
 	}
 #endif
+	if (device_create_file(dev, &dev_attr_gpu_oper_mode)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [gpu_oper_mode]\n");
+		goto out;
+	}
+	if (device_create_file(dev, &dev_attr_gpu_logical_power_mode)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [gpu_logical_power_mode]\n");
+		goto out;
+	}
+	if (device_create_file(dev, &dev_attr_feedback_governor_impl)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [feedback_gov]\n");
+		goto out;
+	}
+	if (device_create_file(dev, &dev_attr_queued_threshold_0)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [queued_threshold_0]\n");
+		goto out;
+	}
 
+	if (device_create_file(dev, &dev_attr_queued_threshold_1)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [queued_threshold_1]\n");
+		goto out;
+	}
+
+#ifdef CONFIG_MALI_DYNAMIC_IFPO
+	if (device_create_file(dev, &dev_attr_ifpo_count)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [ifpo_count]\n");
+		goto out;
+	}
+
+	if (device_create_file(dev, &dev_attr_dynamic_ifpo_util)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [dynamic_ifpo_util]\n");
+		goto out;
+	}
+
+	if (device_create_file(dev, &dev_attr_dynamic_ifpo_freq)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [dynamic_ifpo_freq]\n");
+		goto out;
+	}
+#endif
 #ifdef CONFIG_MALI_DEBUG_KERNEL_SYSFS
 	external_kobj = kobject_create_and_add("gpu", kernel_kobj);
 	if (!external_kobj) {
@@ -2204,6 +2544,16 @@ void gpu_remove_sysfs_file(struct device *dev)
 #endif
 #ifdef CONFIG_MALI_SEC_CL_BOOST
 	device_remove_file(dev, &dev_attr_cl_boost_disable);
+#endif
+	device_remove_file(dev, &dev_attr_gpu_oper_mode);
+	device_remove_file(dev, &dev_attr_gpu_logical_power_mode);
+	device_remove_file(dev, &dev_attr_feedback_governor_impl);
+	device_remove_file(dev, &dev_attr_queued_threshold_0);
+	device_remove_file(dev, &dev_attr_queued_threshold_1);
+#ifdef CONFIG_MALI_DYNAMIC_IFPO
+	device_remove_file(dev, &dev_attr_ifpo_count);
+	device_remove_file(dev, &dev_attr_dynamic_ifpo_util);
+	device_remove_file(dev, &dev_attr_dynamic_ifpo_freq);
 #endif
 #ifdef CONFIG_MALI_DEBUG_KERNEL_SYSFS
 	kobject_put(external_kobj);

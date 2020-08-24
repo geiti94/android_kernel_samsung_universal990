@@ -25,7 +25,7 @@
 
 #ifdef CONFIG_UH
 #include <linux/uh.h>
-#ifdef CONFIG_UH_RKP
+#if (defined CONFIG_UH_RKP || defined CONFIG_FASTUH_RKP)
 #include <linux/rkp.h>
 #endif
 #endif
@@ -57,6 +57,9 @@ extern void __pmd_error(const char *file, int line, unsigned long val);
 extern void __pud_error(const char *file, int line, unsigned long val);
 extern void __pgd_error(const char *file, int line, unsigned long val);
 
+#ifdef CONFIG_KDP_DMAP
+extern int rkp_cred_enable;
+#endif
 /*
  * ZERO_PAGE is a global shared page that is always zero: used
  * for zero-mapped memory areas etc..
@@ -225,10 +228,12 @@ static inline pmd_t pmd_mkcont(pmd_t pmd)
 
 static inline void set_pte(pte_t *ptep, pte_t pte)
 {
-#ifdef CONFIG_UH_RKP
+#ifdef CONFIG_KDP_DMAP
 	/* bug on double mapping */
-	BUG_ON(pte_val(pte) && rkp_is_pg_dbl_mapped(pte_val(pte)));
-
+	if(rkp_cred_enable)
+		BUG_ON(__pte_to_phys(pte) && rkp_is_pg_dbl_mapped(__pte_to_phys(pte)));
+#endif
+#ifdef CONFIG_UH_RKP
 	if (rkp_is_pg_protected((u64)ptep)) {
 		uh_call(UH_APP_RKP, RKP_WRITE_PGT3, (u64)ptep, pte_val(pte), 0, 0);
 	} else {

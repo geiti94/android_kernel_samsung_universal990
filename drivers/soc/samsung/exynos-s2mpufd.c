@@ -71,7 +71,7 @@ static irqreturn_t exynos_s2mpufd_irq_handler_thread(int irq, void *dev_id)
 		break;
 	}
 
-	pr_info("[Channel %d]\n", irq_idx);
+	pr_auto(ASL4, "[Channel %d] Instance : %s\n", irq_idx, irq_idx ? "PCIe(CP)" : "PCIe(Wi-Fi)");
 
 	intr_stat = data->fail_info[irq_idx].s2mpufd_intr_stat;
 	addr_low = data->fail_info[irq_idx].s2mpufd_fail_addr_low;
@@ -82,23 +82,23 @@ static irqreturn_t exynos_s2mpufd_irq_handler_thread(int irq, void *dev_id)
 	axid = data->fail_info[irq_idx].s2mpufd_axid;
 
 
-	pr_info("- Fail Adddress : %#lx\n",
+	pr_auto(ASL4, "- Fail Adddress : %#lx\n",
 		addr_high ?
 		(addr_high << 32) | addr_low :
 		addr_low);
 
-	pr_info("- Fail Direction : %s\n",
+	pr_auto(ASL4, "- Fail Direction : %s\n",
 		fail_rw ?
 		"WRITE" :
 		"READ");
 
-	pr_info("- Fail Virtual Domain ID : %d\n",
+	pr_auto(ASL4, "- Fail Virtual Domain ID : %d\n",
 		fail_vid);
 
-	pr_info("- Fail RW Length : %#x\n",
+	pr_auto(ASL4, "- Fail RW Length : %#x\n",
 		len);
 
-	pr_info("- Fail AxID : %#x\n",
+	pr_auto(ASL4, "- Fail AxID : %#x\n",
 		axid);
 
 	pr_info("\n");
@@ -228,9 +228,6 @@ static int exynos_s2mpufd_probe(struct platform_device *pdev)
 		ret = -EINVAL;
 		goto out;
 	}
-	/* enable hsi1 s2mpu */
-	exynos_enable_s2mpu("hsi1");
-	//exynos_set_s2mpu_allmap("hsi1", 1, 0x00);
 
 #ifdef CONFIG_EXYNOS_S2MPUFD_ILLEGAL_READ_LOGGING
 	data->info_flag = STR_INFO_FLAG;

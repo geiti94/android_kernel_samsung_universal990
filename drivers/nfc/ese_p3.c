@@ -188,12 +188,12 @@ close_session:
 finalize_context:
 	TEEC_FinalizeContext(&context);
 out:
-	P3_INFO_MSG("tz_tee_ese_drv, cmd %s result=%#x origin=%#x\n", mode ? "Resume" :"Suspend " , result, returnOrigin);
+	P3_INFO_MSG("tz_tee_ese_drv, cmd %s result=%#x origin=%#x\n", mode ? "Resume" :"Suspend ", result, returnOrigin);
 
 	return result;
 }
 extern int tz_tee_ese_secure_check(void);
-int tz_tee_ese_secure_check()
+int tz_tee_ese_secure_check(void)
 {
 	return	tz_tee_ese_drv(SECURE_CHECK);
 }
@@ -259,8 +259,7 @@ static int p3_regulator_onoff(struct p3_data *data, int onoff)
 	} else if (!strcmp(data->vdd_1p8, "VDD_ESE_SEN4")) {
 		if (onoff == 3) {
 			onoff = 1;
-		}
-		else {
+		} else {
 			P3_DBG_MSG("%s always on\n", __func__);
 			return rc;
 		}
@@ -430,7 +429,7 @@ static int spip3_open(struct inode *inode, struct file *filp)
 		}
 		p3_dev->ese_secure_check = ESE_SECURED;
 	} else if (p3_dev->ese_secure_check == ESE_NOT_SECURED) {
-			P3_ERR_MSG("eSE spi is not Secured\n"); 
+			P3_ERR_MSG("eSE spi is not Secured\n");
 			return -EBUSY;
 	}
 #endif
@@ -597,10 +596,10 @@ static long spip3_ioctl(struct file *filp, unsigned int cmd,
 		break;
 
 #ifdef CONFIG_ESE_COLDRESET
-	case P3_WR_RESET: 
+	case P3_WR_RESET:
 		P3_DBG_MSG(": %s: ese_ioctl (cmd: %d)\n", __func__, cmd);
 		p3_power_reset(data);
-		break;				
+		break;
 #endif
 	default:
 		P3_DBG_MSG("%s no matching ioctl! 0x%X\n", __func__, cmd);
@@ -647,7 +646,7 @@ static ssize_t spip3_write(struct file *filp, const char *buf, size_t count,
 	spi_message_add_tail(&t, &m);
 
 	gpio_set_value(p3_dev->cs_gpio, 0);
-	udelay(20);
+	usleep_range(20, 21);
 	ret = spi_sync(p3_dev->spi, &m);
 	gpio_set_value(p3_dev->cs_gpio, 1);
 	if (ret < 0) {
@@ -690,7 +689,7 @@ static ssize_t spip3_read(struct file *filp, char *buf, size_t count,
 	spi_message_add_tail(&t, &m);
 
 	gpio_set_value(p3_dev->cs_gpio, 0);
-	udelay(20);
+	usleep_range(20, 21);
 	ret = spi_sync(p3_dev->spi, &m);
 	gpio_set_value(p3_dev->cs_gpio, 1);
 	if (ret < 0) {
@@ -702,7 +701,7 @@ static ssize_t spip3_read(struct file *filp, char *buf, size_t count,
 		ret = -EFAULT;
 		goto fail;
 	}
-	if( count > 1 && rx_buffer[0])
+	if (count > 1 && rx_buffer[0])
 		P3_INFO_MSG("%s count=%zu, ret=%d\n", __func__, count, ret);
 	ret = count;
 

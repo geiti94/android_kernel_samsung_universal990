@@ -1385,6 +1385,14 @@ static struct ctl_table vm_table[] = {
 		.extra2		= &one_hundred,
 #endif
 	},
+	{
+		.procname	= "mmap_readaround_limit",
+		.data		= &mmap_readaround_limit,
+		.maxlen		= sizeof(mmap_readaround_limit),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+	},
 #ifdef CONFIG_HUGEPAGE_POOL
 	{
 		.procname	= "use_hugepage_pool_global",

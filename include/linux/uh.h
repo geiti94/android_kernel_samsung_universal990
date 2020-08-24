@@ -5,10 +5,19 @@
 
 /* For uH Command */
 #define	APP_INIT	0
-#define	APP_SAMPLE	1
+#ifdef CONFIG_FASTUH_RKP
+#define APP_RKP		1
+#define APP_KDP		2
+//#define APP_CFP       3
+#define APP_HDM		4
+#define APP_HARSH	5
+#else
+#define APP_SAMPLE	1
 #define APP_RKP		2
+#define APP_KDP		2
 #define APP_HDM		6
 #define APP_HARSH	7
+#endif
 
 /*
 #define UH_PREFIX  UL(0xc300c000)
@@ -18,11 +27,15 @@
 #define UH_PREFIX  UL(0x83000000)
 #define UH_APPID(APP_ID)  (((UL(APP_ID) << 8) & UL(0xFF00)) | UH_PREFIX)
 
+#ifdef CONFIG_FASTUH_RKP
+#define UH_EVENT_SUSPEND 	(0x8)
+#endif
+
 enum __UH_APP_ID {
 	UH_APP_INIT     = UH_APPID(APP_INIT),
-	UH_APP_SAMPLE   = UH_APPID(APP_SAMPLE),
 	UH_APP_RKP      = UH_APPID(APP_RKP),
-	UH_APP_HDM	= UH_APPID(APP_HDM),
+	UH_APP_KDP      = UH_APPID(APP_KDP),
+	UH_APP_HDM		= UH_APPID(APP_HDM),
 	UH_APP_HARSH    = UH_APPID(APP_HARSH)
 };
 

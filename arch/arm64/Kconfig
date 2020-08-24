@@ -1335,6 +1335,14 @@ config UH
 	  RKP and etc can be loaded on it.
 	  please check a memory map for it.
 
+config FASTUH_RKP
+	bool "
+	bool "Enable RKP (Realtime Kernel Protection) UH feature"
+	depends on UH && !UH_RKP
+	default n
+	help
+	  it protects a kernel text and etc.
+
 config UH_DEBUG
     bool "Enable micro hypervisor debug feature"
 	depends on UH
@@ -1351,14 +1359,14 @@ config UH_RKP
 
 config RKP_TEST
      bool "Enable RKP test"
-     depends on UH_RKP && !SAMSUNG_PRODUCT_SHIP
+     depends on !SAMSUNG_PRODUCT_SHIP && (UH_RKP || FASTUH_RKP)
      default n
      help
        enable RKP test.
 
 config UH_RKP_FIMC_CHECK
     bool "Select FIMC type"
-    depends on UH_RKP
+    depends on (UH_RKP || FASTUH_RKP)
     default n
     help
       it protects a kernel text and etc.
@@ -1367,7 +1375,7 @@ config KDP_CRED
 	bool "KDP(Kernel Data Protection) for cred structure"
 	depends on !SEC_FACTORY
 	depends on !SEC_VTS_TEST
-	depends on UH_RKP
+	depends on UH_RKP || FASTUH_RKP
 	default n
 	help
 	  Prevents unauthorized cred modification.
@@ -1398,20 +1406,25 @@ config UH_LKM_BLOCK
 	help
 	  LKM is not allowed by Samsung security policy.
 
-config UH_HARSH
-	bool "enables HARSH"
+config UH_PDBT
+	bool "enables PDBT"
 	depends on UH
 	default n
 	help
-		this enables HARSH.
+		this enables pDBT(pseudo Dynamic Binary Translation, previously a.k.a. harsh).
 
+		The exceptions raised by undefined instruction are handled by hypervisor.
+		Hypervisor decides if the instruction needs to be emulated by other existing instructions,
+		or the task pinned to other cpu clusters(i.e. big cores).
 
-config UH_HARSH_STATIC
-	bool "enables HARSH_STATIC"
+config UH_PDBT_STATIC
+	bool "enables PDBT_STATIC"
 	depends on UH
 	default n
 	help
-		this enables HARSH_STTIC.
+		this enables pDBT static.
+
+		Emulatable instructions and migratable cores are determined at hypervisor's compile time.
 
 config RKP_CFP
 	bool "JOPP and ROPP"

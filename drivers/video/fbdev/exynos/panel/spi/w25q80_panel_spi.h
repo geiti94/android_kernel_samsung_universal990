@@ -37,25 +37,25 @@ static struct spi_cmd w25q80_sreg1_exit_check = {
 };
 
 static struct spi_cmd w25q80_sreg2_init_set = {
-	.reg = 0x01,
+	.reg = 0x31,
 	.wlen = 1, .wval = (u8[]){ 0x00 },
 	.delay_after_usecs = 30000
 };
 
 static struct spi_cmd w25q80_sreg2_init_check = {
-	.reg = 0x05,
+	.reg = 0x35,
 	.opt = PANEL_SPI_CMD_OPTION_READ_COMPARE,
 	.rlen = 1, .rmask = (u8[]){ 0x02 }, .rval = (u8[]){ 0x00 },
 };
 
 static struct spi_cmd w25q80_sreg2_exit_set = {
-	.reg = 0x01,
+	.reg = 0x31,
 	.wlen = 1, .wval = (u8[]){ 0x02 },
 	.delay_after_usecs = 30000
 };
 
 static struct spi_cmd w25q80_sreg2_exit_check = {
-	.reg = 0x05,
+	.reg = 0x35,
 	.opt = PANEL_SPI_CMD_OPTION_READ_COMPARE,
 	.rlen = 1, .rmask = (u8[]){ 0x02 }, .rval = (u8[]){ 0x02 },
 };
@@ -67,10 +67,12 @@ static struct spi_cmd w25q80_busy_check = {
 //	.delay_after_usecs = 1000
 };
 
+#if defined(__PANEL_NOT_USED_VARIABLE__)
 static struct spi_cmd w25q80_delay_15000us = {
 	.opt = PANEL_SPI_CMD_OPTION_ONLY_DELAY,
 	.delay_before_usecs = 15000
 };
+#endif
 
 static struct spi_cmd w25q80_erase_4k = {
 	.reg = 0x20,
@@ -141,10 +143,10 @@ static struct spi_cmd *w25q80_spi_cmd_list[MAX_PANEL_SPI_CMD] = {
 	[PANEL_SPI_CMD_FLASH_INIT1_DONE] = &w25q80_sreg1_init_check,
 	[PANEL_SPI_CMD_FLASH_EXIT1] = &w25q80_sreg1_exit_set,
 	[PANEL_SPI_CMD_FLASH_EXIT1_DONE] = &w25q80_sreg1_exit_check,
-	[PANEL_SPI_CMD_FLASH_INIT2] = &w25q80_sreg1_init_set,
-	[PANEL_SPI_CMD_FLASH_INIT2_DONE] = &w25q80_sreg1_init_check,
-	[PANEL_SPI_CMD_FLASH_EXIT2] = &w25q80_sreg1_exit_set,
-	[PANEL_SPI_CMD_FLASH_EXIT2_DONE] = &w25q80_sreg1_exit_check,
+	[PANEL_SPI_CMD_FLASH_INIT2] = &w25q80_sreg2_init_set,
+	[PANEL_SPI_CMD_FLASH_INIT2_DONE] = &w25q80_sreg2_init_check,
+	[PANEL_SPI_CMD_FLASH_EXIT2] = &w25q80_sreg2_exit_set,
+	[PANEL_SPI_CMD_FLASH_EXIT2_DONE] = &w25q80_sreg2_exit_check,
 	[PANEL_SPI_CMD_FLASH_BUSY_CLEAR] = &w25q80_busy_check,
 	[PANEL_SPI_CMD_FLASH_READ] = &w25q80_read,
 	[PANEL_SPI_CMD_FLASH_WRITE_ENABLE] = &w25q80_write_enable,
@@ -170,6 +172,7 @@ static struct spi_data w25q80_spi_data = {
 	.speed_hz = 12500000,
 	.erase_type = PANEL_SPI_ERASE_TYPE_BLOCK,
 	.cmd_list = w25q80_spi_cmd_list,
+	.byte_per_write = 256,
+	.byte_per_read = 2048,
 };
-
 #endif

@@ -94,7 +94,8 @@ static void __mfc_enc_uncomp_format(struct mfc_ctx *ctx)
 
 	if (uncomp_fmt) {
 		enc->uncomp_fmt = __mfc_enc_find_format(ctx, uncomp_fmt);
-		mfc_debug(2, "[SBWC] Uncompressed format is %s\n", enc->uncomp_fmt->name);
+		if (enc->uncomp_fmt)
+			mfc_debug(2, "[SBWC] Uncompressed format is %s\n", enc->uncomp_fmt->name);
 	}
 }
 
@@ -453,6 +454,7 @@ static int mfc_enc_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 {
 	struct mfc_dev *dev = video_drvdata(file);
 	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
+	struct mfc_fmt *dst_fmt;
 	struct mfc_enc *enc = ctx->enc_priv;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
 	int ret = 0;
@@ -464,12 +466,12 @@ static int mfc_enc_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 		return -EBUSY;
 	}
 
-	ctx->dst_fmt = __mfc_enc_find_format(ctx, pix_fmt_mp->pixelformat);
-	if (!ctx->dst_fmt) {
+	dst_fmt = __mfc_enc_find_format(ctx, pix_fmt_mp->pixelformat);
+	if (!dst_fmt) {
 		mfc_err_ctx("Unsupported format for destination\n");
 		return -EINVAL;
 	}
-
+	ctx->dst_fmt = dst_fmt;
 	ctx->codec_mode = ctx->dst_fmt->codec_mode;
 	mfc_info_ctx("[STREAM] Enc dst codec(%d) : %s\n",
 			ctx->codec_mode, ctx->dst_fmt->name);
@@ -605,6 +607,7 @@ static int mfc_enc_s_fmt_vid_out_mplane(struct file *file, void *priv,
 							struct v4l2_format *f)
 {
 	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
+	struct mfc_fmt *src_fmt;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
 
 	mfc_debug_enter();
@@ -619,12 +622,12 @@ static int mfc_enc_s_fmt_vid_out_mplane(struct file *file, void *priv,
 		return 0;
 	}
 
-	ctx->src_fmt = __mfc_enc_find_format(ctx, pix_fmt_mp->pixelformat);
-	if (!ctx->src_fmt) {
+	src_fmt = __mfc_enc_find_format(ctx, pix_fmt_mp->pixelformat);
+	if (!src_fmt) {
 		mfc_err_ctx("Unsupported format for source\n");
 		return -EINVAL;
 	}
-
+	ctx->src_fmt=src_fmt;
 	if (ctx->src_fmt->mem_planes != pix_fmt_mp->num_planes) {
 		mfc_err_ctx("[FRAME] enc src plane number is different (%d != %d)\n",
 				ctx->src_fmt->mem_planes, pix_fmt_mp->num_planes);
@@ -1007,6 +1010,7 @@ static int __mfc_enc_ext_info(struct mfc_ctx *ctx)
 	val |= ENC_SET_PVC_MODE;
 	val |= ENC_SET_RATIO_OF_INTRA;
 	val |= ENC_SET_DROP_CONTROL;
+	val |= ENC_SET_CHROMA_QP_CONTROL;
 
 	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->color_aspect_enc))
 		val |= ENC_SET_COLOR_ASPECT;
@@ -1925,6 +1929,12 @@ static int __mfc_enc_set_param(struct mfc_ctx *ctx, struct v4l2_control *ctrl)
 		break;
 	case V4L2_CID_MPEG_VIDEO_DROP_CONTROL:
 		p->drop_control = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_CHROMA_QP_OFFSET_CB:
+		p->chroma_qp_offset_cb = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_CHROMA_QP_OFFSET_CR:
+		p->chroma_qp_offset_cr = ctrl->value;
 		break;
 	case V4L2_CID_MPEG_MFC_HDR_USER_SHARED_HANDLE:
 		if (enc->sh_handle_hdr.fd == -1) {

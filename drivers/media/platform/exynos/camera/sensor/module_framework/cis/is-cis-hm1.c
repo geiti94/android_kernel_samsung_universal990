@@ -58,6 +58,7 @@ static const u32 **sensor_hm1_setfiles;
 static const u32 *sensor_hm1_setfile_sizes;
 static const struct sensor_pll_info_compact **sensor_hm1_pllinfos;
 static u32 sensor_hm1_max_setfile_num;
+static bool sensor_hm1_fake_retention_status;
 
 /* For Recovery */
 static u32 sensor_hm1_frame_duration_backup;
@@ -144,6 +145,7 @@ static void sensor_hm1_set_integration_max_margin(u32 mode, cis_shared_data *cis
 
 	switch (mode) {
 	case SENSOR_HM1_12000X9000_10FPS:
+	case SENSOR_HM1_7200X5400_14FPS:
 	case SENSOR_HM1_4000X2252_30FPS_CENTER_CROP:
 	case SENSOR_HM1_1984X1488_30FPS:
 	case SENSOR_HM1_1920X1080_240FPS:
@@ -166,6 +168,7 @@ static void sensor_hm1_set_integration_max_margin(u32 mode, cis_shared_data *cis
 	case SENSOR_HM1_4000X3000_60FPS:
 	case SENSOR_HM1_4000X2252_60FPS:
 	case SENSOR_HM1_3840X2160_120FPS:
+	case SENSOR_HM1_3328X1872_120FPS:
 		cis_data->max_margin_coarse_integration_time = SENSOR_HM1_COARSE_INTEGRATION_TIME_MAX_MARGIN;
 		break;
 	default:
@@ -245,45 +248,6 @@ static void sensor_hm1_cis_data_calculation(const struct sensor_pll_info_compact
 	cis_data->min_coarse_integration_time = SENSOR_HM1_COARSE_INTEGRATION_TIME_MIN;
 }
 
-int sensor_hm1_cis_wait_streamon(struct v4l2_subdev *subdev)
-{
-	int ret = 0;
-	struct is_cis *cis;
-	cis_shared_data *cis_data;
-
-	FIMC_BUG(!subdev);
-
-	cis = (struct is_cis *)v4l2_get_subdevdata(subdev);
-	if (unlikely(!cis)) {
-	    err("cis is NULL");
-	    ret = -EINVAL;
-	    goto p_err;
-	}
-
-	cis_data = cis->cis_data;
-	if (unlikely(!cis_data)) {
-	    err("cis_data is NULL");
-	    ret = -EINVAL;
-	    goto p_err;
-	}
-
-	ret = sensor_cis_wait_streamon(subdev);
-	if (ret < 0) {
-		if (cis_data->sens_config_index_cur == SENSOR_HM1_12000X9000_10FPS) {
-			info("sensor_cis_wait_streamon fail -> retry(%d)", ret);
-			ret = sensor_cis_wait_streamon(subdev);
-		}
-
-		if (ret < 0) {
-			err("sensor_cis_wait_streamon fail(%d)", ret);
-			goto p_err;
-		}
-	}
-
-p_err:
-	return ret;
-}
-
 void sensor_hm1_cis_data_calc(struct v4l2_subdev *subdev, u32 mode)
 {
 	struct is_cis *cis = NULL;
@@ -301,7 +265,7 @@ void sensor_hm1_cis_data_calc(struct v4l2_subdev *subdev, u32 mode)
 
 	if (cis->cis_data->stream_on) {
 		info("[%s] call mode change in stream on state\n", __func__);
-		sensor_hm1_cis_wait_streamon(subdev);
+		sensor_cis_wait_streamon(subdev);
 		sensor_hm1_cis_stream_off(subdev);
 		sensor_cis_wait_streamoff(subdev);
 		info("[%s] stream off done\n", __func__);
@@ -402,6 +366,7 @@ int sensor_hm1_cis_init(struct v4l2_subdev *subdev)
 	cis->cis_data->cur_width = SENSOR_HM1_MAX_WIDTH;
 	cis->cis_data->cur_height = SENSOR_HM1_MAX_HEIGHT;
 	cis->cis_data->low_expo_start = 33000;
+	cis->cis_data->highres_capture_mode = false;
 	cis->need_mode_change = false;
 	cis->long_term_mode.sen_strm_off_on_step = 0;
 	cis->long_term_mode.sen_strm_off_on_enable = false;
@@ -493,6 +458,9 @@ int sensor_hm1_cis_log_status(struct v4l2_subdev *subdev)
 	else goto i2c_err;
 	ret = is_sensor_read8(client, 0x0100, &data8);
 	if (unlikely(!ret)) pr_info("0x0100(0x%x)\n", data8);
+	else goto i2c_err;
+	ret = is_sensor_read8(client, 0x0118, &data8);
+	if (unlikely(!ret)) pr_info("0x0118(0x%x)\n", data8);
 	else goto i2c_err;
 	ret = is_sensor_read16(client, 0x021E, &data16);
 	if (unlikely(!ret)) pr_info("0x021E(0x%x)\n", data16);
@@ -623,6 +591,7 @@ static void sensor_hm1_cis_set_paf_stat_enable(u32 mode, cis_shared_data *cis_da
 
 	switch (mode) {
 	case SENSOR_HM1_12000X9000_10FPS:
+	case SENSOR_HM1_7200X5400_14FPS:
 	case SENSOR_HM1_4000X2252_30FPS_CENTER_CROP:
 		cis_data->is_data.paf_stat_enable = false;
 		break;
@@ -973,6 +942,7 @@ int sensor_hm1_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 
 	switch(mode) {
 		case SENSOR_HM1_12000X9000_10FPS:
+		case SENSOR_HM1_7200X5400_14FPS:
 		case SENSOR_HM1_7680X4320_24FPS:
 		case SENSOR_HM1_4000X2252_30FPS_CENTER_CROP:
 			cis->cis_data->max_analog_gain[0] = 0x200; /* x16, gain=x/0x20 */
@@ -1007,7 +977,8 @@ int sensor_hm1_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 #ifndef GLOBAL_TIME_CAL_WRITE
 	if ((ex_mode == EX_REMOSAIC_CAL
 		|| mode == SENSOR_HM1_7680X4320_24FPS
-		|| mode == SENSOR_HM1_12000X9000_10FPS)
+		|| mode == SENSOR_HM1_12000X9000_10FPS
+		|| mode == SENSOR_HM1_7200X5400_14FPS)
 		&& !sensor_hm1_eeprom_cal_available) {
 		ret = sensor_hm1_cis_set_cal(subdev);
 		if (ret < 0) {
@@ -1055,7 +1026,8 @@ int sensor_hm1_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 
 	if (ex_mode == EX_REMOSAIC_CAL
 		|| mode == SENSOR_HM1_7680X4320_24FPS
-		|| mode == SENSOR_HM1_12000X9000_10FPS) {
+		|| mode == SENSOR_HM1_12000X9000_10FPS
+		|| mode == SENSOR_HM1_7200X5400_14FPS) {
 		if (!sensor_hm1_eeprom_cal_available) {
 			info("[%s] no calibration data\n", __func__);
 			ret |= is_sensor_write16(cis->client, 0xFCFC, 0x4000);
@@ -1072,10 +1044,11 @@ int sensor_hm1_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 		}
 	}
 
-	/* EMB Header off */
-	ret = is_sensor_write8(cis->client, 0x0118, 0x00);
-	if (ret < 0){
-		err("EMB header off fail");
+	if (mode == SENSOR_HM1_12000X9000_10FPS
+		|| mode == SENSOR_HM1_7200X5400_14FPS) {
+		cis->cis_data->highres_capture_mode = true;
+	} else {
+		cis->cis_data->highres_capture_mode = false;
 	}
 
 p_err_i2c_unlock:
@@ -1099,25 +1072,39 @@ int sensor_hm1_cis_set_global_setting(struct v4l2_subdev *subdev)
 	WARN_ON(!cis);
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
-	info("[%s] global setting start\n", __func__);
-	/* setfile global setting is at camera entrance */
-	ret |= sensor_cis_set_registers(subdev, sensor_hm1_initial, sensor_hm1_initial_size);
-	ret |= sensor_cis_set_registers(subdev, sensor_hm1_tnp, sensor_hm1_tnp_size);
-	ret |= sensor_cis_set_registers(subdev, sensor_hm1_global, sensor_hm1_global_size);
-	if (ret < 0) {
-		err("sensor_hm1_set_registers fail!!");
-		goto p_err;
-	}
-	info("[%s] global setting done\n", __func__);
+
+	if (sensor_hm1_fake_retention_status) {
+		info("[%s] skip global setting\n", __func__);
+		sensor_hm1_fake_retention_status = false;
+	} else {
+		info("[%s] global setting start\n", __func__);
+		/* setfile global setting is at camera entrance */
+		ret |= sensor_cis_set_registers(subdev, sensor_hm1_initial, sensor_hm1_initial_size);
+		ret |= sensor_cis_set_registers(subdev, sensor_hm1_tnp, sensor_hm1_tnp_size);
+		ret |= sensor_cis_set_registers(subdev, sensor_hm1_global, sensor_hm1_global_size);
+		if (ret < 0) {
+			err("sensor_hm1_set_registers fail!!");
+			goto p_err;
+		}
+#ifdef USE_WIDE_MIPI_STRENGTH_490MV
+		ret |= is_sensor_write16(cis->client, 0xFCFC, 0x4000);
+		ret |= is_sensor_write16(cis->client, 0x6B04, 0xB000);
+		info("[%s] mipi strength 490mV\n", __func__);
+#else
+		ret |= is_sensor_write16(cis->client, 0xFCFC, 0x4000);
+		ret |= is_sensor_write16(cis->client, 0x6B04, 0xE000);
+		info("[%s] mipi strength 520mV(default)\n", __func__);
+#endif
+		info("[%s] global setting done\n", __func__);
 
 #ifdef GLOBAL_TIME_CAL_WRITE
-	ret = sensor_hm1_cis_set_cal(subdev);
-	if (ret < 0) {
-		err("sensor_hm1_cis_set_cal fail!!");
-		goto p_err;
-	}
+		ret = sensor_hm1_cis_set_cal(subdev);
+		if (ret < 0) {
+			err("sensor_hm1_cis_set_cal fail!!");
+			goto p_err;
+		}
 #endif
-
+	}
 p_err:
 	I2C_MUTEX_UNLOCK(cis->i2c_lock);
 	return ret;
@@ -1288,6 +1275,56 @@ p_err:
 	return ret;
 }
 
+int sensor_hm1_cis_wait_streamon(struct v4l2_subdev *subdev)
+{
+	int ret = 0;
+	struct is_cis *cis;
+	struct i2c_client *client;
+	u16 data16;
+
+	WARN_ON(!subdev);
+
+	ret = sensor_cis_wait_streamon(subdev);
+	if (ret < 0)
+		goto p_err;
+
+	cis = (struct is_cis *)v4l2_get_subdevdata(subdev);
+	if (unlikely(!cis)) {
+		err("cis is NULL");
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	client = cis->client;
+	if (unlikely(!client)) {
+		err("client is NULL");
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	I2C_MUTEX_LOCK(cis->i2c_lock);
+	is_sensor_write16(client, 0x602C, 0x2001);
+	pr_info("[%s] 0x2001 page\n", __func__);
+
+	is_sensor_write16(client, 0x602E, 0x20FC);
+	is_sensor_read16(client, 0x6F12, &data16);
+	pr_info("[%s] 0x20FC(0x%x)\n", __func__, data16);
+
+	is_sensor_write16(client, 0x602E, 0x20FE);
+	is_sensor_read16(client, 0x6F12, &data16);
+	pr_info("[%s] 0x20FE(0x%x)\n", __func__, data16);
+
+	is_sensor_write16(client, 0x602E, 0x2100);
+	is_sensor_read16(client, 0x6F12, &data16);
+	pr_info("[%s] 0x2100(0x%x)\n", __func__, data16);
+
+	is_sensor_write16(client, 0x602C, 0x4000);
+	I2C_MUTEX_UNLOCK(cis->i2c_lock);
+
+p_err:
+	return ret;
+}
+
 int sensor_hm1_cis_stream_on(struct v4l2_subdev *subdev)
 {
 	int ret = 0;
@@ -1295,10 +1332,7 @@ int sensor_hm1_cis_stream_on(struct v4l2_subdev *subdev)
 	struct i2c_client *client;
 	cis_shared_data *cis_data;
 	struct is_device_sensor_peri *sensor_peri = NULL;
-
-#ifdef CAMERA_REAR2
-	u32 mode;
-#endif
+	u16 data16;
 
 #ifdef DEBUG_SENSOR_TIME
 	struct timeval st, end;
@@ -1373,7 +1407,19 @@ int sensor_hm1_cis_stream_on(struct v4l2_subdev *subdev)
 	 * then 8 ms waiting is needed before the StreamOn of a sensor (S5KHM1).
 	 */
 	if (test_bit(IS_SENSOR_PREPROCESSOR_AVAILABLE, &sensor_peri->peri_state))
-		mdelay(8);
+		usleep_range(8000, 8100);
+
+	/* EMB Header off */
+	ret = is_sensor_write8(client, 0x0118, 0x00);
+	if (ret < 0){
+		err("EMB header off fail");
+	}
+
+	is_sensor_read16(client, 0x0D08, &data16);
+	pr_info("[%s] 0x0D08(0x%x)\n", __func__, data16);
+
+	is_sensor_read16(client, 0x0D0A, &data16);
+	pr_info("[%s] 0x0D0A(0x%x)\n", __func__, data16);
 
 	/* Sensor stream on */
 	info("%s\n", __func__);
@@ -1386,22 +1432,6 @@ int sensor_hm1_cis_stream_on(struct v4l2_subdev *subdev)
 	I2C_MUTEX_UNLOCK(cis->i2c_lock);
 
 	cis_data->stream_on = true;
-
-#ifdef CAMERA_REAR2
-	mode = cis_data->sens_config_index_cur;
-	dbg_sensor(1, "[%s] sens_config_index_cur=%d\n", __func__, mode);
-
-	switch (mode) {
-#if 0 // TEMP_2020
-	case SENSOR_HM1_4032X3024_30FPS:
-	case SENSOR_HM1_4032X2268_30FPS:
-		cis->cis_data->min_sync_frame_us_time = cis->cis_data->min_frame_us_time = 33333;
-		break;
-#endif
-	default:
-		break;
-	}
-#endif
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
@@ -1522,7 +1552,7 @@ int sensor_hm1_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_param
 
 	if (cis->long_term_mode.sen_strm_off_on_enable == false) {
 		switch(cis_data->sens_config_index_cur) {
-#if 0 // TEMP_2020
+#if 0
 		case SENSOR_HM1_2016X1134_30FPS:
 			if (MAX(target_exposure->long_val, target_exposure->short_val) > 80000) {
 				cit_shifter_idx = MIN(MAX(MAX(target_exposure->long_val, target_exposure->short_val) / 80000, 0), 32);
@@ -1874,7 +1904,7 @@ int sensor_hm1_cis_set_frame_duration(struct v4l2_subdev *subdev, u32 frame_dura
 
 	if (cis->long_term_mode.sen_strm_off_on_enable == false) {
 		switch(cis_data->sens_config_index_cur) {
-#if 0 // TEMP_2020
+#if 0
 		case SENSOR_HM1_2016X1134_30FPS:
 			if (frame_duration > 80000) {
 				fll_shifter_idx = MIN(MAX(frame_duration / 80000, 0), 32);
@@ -2691,7 +2721,7 @@ int sensor_hm1_cis_set_factory_control(struct v4l2_subdev *subdev, u32 command)
 
 	switch (command) {
 	case FAC_CTRL_BIT_TEST:
-		pr_info("[%s] FAC_CTRL_BIT_TEST TEMP_2020 to be checked\n", __func__);
+		pr_info("[%s] FAC_CTRL_BIT_TEST to be checked\n", __func__);
 #if 0
 		ret |= is_sensor_write16(cis->client, 0xFCFC, 0x4000);
 		ret |= is_sensor_write16(cis->client, 0xF44A, 0x0009); // TG 2.55v -> 2.45v
@@ -2891,12 +2921,28 @@ int sensor_hm1_cis_recover_stream_on(struct v4l2_subdev *subdev)
 	if (ret < 0) goto p_err;
 	ret = sensor_hm1_cis_stream_on(subdev);
 	if (ret < 0) goto p_err;
-	ret = sensor_hm1_cis_wait_streamon(subdev);
+	ret = sensor_cis_wait_streamon(subdev);
 	if (ret < 0) goto p_err;
 
 	info("%s end\n", __func__);
 p_err:
 	return ret;
+}
+
+int sensor_hm1_cis_set_fake_retention(struct v4l2_subdev *subdev, bool enable)
+{
+	struct is_cis *cis = NULL;
+
+	FIMC_BUG(!subdev);
+
+	cis = (struct is_cis *)v4l2_get_subdevdata(subdev);
+	FIMC_BUG(!cis);
+	FIMC_BUG(!cis->cis_data);
+
+	info("%s(%d)\n", __func__, enable);
+	sensor_hm1_fake_retention_status = enable;
+
+	return 0;
 }
 
 static struct is_cis_ops cis_ops_hm1 = {
@@ -2935,9 +2981,9 @@ static struct is_cis_ops cis_ops_hm1 = {
 #endif
 	.cis_check_rev_on_init = sensor_cis_check_rev_on_init,
 	.cis_set_initial_exposure = sensor_cis_set_initial_exposure,
-	/* TEMP_2020 */
 //	.cis_recover_stream_on = sensor_hm1_cis_recover_stream_on,
 	.cis_set_factory_control = sensor_hm1_cis_set_factory_control,
+	.cis_set_fake_retention = sensor_hm1_cis_set_fake_retention,
 };
 
 static int cis_hm1_probe(struct i2c_client *client,
@@ -3060,6 +3106,7 @@ static int cis_hm1_probe(struct i2c_client *client,
 
 	sensor_hm1_eeprom_cal_available = false;
 	sensor_hm1_first_entrance = false;
+	sensor_hm1_fake_retention_status = false;
 
 	cis->use_initial_ae = of_property_read_bool(dnode, "use_initial_ae");
 	probe_info("%s use initial_ae(%d)\n", __func__, cis->use_initial_ae);

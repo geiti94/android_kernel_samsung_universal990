@@ -363,12 +363,15 @@ static int __vb_queue_alloc(struct vb_queue *q,
 	int ret = 0;
 	u32 i, j;
 	size_t alloc_size;
+	size_t alloc_profiler;
 	u8 *mapped_ptr;
 	struct vb_format_list *flist;
 	struct vb_bundle *bundle;
 	struct vb_container_list *clist;
 	struct vb_container *container;
 	struct vb_buffer *buffer;
+	struct vb_profiler *profiler;
+	struct vb_profiler_node *profiler_node;
 	DLOG_INIT();
 
 	BUG_ON(!q);
@@ -398,6 +401,17 @@ static int __vb_queue_alloc(struct vb_queue *q,
 			(struct vb_buffer *)mapped_ptr;
 		mapped_ptr += sizeof(struct vb_buffer) * c->containers[i].count;
 	}
+
+	/* profiler */
+	alloc_profiler = sizeof(struct vb_profiler);
+	profiler = kzalloc(alloc_profiler, GFP_KERNEL);
+	bundle->clist.profiler = profiler;
+	// alloc memory for fw profile
+	alloc_profiler = sizeof(struct vb_profiler_node);
+	profiler_node = kzalloc(alloc_profiler, GFP_KERNEL);
+	bundle->clist.profiler->node = profiler_node;
+
+	bundle->clist.profiler->node->child = NULL;
 
 	/* fill */
 	bundle->state = VB_BUF_STATE_DEQUEUED;
@@ -470,6 +484,8 @@ static int __vb_queue_free(struct vb_queue *q,
 	BUG_ON(bundle->clist.index >= VB_MAX_BUFFER);
 
 	q->bufs[bundle->clist.index] = NULL;
+	kfree(bundle->clist.profiler->node);
+	kfree(bundle->clist.profiler);
 	kfree(bundle);
 	q->num_buffers--;
 
@@ -510,6 +526,9 @@ static int __vb_queue_check(struct vb_bundle *bundle,
 
 	clist->flags = c->flags;
 	clist->id = c->id;
+
+	if (c->profiler != NULL)
+		clist->profiler->level = c->profiler->level;
 
 	for (i = 0; i < clist->count; ++i) {
 		container = &clist->containers[i];
@@ -795,6 +814,11 @@ static void __fill_vs4l_buffer(struct vb_bundle *bundle,
 
 	c->index = clist->index;
 	c->id = clist->id;
+	if ((clist->profiler != NULL) && (c->profiler != NULL)) {
+		if (c->profiler->node != NULL) { //out_container
+			c->profiler->node->duration = clist->profiler->node->duration;
+		}
+	}
 }
 
 static void __vb_dqbuf(struct vb_bundle *bundle)

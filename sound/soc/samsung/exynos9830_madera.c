@@ -1693,7 +1693,7 @@ static const struct snd_soc_dapm_widget exynos9830_widgets[] = {
 	SND_SOC_DAPM_SPK("BLUETOOTH SPK", NULL),
 	SND_SOC_DAPM_MIC("USB MIC", NULL),
 	SND_SOC_DAPM_SPK("USB SPK", NULL),
-	SND_SOC_DAPM_SPK("FWD MIC", NULL),
+	SND_SOC_DAPM_MIC("FWD MIC", NULL),
 	SND_SOC_DAPM_SPK("FWD SPK", NULL),
 	SND_SOC_DAPM_OUTPUT("VTS Virtual Output"),
 	SND_SOC_DAPM_MUX("VTS Virtual Output Mux", SND_SOC_NOPM, 0, 0,
@@ -2037,12 +2037,22 @@ static int exynos9830_audio_probe(struct platform_device *pdev)
 
 static int exynos9830_audio_remove(struct platform_device *pdev)
 {
-	struct snd_soc_card *card = platform_get_drvdata(pdev);
-	struct madera_drvdata *drvdata = snd_soc_card_get_drvdata(card);
+	struct snd_soc_card *card;
+	struct madera_drvdata *drvdata;
 	int i;
 
-	for (i = 0; i < MADERA_MAX_CLOCKS; ++i)
-		clk_disable_unprepare(drvdata->clk[i]);
+	card = platform_get_drvdata(pdev);
+	if (!card)
+		return 0;
+
+	drvdata = snd_soc_card_get_drvdata(card);
+	if (!drvdata)
+		return 0;
+
+	for (i = 0; i < MADERA_MAX_CLOCKS; ++i) {
+		if (drvdata->clk[i])
+			clk_disable_unprepare(drvdata->clk[i]);
+	}
 
 	return 0;
 }

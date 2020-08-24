@@ -14,11 +14,12 @@
 #define DSP_BINARY_NAME_SIZE	(64)
 
 int dsp_binary_load(const char *name, char *postfix, const char *extension,
-		void *target, size_t size);
+		void *target, size_t size, size_t *loaded_size);
 int dsp_binary_master_load(const char *name, char *postfix,
-		const char *extension, void __iomem *target, size_t size);
+		const char *extension, void __iomem *target, size_t size,
+		size_t *loaded_size);
 int dsp_binary_alloc_load(const char *name, char *postfix,
-		const char *extension, void **target);
+		const char *extension, void **target, size_t *loaded_size);
 int dsp_binary_load_async(const char *name, char *postfix,
 		const char *extension, void *context,
 		void (*cont)(const struct firmware *fw, void *context));

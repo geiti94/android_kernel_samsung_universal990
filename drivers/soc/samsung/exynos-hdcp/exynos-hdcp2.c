@@ -312,6 +312,7 @@ static long hdcp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 #endif
 	case (uint32_t)HDCP_IOC_DPLINK_TX_AUTH:
 	{
+#if defined(CONFIG_HDCP2_EMULATION_MODE)
 #if defined(CONFIG_HDCP2_DP_ENABLE)
 		rval = dp_hdcp_protocol_self_test();
 		if (rval) {
@@ -328,6 +329,7 @@ static long hdcp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return rval;
 		}
 		hdcp_err("IIA self_test success!!\n");
+#endif
 #endif
 		rval = 0;
 		return rval;

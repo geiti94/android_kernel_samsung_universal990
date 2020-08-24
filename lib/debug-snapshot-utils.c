@@ -253,6 +253,20 @@ int dbg_snapshot_save_context(void *v_regs)
 }
 EXPORT_SYMBOL(dbg_snapshot_save_context);
 
+static bool __dbg_snapshot_is_dump_backtrace(const char *wchan_name)
+{
+	static bool printed_once = false;
+
+	if (strncmp(wchan_name, "process_notifier", 17))
+		return true;
+
+	if (printed_once)
+		return false;
+
+	printed_once = true;
+	return true;
+}
+
 static void dbg_snapshot_dump_one_task_info(struct task_struct *tsk, bool is_main)
 {
 	char state_array[] = {'R', 'S', 'D', 'T', 't', 'X', 'Z', 'P', 'x', 'K', 'W', 'I', 'N'};
@@ -293,8 +307,10 @@ static void dbg_snapshot_dump_one_task_info(struct task_struct *tsk, bool is_mai
 	    tsk->state == TASK_WAKING ||
 	    task_contributes_to_load(tsk)) {
 		secdbg_dtsk_print_info(tsk, true);
-		show_stack(tsk, NULL);
-		dev_info(dss_desc.dev, "\n");
+		if (__dbg_snapshot_is_dump_backtrace(symname)) {
+			show_stack(tsk, NULL);
+			dev_info(dss_desc.dev, "\n");
+		}
 	}
 }
 

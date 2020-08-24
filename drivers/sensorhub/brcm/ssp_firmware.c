@@ -14,13 +14,23 @@
  */
 #include "ssp.h"
 
-#if defined(CONFIG_SENSORS_SSP_PICASSO)
-#define SSP_FIRMWARE_REVISION_BCM	20050400
+#if defined(CONFIG_SENSORS_SSP_CANVAS)
+#define SSP_FIRMWARE_REVISION_BCM_OLD	20062201		// bcm4776 (rev:17 ~ 20)
+#define SSP_FIRMWARE_REVISION_BCM		20070600		// bcm4775 (rev:~16, 21~)
+#elif defined(CONFIG_SENSORS_SSP_PICASSO)
+#define SSP_FIRMWARE_REVISION_BCM	20062400
+#elif defined(CONFIG_SENSORS_SSP_R8)
+#define SSP_FIRMWARE_REVISION_BCM	20062500
 #else
 #define SSP_FIRMWARE_REVISION_BCM	00000000
 #endif
 
 unsigned int get_module_rev(struct ssp_data *data)
 {
+#if defined(CONFIG_SENSORS_SSP_CANVAS)
+	int patch_version = get_patch_version(data->ap_type, data->ap_rev);
+	if(patch_version == bbd_old)
+		return SSP_FIRMWARE_REVISION_BCM_OLD;
+#endif
 	return SSP_FIRMWARE_REVISION_BCM;
 }

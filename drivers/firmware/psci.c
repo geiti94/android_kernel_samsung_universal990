@@ -34,6 +34,12 @@
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
 
+#ifdef CONFIG_FASTUH_RKP
+#include <linux/uh.h>
+
+extern u8 rkp_started;
+#endif
+
 /*
  * While a 64-bit OS can make calls with SMC32 calling conventions, for some
  * calls it is necessary to use SMC64 to pass or return 64-bit values.
@@ -160,6 +166,11 @@ static int psci_cpu_suspend(u32 state, unsigned long entry_point)
 	int err;
 	u32 fn;
 
+#ifdef CONFIG_FASTUH_RKP
+	if(rkp_started) {
+		uh_call(UH_APP_INIT, UH_EVENT_SUSPEND, 0, 0, 0, 0);
+	}
+#endif
 	fn = psci_function_id[PSCI_FN_CPU_SUSPEND];
 	err = invoke_psci_fn(fn, state, entry_point, 0);
 	return psci_to_linux_errno(err);

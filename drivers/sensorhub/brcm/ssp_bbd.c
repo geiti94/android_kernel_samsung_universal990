@@ -409,7 +409,7 @@ void bbd_mcu_ready_work_func(struct work_struct *work)
 retries:
 	ret = initialize_mcu(data);
 	if (ret != SUCCESS) {
-		mdelay(100);
+		msleep(100);
 		if (++retries > 3) {
 			pr_err("[SSPBBD] fail to initialize mcu\n");
 			ssp_enable(data, false);
@@ -430,7 +430,11 @@ retries:
 	ssp_sensorhub_report_notice(data, MSG2SSP_AP_STATUS_RESET);
 
 	if (data->uLastAPState != 0)
+#ifdef CONFIG_PANEL_NOTIFY
+		ssp_send_cmd(data, get_copr_status(data), 0);
+#else
 		ssp_send_cmd(data, data->uLastAPState, 0);
+#endif
 	if (data->uLastResumeState != 0)
 		ssp_send_cmd(data, data->uLastResumeState, 0);
 
@@ -703,12 +707,11 @@ static int count = 1;
 int callback_bbd_on_packet(void *ssh_data, const char *buf, size_t size)
 {
 	struct ssp_data *data = (struct ssp_data *)ssh_data;
-	/*
-	 *static char *str_state[] = {
-	 *        "WAITFOR_PKT_HEADER",
-	 *        "WAITFOR_PKT_COMPLETE"
-	 *};
-	 */
+	
+	static char *str_state[] = {
+	        "WAITFOR_PKT_HEADER",
+	        "WAITFOR_PKT_COMPLETE"
+	};
 
 	int idx = 0;
 	struct ssp_msg *msg;
@@ -731,8 +734,14 @@ int callback_bbd_on_packet(void *ssh_data, const char *buf, size_t size)
 				remain : ssp_pkt.required;
 
 		//BUG_ON(ssp_pkt.rxlen + required >= MAX_SSP_DATA_SIZE);
-		if (ssp_pkt.rxlen + required >= MAX_SSP_DATA_SIZE)
+		if (ssp_pkt.rxlen + required >= MAX_SSP_DATA_SIZE) {
+			printk("[SSPBBD] %s rxlen:%d, required:%d, remain:%d\n",
+                str_state[ssp_pkt.state], ssp_pkt.rxlen,
+                ssp_pkt.required, remain);
+
+            reset_ssp_pkt(); 
 			return -1;
+		}
 
 		memcpy(&ssp_pkt.buf[ssp_pkt.rxlen], buf + idx, required);
 		ssp_pkt.rxlen += required;
@@ -804,7 +813,8 @@ int callback_bbd_on_packet(void *ssh_data, const char *buf, size_t size)
 			case AP2HUB_READ:
 				//BUG_ON(ssp_pkt.msg == NULL);
 				//BUG_ON(ssp_pkt.rxlen != ssp_pkt.msg->length);
-				if (ssp_pkt.msg != NULL) {
+				if (ssp_pkt.msg != NULL && ssp_pkt.rxlen == ssp_pkt.msg->length
+					&& ssp_pkt.rxlen < MAX_SSP_DATA_SIZE) {
                     mutex_lock(&data->pending_mutex);
 
 					memcpy(ssp_pkt.msg->buffer, ssp_pkt.buf, ssp_pkt.rxlen);

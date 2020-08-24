@@ -56,7 +56,7 @@
 #include <soc/samsung/exynos-adv-tracer.h>
 
 
-#if (defined CONFIG_UH_HARSH) || (defined CONFIG_UH_HARSH_STATIC)
+#if (defined CONFIG_UH_PDBT) || (defined CONFIG_UH_PDBT_STATIC)
 #include <linux/cpumask.h>
 #include <linux/harsh.h>
 #endif
@@ -70,55 +70,9 @@ static const char *handler[]= {
 
 int show_unhandled_signals = 0;
 
-/*
- * Dump out the contents of some kernel memory nicely...
- */
-static void dump_mem(const char *lvl, const char *str, unsigned long bottom,
-		     unsigned long top)
-{
-	unsigned long first;
-	mm_segment_t fs;
-	int i;
-
-	/*
-	 * We need to switch to kernel mode so that we can use __get_user
-	 * to safely read from kernel space.
-	 */
-	fs = get_fs();
-	set_fs(KERNEL_DS);
-
-	printk("%s%s(0x%016lx to 0x%016lx)\n", lvl, str, bottom, top);
-
-	for (first = bottom & ~31; first < top; first += 32) {
-		unsigned long p;
-		char str[sizeof(" 12345678") * 8 + 1];
-
-		memset(str, ' ', sizeof(str));
-		str[sizeof(str) - 1] = '\0';
-
-		for (p = first, i = 0; i < (32 / 8)
-					&& p < top; i++, p += 8) {
-			if (p >= bottom && p < top) {
-				unsigned long val;
-
-				if (__get_user(val, (unsigned long *)p) == 0)
-					sprintf(str + i * 17, " %016lx", val);
-				else
-					sprintf(str + i * 17, " ????????????????");
-			}
-		}
-		printk("%s%04lx:%s\n", lvl, first & 0xffff, str);
-	}
-
-	set_fs(fs);
-}
-
 static void dump_backtrace_entry(unsigned long where)
 {
-	/*
-	 * Note that 'where' can have a physical address, but it's not handled.
-	 */
-	print_ip_sym(where);
+	printk(" %pS\n", (void *)where);
 }
 
 #ifdef CONFIG_SEC_DEBUG_AUTO_COMMENT
@@ -127,7 +81,7 @@ static void dump_backtrace_entry_auto_summary(unsigned long where)
 	/*
 	 * Note that 'where' can have a physical address, but it's not handled.
 	 */
-	pr_auto(ASL2, "[<%px>] %pS\n", (void *) where, (void *) where);
+	pr_auto(ASL2, "%pS\n", (void *) where);
 }
 #endif
 
@@ -203,10 +157,7 @@ void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 #endif
 
 	printk("Call trace:\n");
-	while (1) {
-		unsigned long stack;
-		int ret;
-
+	do {
 #ifdef CONFIG_SEC_DEBUG_LIMIT_BACKTRACE
 		if (MAX_UNWINDING_LOOP < cnt) {
 			pr_info("%s: Forcely break dump_backtrace to avoid infinity backtrace\n", __func__);
@@ -230,24 +181,14 @@ void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 			dump_backtrace_entry(regs->pc);
 			dbg_snapshot_save_log(raw_smp_processor_id(), regs->pc);
 		}
-		ret = unwind_frame(tsk, &frame);
-		if (ret < 0)
-			break;
-		if (in_entry_text(frame.pc)) {
-			stack = frame.fp - offsetof(struct pt_regs, stackframe);
-
-			if (on_accessible_stack(tsk, stack, NULL))
-				dump_mem("", "Exception stack", stack,
-					 stack + sizeof(struct pt_regs));
-		}
 		cnt++;
-	}
+	} while (!unwind_frame(tsk, &frame));
 
 	put_task_stack(tsk);
 }
 
 #ifdef CONFIG_SEC_DEBUG_AUTO_COMMENT
-static void dump_backtrace_auto_summary(struct pt_regs *regs, struct task_struct *tsk)
+void dump_backtrace_auto_summary(struct pt_regs *regs, struct task_struct *tsk)
 {
 	struct stackframe frame;
 	int skip = 0;
@@ -283,10 +224,7 @@ static void dump_backtrace_auto_summary(struct pt_regs *regs, struct task_struct
 
 	pr_auto_once(2);
 	pr_auto(ASL2, "Call trace:\n");
-	while (1) {
-		unsigned long stack;
-		int ret;
-
+	do {
 #ifdef CONFIG_SEC_DEBUG_LIMIT_BACKTRACE
 		if (MAX_UNWINDING_LOOP < cnt) {
 			pr_info("%s: Forcely break dump_backtrace to avoid infinity backtrace\n", __func__);
@@ -310,18 +248,8 @@ static void dump_backtrace_auto_summary(struct pt_regs *regs, struct task_struct
 			dump_backtrace_entry_auto_summary(regs->pc);
 			dbg_snapshot_save_log(raw_smp_processor_id(), regs->pc);
 		}
-		ret = unwind_frame(tsk, &frame);
-		if (ret < 0)
-			break;
-		if (in_entry_text(frame.pc)) {
-			stack = frame.fp - offsetof(struct pt_regs, stackframe);
-
-			if (on_accessible_stack(tsk, stack, NULL))
-				dump_mem("", "Exception stack", stack,
-					 stack + sizeof(struct pt_regs));
-		}
 		cnt++;
-	}
+	} while (!unwind_frame(tsk, &frame));
 
 	put_task_stack(tsk);
 }
@@ -332,6 +260,14 @@ void show_stack(struct task_struct *tsk, unsigned long *sp)
 	dump_backtrace(NULL, tsk);
 	barrier();
 }
+
+#ifdef CONFIG_SEC_DEBUG_AUTO_COMMENT
+void show_stack_auto_comment(struct task_struct *tsk, unsigned long *sp)
+{
+	dump_backtrace_auto_summary(NULL, tsk);
+	barrier();
+}
+#endif /* CONFIG_SEC_DEBUG_AUTO_COMMENT */
 
 #ifdef CONFIG_PREEMPT
 #define S_PREEMPT " PREEMPT"
@@ -617,30 +553,41 @@ void arm64_notify_segfault(unsigned long addr)
 	force_signal_inject(SIGSEGV, code, addr);
 }
 
-#if (defined CONFIG_UH_HARSH) || (defined CONFIG_UH_HARSH_STATIC)
+#if (defined CONFIG_UH_PDBT) || (defined CONFIG_UH_PDBT_STATIC)
 int harsh_handle_inst(struct pt_regs *regs){
 	struct task_struct *tsk;
-	pid_t pid;
-	cpumask_t cpu_mask;
 	unsigned int core;
+	pid_t pid;
+
+	harsh_req_t req;
+	cpumask_t cpu_mask;
 
 	unsigned long addr = instruction_pointer(regs);
 	char str[sizeof("00000000 ") * 5 + 2 + 1], *p = str;
-	unsigned int val, bad;
-	bad = get_user(val, &((u32 *)addr)[0]);
+	unsigned int instruction, bad;
+	bad = get_user(instruction, &((u32 *)addr)[0]);
 
-	if (!bad)
-		p += sprintf(p, "(%08x) " , val);
+	if (!bad) {
+		p += sprintf(p, "(%08x) " , instruction);
+	} else {
+		p += sprintf(p, "bad PC value");
+		return 1;
+	}
+
+	tsk  = get_current();
+	core = tsk->cpu;
+	pid  = tsk->pid;
+
+	req.instruction = instruction;
+	req.core        = core;
+	req.pid         = pid;
+	strncpy(req.comm, tsk->comm, TASK_COMM_LEN);
 
 	cpumask_clear(&cpu_mask);
-	tsk = get_current();
-	pid = tsk->pid;
-	core = tsk->cpu;
-
-#ifdef CONFIG_UH_HARSH
-	uh_call(UH_APP_HARSH, HARSH_EVENT_UNDEF_INST, (u64)val, (u64)core, (u64)&cpu_mask, 0);
+#ifdef CONFIG_UH_PDBT
+	uh_call(UH_APP_HARSH, HARSH_EVENT_UNDEF_INST, (u64)&req, (u64)&cpu_mask, 0, 0);
 #else
-	uh_call(UH_APP_HARSH, HARSH_EVENT_UNDEF_INST_STATIC, (u64)val, (u64)core, (u64)&cpu_mask, 0);
+	uh_call(UH_APP_HARSH, HARSH_EVENT_UNDEF_INST_STATIC, (u64)&req, (u64)&cpu_mask, 0, 0);
 #endif
 	/* cpu_mask has cores that EL2 expects to be capable of running this instruction.
 	 * If there is no possible cores to run this instruction. SIGILL will be injected to pc at EL0.
@@ -688,7 +635,7 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 	}
 #endif
 
-#if (defined CONFIG_UH_HARSH) || (defined CONFIG_UH_HARSH_STATIC)
+#if (defined CONFIG_UH_PDBT) || (defined CONFIG_UH_PDBT_STATIC)
 	if(harsh_handle_inst(regs))
 #endif
 	force_signal_inject(SIGILL, ILL_ILLOPC, regs->pc);

@@ -77,6 +77,9 @@ struct is_cis {
 	/* expected dms */
 	camera2_lens_dm_t		expecting_lens_dm[EXPECT_DM_NUM];
 	camera2_sensor_dm_t		expecting_sensor_dm[EXPECT_DM_NUM];
+#ifdef USE_OIS_HALL_DATA_FOR_VDIS
+	camera2_aa_dm_t			expecting_aa_dm[EXPECT_DM_NUM];
+#endif
 
 	/* expected udm */
 	camera2_lens_udm_t		expecting_lens_udm[EXPECT_DM_NUM];
@@ -128,7 +131,12 @@ struct is_cis {
 	ae_setting			last_ae_setting;
 
 	/* settings for sensor stat */
-	void				*sensor_stats;
+	struct sensor_lsi_3hdr_stat_control_mode_change		lsi_sensor_stats;
+	struct sensor_imx_3hdr_stat_control_mode_change		imx_sensor_stats;
+	bool							sensor_stats;
+	/* setting for 3HDR LSC */
+	struct 				sensor_imx_3hdr_lsc_table_init imx_lsc_table_3hdr;
+	bool				lsc_table_status;
 
 	/* dual sync mode */
 	u32				dual_sync_mode;
@@ -194,6 +202,8 @@ struct is_actuator {
 	struct work_struct			actuator_active_off;
 
 	u32				vendor_product_id;
+	u32				vendor_sleep_to_standby_delay;
+	u32				vendor_active_to_standby_delay;
 	u32				vendor_first_pos;
 	u32				vendor_first_delay;
 	u32				vendor_soft_landing_list[VENDOR_SOFT_LANDING_STEP_MAX * 2];
@@ -355,10 +365,11 @@ struct is_laser_af {
 	u32				device; /*  connected sensor device */
 
 	struct is_laser_af_ops		*laser_af_ops;
-	struct work_struct		laser_af_work;
+	enum camera2_range_sensor_mode	rs_mode;
 
 	struct is_device_sensor_peri	*sensor_peri;
-	struct mutex				*laser_lock;
+	struct mutex			*laser_lock;
+	bool				active;
 };
 
 struct paf_action {
@@ -549,6 +560,8 @@ void is_sensor_peri_probe(struct is_device_sensor_peri *sensor_peri);
 int is_sensor_peri_s_stream(struct is_device_sensor *device,
 					bool on);
 
+int is_sensor_peri_s_mode_change(struct is_device_sensor *device,
+				struct seamless_mode_change_info *mode_change);
 int is_sensor_peri_s_frame_duration(struct is_device_sensor *device,
 				u32 frame_duration);
 int is_sensor_peri_s_exposure_time(struct is_device_sensor *device,

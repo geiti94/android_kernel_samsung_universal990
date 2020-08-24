@@ -693,7 +693,7 @@ int fvmap_init(void __iomem *sram_base)
 #ifdef CONFIG_SOC_EXYNOS9830
 	asv_g_kobj = kobject_create_and_add("asv_g_spec", power_kobj);
 	if (sysfs_create_group(asv_g_kobj, &asv_g_spec_grp))
-		pr_err("Fail to create name_tbd group\n");
+		pr_err("Fail to create asv_g_spec group\n");
 #endif
 #endif /* CONFIG_SEC_FACTORY */
 

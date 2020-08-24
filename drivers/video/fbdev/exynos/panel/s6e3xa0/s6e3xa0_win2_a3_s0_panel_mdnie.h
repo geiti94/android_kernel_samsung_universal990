@@ -1,5 +1,5 @@
 /*
- * linux/drivers/video/fbdev/exynos/panel/s6e3hab/s6e3hab_win2_a3_s0_panel_mdnie.h
+ * linux/drivers/video/fbdev/exynos/panel/s6e3xa0/s6e3xa0_win2_a3_s0_panel_mdnie.h
  *
  * Header file for mDNIe Driver
  *
@@ -2387,7 +2387,7 @@ static struct seqinfo win2_a3_s0_mdnie_seqtbl[MAX_MDNIE_SEQ] = {
 #endif
 };
 
-static struct mdnie_tune s6e3hab_win2_a3_s0_mdnie_tune = {
+static struct mdnie_tune s6e3xa0_win2_a3_s0_mdnie_tune = {
 	.seqtbl = win2_a3_s0_mdnie_seqtbl,
 	.nr_seqtbl = ARRAY_SIZE(win2_a3_s0_mdnie_seqtbl),
 	.maptbl = (struct maptbl *)win2_a3_s0_mdnie_maptbl,

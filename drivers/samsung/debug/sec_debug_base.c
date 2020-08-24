@@ -53,6 +53,8 @@ static struct sec_debug_next *sdn;
 static unsigned long secdbg_base_rmem_virt;
 static unsigned long secdbg_base_rmem_phys;
 static unsigned long secdbg_base_rmem_size;
+static unsigned long secdbg_sdn_phys;
+static unsigned long secdbg_sdn_size;
 
 /* set magic */
 static void secdbg_base_set_upload_magic(unsigned int magic, char *str)
@@ -324,38 +326,11 @@ static int __init sec_debug_recovery_cause_init(void)
 }
 late_initcall(sec_debug_recovery_cause_init);
 
-
-/* update recovery reason log */
-static void secdbg_base_recovery_reboot(void)
+/* Clear magic code in normal reboot */
+void secdbg_base_clear_magic_rambase(void)
 {
-	char *buf;
-
-	if (recovery_cause_offset) {
-		if (!recovery_cause[0] || !strlen(recovery_cause)) {
-			buf = "empty caller";
-			store_recovery_cause(NULL, NULL, buf, strlen(buf));
-		}
-	}
-}
-
-static int secdbg_base_reboot_handler(struct notifier_block *nb,
-						unsigned long l, void *p)
-{
-	pr_emerg("sec_debug: %s\n", __func__);
-
-	/* Clear magic code in normal reboot */
 	secdbg_base_set_upload_magic(UPLOAD_MAGIC_INIT, NULL);
-
-	if (p != NULL)
-		if (!strcmp(p, "recovery"))
-			secdbg_base_recovery_reboot();
-
-	return 0;
 }
-
-static struct notifier_block nb_reboot_block = {
-	.notifier_call = secdbg_base_reboot_handler
-};
 
 void secdbg_base_panic_handler(void *buf, bool dump)
 {
@@ -391,6 +366,7 @@ void secdbg_base_post_panic_handler(void)
 	hard_reset_delay();
 }
 
+#ifdef CONFIG_SEC_DEBUG_TASK_IN_STATE_INFO
 void secdbg_base_set_task_in_pm_suspend(uint64_t task)
 {
 	if (sdn)
@@ -402,6 +378,7 @@ void secdbg_base_set_task_in_sys_reboot(uint64_t task)
 	if (sdn)
 		sdn->kernd.task_in_sys_reboot = task;
 }
+#endif /* SEC_DEBUG_TASK_IN_STATE_INFO */
 
 struct watchdogd_info *secdbg_base_get_wdd_info(void)
 {
@@ -416,6 +393,7 @@ struct watchdogd_info *secdbg_base_get_wdd_info(void)
 	return NULL;
 }
 
+#ifdef CONFIG_VMAP_STACK
 void secdbg_base_set_bs_info_phase(int phase)
 {
 	struct bad_stack_info *bsi;
@@ -441,6 +419,7 @@ void secdbg_base_set_bs_info_phase(int phase)
 		break;
 	}
 }
+#endif
 
 void *secdbg_base_get_debug_base(int type)
 {
@@ -458,8 +437,10 @@ void *secdbg_base_get_debug_base(int type)
 
 unsigned long secdbg_base_get_buf_base(int type)
 {
-	if (sdn)
+	if (sdn) {
+		pr_crit("%s: return %lx (%lx)\n", __func__, (unsigned long)sdn, sdn->map.buf[type].base);
 		return sdn->map.buf[type].base;
+	}
 
 	pr_crit("%s: return 0\n", __func__);
 
@@ -502,6 +483,7 @@ void secdbg_base_write_buf(struct outbuf *obuf, int len, const char *fmt, ...)
 	va_end(list);
 }
 
+#ifdef CONFIG_SEC_DEBUG_TASK_IN_STATE_INFO
 void secdbg_base_set_task_in_sys_shutdown(uint64_t task)
 {
 	if (sdn)
@@ -513,24 +495,25 @@ void secdbg_base_set_task_in_dev_shutdown(uint64_t task)
 	if (sdn)
 		sdn->kernd.task_in_dev_shutdown = task;
 }
+#endif /* SEC_DEBUG_TASK_IN_STATE_INFO */
 
 void secdbg_base_set_sysrq_crash(struct task_struct *task)
 {
-	if (sdn) {
-		sdn->kernd.task_in_sysrq_crash = (uint64_t)task;
+	if (!sdn)
+		return;
+
+	sdn->kernd.task_in_sysrq_crash = (uint64_t)task;
 
 #ifdef CONFIG_SEC_DEBUG_SYSRQ_KMSG
-		if (task) {
-			if (strcmp(task->comm, "init") == 0)
-				sdn->kernd.sysrq_ptr = secdbg_hook_get_curr_init_ptr();
-			else
-				sdn->kernd.sysrq_ptr = dbg_snapshot_get_curr_ptr_for_sysrq();
+	if (task) {
+		if (strcmp(task->comm, "init") == 0)
+			sdn->kernd.sysrq_ptr = secdbg_hook_get_curr_init_ptr();
+		else
+			sdn->kernd.sysrq_ptr = dbg_snapshot_get_curr_ptr_for_sysrq();
 
-			pr_info("sysrq_ptr: 0x%lx\n", sdn->kernd.sysrq_ptr);
-#endif
-		}
+		pr_info("sysrq_ptr: 0x%lx\n", sdn->kernd.sysrq_ptr);
 	}
-
+#endif
 }
 
 void secdbg_base_set_task_in_soft_lockup(uint64_t task)
@@ -557,6 +540,7 @@ void secdbg_base_set_cpu_in_hard_lockup(uint64_t cpu)
 		sdn->kernd.cpu_in_hard_lockup = cpu;
 }
 
+#ifdef CONFIG_SEC_DEBUG_UNFROZEN_TASK
 void secdbg_base_set_unfrozen_task(uint64_t task)
 {
 	if (sdn)
@@ -568,7 +552,9 @@ void secdbg_base_set_unfrozen_task_count(uint64_t count)
 	if (sdn)
 		sdn->kernd.unfrozen_task_count = count;
 }
+#endif /* SEC_DEBUG_UNFROZEN_TASK */
 
+#ifdef CONFIG_SEC_DEBUG_TASK_IN_STATE_INFO
 void secdbg_base_set_task_in_sync_irq(uint64_t task, unsigned int irq, const char *name, struct irq_desc *desc)
 {
 	if (sdn) {
@@ -587,7 +573,9 @@ void secdbg_base_set_task_in_sync_irq(uint64_t task, unsigned int irq, const cha
 		}
 	}
 }
+#endif /* SEC_DEBUG_TASK_IN_STATE_INFO */
 
+#ifdef CONFIG_SEC_DEBUG_PM_DEVICE_INFO
 void secdbg_base_set_device_shutdown_timeinfo(uint64_t start, uint64_t end, uint64_t duration, uint64_t func)
 {
 	if (sdn && func) {
@@ -625,6 +613,7 @@ void secdbg_base_set_suspend_device(const char *fname, const char *dname)
 		sdn->kernd.sdi.suspend_device = (uint64_t)dname;
 	}
 }
+#endif /* SEC_DEBUG_PM_DEVICE_INFO */
 
 static void init_ess_info(unsigned int index, char *key)
 {
@@ -635,9 +624,10 @@ static void init_ess_info(unsigned int index, char *key)
 	secdbg_base_get_kevent_info(p, index);
 
 	memset(p->key, 0, SD_ESSINFO_KEY_SIZE);
-	snprintf(p->key, SD_ESSINFO_KEY_SIZE, key);
+	snprintf(p->key, SD_ESSINFO_KEY_SIZE, "%s", key);
 }
 
+/* initialize snapshot offset data in sec debug next */
 static void secdbg_base_set_essinfo(void)
 {
 	unsigned int index = 0;
@@ -657,7 +647,7 @@ static void secdbg_base_set_essinfo(void)
 		init_ess_info(index++, "empty");
 
 	for (index = 0; index < SD_NR_ESSINFO_ITEMS; index++)
-		printk("%s: key: %s offset: %llx nr: %x\n", __func__,
+		pr_info("%s: key: %s offset: %lx nr: %x\n", __func__,
 				sdn->ss_info.item[index].key,
 				sdn->ss_info.item[index].base,
 				sdn->ss_info.item[index].nr);
@@ -708,12 +698,14 @@ static void secdbg_base_set_taskinfo(void)
 	SET_MEMBER_TYPE_INFO(&sdn->task.ts.sched_info__last_queued,
 					struct task_struct,
 					sched_info.last_queued);
+#ifdef CONFIG_SEC_DEBUG_DTASK
 	SET_MEMBER_TYPE_INFO(&sdn->task.ts.ssdbg_wait__type,
 					struct task_struct,
 					ssdbg_wait.type);
 	SET_MEMBER_TYPE_INFO(&sdn->task.ts.ssdbg_wait__data,
 					struct task_struct,
 					ssdbg_wait.data);
+#endif
 
 	sdn->task.init_task = (uint64_t)&init_task;
 }
@@ -770,7 +762,15 @@ static void secdbg_base_set_kconstants(void)
 
 static void __init secdbg_base_init_sdn(struct sec_debug_next *d)
 {
-	memset(&d->kernd, 0x0, sizeof(d->kernd));
+#define clear_sdn_field(__p, __m)	memset(&(__p)->__m, 0x0, sizeof((__p)->__m));
+
+	clear_sdn_field(d, memtab);
+	clear_sdn_field(d, ksyms);
+	clear_sdn_field(d, kcnst);
+	clear_sdn_field(d, task);
+	clear_sdn_field(d, ss_info);
+	clear_sdn_field(d, rlock);
+	clear_sdn_field(d, kernd);
 }
 
 /* initialize sec debug next data structure */
@@ -782,12 +782,18 @@ static int __init secdbg_base_next_init(void)
 		return -1;
 	}
 
+	pr_info("%s: start %lx\n", __func__, (unsigned long)sdn);
+	pr_info("%s: BUF_0: %lx\n", __func__, secdbg_base_get_buf_base(0));
+
 	/* set magic */
 	sdn->magic[0] = SEC_DEBUG_MAGIC0;
 	sdn->magic[1] = SEC_DEBUG_MAGIC1;
 
 	sdn->version[1] = SEC_DEBUG_KERNEL_UPPER_VERSION << 16;
 	sdn->version[1] += SEC_DEBUG_KERNEL_LOWER_VERSION;
+
+	/* set member table */
+	secdbg_base_set_memtab_info(&sdn->memtab);
 
 	/* set kernel symbols */
 	secdbg_base_set_kallsyms_info(&(sdn->ksyms), SEC_DEBUG_MAGIC1);
@@ -812,9 +818,10 @@ static int __init secdbg_base_next_init(void)
 	secdbg_base_set_task_in_sync_irq((uint64_t)NULL, 0, NULL, NULL);
 	secdbg_base_clr_device_shutdown_timeinfo();
 
+	pr_info("%s: done\n", __func__);
+
 	return 0;
 }
-late_initcall(secdbg_base_next_init);
 
 /* reserve first 1 page from dram base (generally 0x80000000) */
 static int __init secdbg_base_set_magic(struct reserved_mem *rmem)
@@ -830,29 +837,30 @@ static int __init secdbg_base_set_magic(struct reserved_mem *rmem)
 RESERVEDMEM_OF_DECLARE(sec_debug_magic, "exynos,sec_debug_magic", secdbg_base_set_magic);
 
 /* set first 1 page from dram base (generally 0x80000000) as non-cacheable */
-static int __init secdbg_base_nocache_remap(void)
+static unsigned long __init __set_mem_as_nocache(unsigned long base, unsigned long size, int default_clear)
 {
 	pgprot_t prot = __pgprot(PROT_NORMAL_NC);
 	int page_size, i;
 	struct page *page;
 	struct page **pages;
 	void *addr;
+	unsigned long ret;
 
-	if (!secdbg_base_rmem_size || !secdbg_base_rmem_phys) {
+	if (!size || !base) {
 		pr_err("%s: failed to set nocache pages\n", __func__);
 
-		return -1;
+		return 0;
 	}
 
-	page_size = (secdbg_base_rmem_size + PAGE_SIZE - 1) / PAGE_SIZE;
+	page_size = (size + PAGE_SIZE - 1) / PAGE_SIZE;
 	pages = kcalloc(page_size, sizeof(struct page *), GFP_KERNEL);
 	if (!pages) {
 		pr_err("%s: failed to allocate pages\n", __func__);
 
-		return -1;
+		return 0;
 	}
 
-	page = phys_to_page(secdbg_base_rmem_phys);
+	page = phys_to_page(base);
 	for (i = 0; i < page_size; i++)
 		pages[i] = page++;
 
@@ -861,18 +869,29 @@ static int __init secdbg_base_nocache_remap(void)
 		pr_err("%s: failed to mapping between virt and phys\n", __func__);
 		kfree(pages);
 
-		return -1;
+		return 0;
 	}
 
-	pr_info("%s: virt: 0x%p\n", __func__, addr);
-	secdbg_base_rmem_virt = (unsigned long)addr;
+	ret = (unsigned long)addr;
+	pr_info("%s: virt: 0x%lx\n", __func__, ret);
 
 	kfree(pages);
 
-	memset((void *)secdbg_base_rmem_virt, 0, secdbg_base_rmem_size);
+	if (default_clear) {
+		pr_info("%s: clear this area\n", __func__);
+		memset(addr, 0, size);
+	}
 
+	return ret;
+}
+
+static int __init secdbg_base_nocache_remap(void)
+{
+	secdbg_base_rmem_virt = __set_mem_as_nocache(secdbg_base_rmem_phys, secdbg_base_rmem_size, 1);
+	sdn = (struct sec_debug_next *)__set_mem_as_nocache(secdbg_sdn_phys, secdbg_sdn_size, 0);
+
+	secdbg_base_next_init();
 	secdbg_base_set_upload_magic(UPLOAD_MAGIC_PANIC, NULL);
-	register_reboot_notifier(&nb_reboot_block);
 
 	return 0;
 }
@@ -908,6 +927,9 @@ static int __init secdbg_base_reserve_memory(char *str)
 		goto out;
 	}
 
+	secdbg_sdn_phys = base;
+	secdbg_sdn_size = size;
+
 	secdbg_base_init_sdn(sdn);
 
 	pr_info("%s: base(virt):0x%lx size:0x%lx\n", __func__,
@@ -920,3 +942,13 @@ out:
 }
 __setup("sec_debug_next=", secdbg_base_reserve_memory);
 
+static int __init secdbg_base_setup_kernel_controls(void)
+{
+	if (IS_ENABLED(CONFIG_SEC_DEBUG_PANIC_ON_RCU_STALL)) {
+		pr_info("set panic_on_rcu_stall\n");
+		sysctl_panic_on_rcu_stall = 1;
+	}
+
+	return 0;
+}
+subsys_initcall(secdbg_base_setup_kernel_controls);

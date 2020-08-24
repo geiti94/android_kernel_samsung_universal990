@@ -45,6 +45,9 @@
 
 #define STATUS1_ACOKB	BIT(2)
 #endif /* CONFIG_SEC_PM */
+#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
+#include <linux/sec_debug.h>
+#endif /* CONFIG_SEC_DEBUG_EXTRA_INFO */
 
 static struct s2mps19_info *s2mps19_static_info;
 static struct regulator_desc regulators[S2MPS19_REGULATOR_MAX];
@@ -682,7 +685,7 @@ void send_hqm_bocp_work(struct work_struct *work)
 static irqreturn_t s2mps19_buck_ocp_irq(int irq, void *data)
 {
 	struct s2mps19_info *s2mps19 = data;
-	size_t i;
+	int i = 0;
 
 	mutex_lock(&s2mps19->lock);
 
@@ -693,10 +696,14 @@ static irqreturn_t s2mps19_buck_ocp_irq(int irq, void *data)
 			hqm_bocp_cnt[i]++;
 #endif /* CONFIG_SEC_PM_BIGDATA */
 			pr_info("%s : BUCK[%d] OCP IRQ : %d, %d\n",
-				__func__, i+1, s2mps19_buck_ocp_cnt[i], irq);
+				__func__, i + 1, s2mps19_buck_ocp_cnt[i], irq);
 			break;
 		}
 	}
+
+#if defined(CONFIG_SEC_DEBUG_EXTRA_INFO)
+	secdbg_exin_set_master_ocp();
+#endif
 
 	mutex_unlock(&s2mps19->lock);
 
@@ -722,6 +729,10 @@ static irqreturn_t s2mps19_bb_ocp_irq(int irq, void *data)
 
 	s2mps19_bb_ocp_cnt++;
 	pr_info("%s : BUCKBOST OCP IRQ : %d, %d\n", __func__, s2mps19_bb_ocp_cnt, irq);
+
+#if defined(CONFIG_SEC_DEBUG_EXTRA_INFO)
+	secdbg_exin_set_master_ocp();
+#endif
 
 	mutex_unlock(&s2mps19->lock);
 
@@ -942,7 +953,7 @@ static const struct attribute_group ap_pmic_attr_group = {
 void s2mps19_oi_function(struct s2mps19_dev *iodev)
 {
 	struct i2c_client *i2c = iodev->pmic;
-	size_t i;
+	unsigned int i = 0;
 	u8 val;
 
 	/* BUCK1~12 & buck-boost OI function enable */
@@ -965,7 +976,7 @@ void s2mps19_oi_function(struct s2mps19_dev *iodev)
 	pr_info("%s\n", __func__);
 	for (i = S2MPS19_PMIC_REG_BUCK_OI_EN1; i <= S2MPS19_PMIC_REG_BUCK_OI_CTRL7; i++) {
 		s2mps19_read_reg(i2c, i, &val);
-		pr_info("0x%x[0x%x], ", i, val);
+		pr_info("0x%x[0x%02hhx], ", i, val);
 	}
 	pr_info("\n");
 }
@@ -1034,13 +1045,13 @@ static ssize_t s2mps19_write_store(struct device *dev,
 		return size;
 	}
 
-	ret = sscanf(buf, "0x%02x 0x%02x", &reg, &data);
+	ret = sscanf(buf, "0x%02hhx 0x%02hhx", &reg, &data);
 	if (ret != 2) {
 		pr_info("%s: input error\n", __func__);
 		return size;
 	}
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg, data);
+	pr_info("%s: reg(0x%02hhx) data(0x%02hhx)\n", __func__, reg, data);
 
 	ret = s2mps19_write_reg(s2mps19->i2c, reg, data);
 	if (ret < 0)
@@ -1097,7 +1108,7 @@ static int s2mps19_pmic_probe(struct platform_device *pdev)
 	struct s2mps19_info *s2mps19;
 	int irq_base, ret, ret1, ret2, ret3;
 	u8 val, val1, val2, val3;
-	size_t i;
+	int i = 0;
 
 	/* WRSTBI pin check */
 	s2mps19_check_wrstbi();
@@ -1261,7 +1272,7 @@ static int s2mps19_pmic_probe(struct platform_device *pdev)
 			__func__);
 			goto err_s2mps19_data;
 	}
-	pr_info("%s: OCP Warn 0xA9= 0x%x, " "[0xAB= 0x%x, 0xAC= 0x%x, 0xAD= 0x%x]\n",
+	pr_info("%s: OCP Warn 0xA9= 0x%02hhx, " "[0xAB= 0x%02hhx, 0xAC= 0x%02hhx, 0xAD= 0x%02hhx]\n",
 		__func__, val, val1, val2, val3);
 
 	if (pdata->ocp_warn1_en) {
@@ -1279,7 +1290,7 @@ static int s2mps19_pmic_probe(struct platform_device *pdev)
 			goto err_s2mps19_data;
 		}
 
-		pr_info("%s: value for ocp warn1 register is 0x%x\n", __func__, val);
+		pr_info("%s: value for ocp warn1 register is 0x%02hhx\n", __func__, val);
 	}
 
 	if (pdata->ocp_warn2_en) {
@@ -1297,7 +1308,7 @@ static int s2mps19_pmic_probe(struct platform_device *pdev)
 			goto err_s2mps19_data;
 		}
 
-		pr_info("%s: value for ocp warn2 register is 0x%x\n",
+		pr_info("%s: value for ocp warn2 register is 0x%02hhx\n",
 			__func__, val);
 	}
 

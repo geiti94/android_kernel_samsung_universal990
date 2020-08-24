@@ -293,6 +293,12 @@ for ((i) = (r).from;		\
 #define DIM_LUT_INIT(l, bl, gma, rtbl, ctbl)		\
 	DIM_LUT_V0_INIT(l, bl, gma, rtbl, ctbl)
 
+/* GM2LUT_V0 : INSERT COLOR OFFSET */
+#define GM2_LUT_V0_INIT(ctbl)		\
+{													\
+	.rgb_color_offset = (s32 (*)[MAX_COLOR])(ctbl),	\
+}
+
 struct dimming_lut_info {
 	int nrow;
 	int ncol;
@@ -355,7 +361,7 @@ struct dimming_info {
 	u32 v0_voltage[16];		/* v0 voltage table */
 	struct tp_lut_info tp_lut_info;
 	int nr_tp;				/* number of turning point */
-	struct tp *tp;			/* informations of panel's tuning point */
+	struct tp *tp;			/* information of panel's tuning point */
 
 	int nr_luminance;		/* number of luminance */
 	struct gray_scale gray_scale_lut[GRAY_SCALE_MAX];
@@ -371,7 +377,7 @@ struct dimming_info {
 struct dimming_init_info {
 	const char *name;
 	int nr_tp;				/* number of turning point */
-	struct tp *tp;			/* informations of panel's tuning point */
+	struct tp *tp;			/* information of panel's tuning point */
 	int nr_luminance;		/* number of luminance */
 	s64 vregout;			/* vregout * (1 << bitshift) */
 	s64 vref;				/* vref * (1 << bitshift) */
@@ -383,6 +389,19 @@ struct dimming_init_info {
 	struct dimming_lut *dim_lut;
 
 	s32 hbm_luminance;
+};
+
+/* gamma mode 2 */
+struct gm2_dimming_lut {
+	s32(*rgb_color_offset)[MAX_COLOR];
+};
+
+struct gm2_dimming_init_info {
+	const char *name;
+	int nr_tp;				/* number of turning point */
+	struct tp *tp;			/* information of panel's tuning point */
+	struct gm2_dimming_lut *dim_lut;
+	int nr_dim_lut;
 };
 
 #ifdef CONFIG_PANEL_AID_DIMMING

@@ -472,7 +472,7 @@ static int mcd_hdr_probe(struct platform_device *pdev)
 
 	hdr = devm_kzalloc(dev, sizeof(struct mcd_hdr_device), GFP_KERNEL);
 	if (hdr == NULL) {
-		hdr_err("HDR:ERR:%s:faield to alloc mem for hdr device\n", __func__);
+		hdr_err("HDR:ERR:%s:failed to alloc mem for hdr device\n", __func__);
 		ret = -ENOMEM;
 		goto probe_err;
 	}

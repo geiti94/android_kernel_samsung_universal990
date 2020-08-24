@@ -41,19 +41,13 @@ struct device *create_function_device(char *name)
 #endif
 		{
 			return device_create(android_class, android_device,
-			MKDEV(0, index++), NULL, name);
+			MKDEV(0, index++), NULL, "%s", name);
 		}
 	} else {
 		return ERR_PTR(-EINVAL);
 	}
 }
 EXPORT_SYMBOL_GPL(create_function_device);
-#endif
-
-#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
-void set_usb_enumeration_state(int state);
-void set_usb_enable_state(void);
-extern int dwc3_gadget_get_cmply_link_state(struct usb_gadget *g);
 #endif
 
 #define CHIPID_SIZE	(16)
@@ -125,32 +119,6 @@ struct gadget_info {
 	bool	gsi_boot;
 #endif
 };
-
-#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
-extern int dwc3_gadget_get_cmply_link_state(struct usb_gadget *g);
-
-int dwc3_gadget_get_cmply_link_state_wrapper(void)
-{
-    struct gadget_info *dev;
-    struct usb_composite_dev *cdev;
-    struct usb_gadget        *gadget;
-    int ret = -ENODEV;
-
-    if (android_device && !IS_ERR(android_device)) {
-        dev = dev_get_drvdata(android_device);
-        cdev = &dev->cdev;
-        if (cdev) {
-             gadget = cdev->gadget;
-             if (gadget)
-                ret = dwc3_gadget_get_cmply_link_state(gadget);
-             else
-                 pr_err("usb: %s:gadget pointer is null\n", __func__);
-         }
-    }
-    return ret;
-}
-EXPORT_SYMBOL(dwc3_gadget_get_cmply_link_state_wrapper);
-#endif
 
 static inline struct gadget_info *to_gadget_info(struct config_item *item)
 {
@@ -375,7 +343,6 @@ static ssize_t gadget_dev_desc_UDC_store(struct config_item *item,
 #endif
 
 	pr_info("%s: +++\n", __func__);
-	mdelay(50);
 
 	name = kstrdup(page, GFP_KERNEL);
 	if (!name)
@@ -627,12 +594,24 @@ static int config_usb_cfg_link(
 					if (strcmp(cn->configuration, "adb") == 0) {				
 						list_for_each_entry_safe(f, tmp, &gi->linked_func, list) {
 							if (strcmp(f->name , "adb") == 0) {
+								gi->gsi_boot=1;
 								printk("usb: %s: GSI adb works(%s)\n",__func__, f->name);
 								list_move_tail(&f->list, &cfg->func_list);
 							}
 						}
 					}
-					gi->gsi_boot=1;
+					if (!gi->gsi_boot) {
+						printk("usb: %s: Recovery ADB\n",__func__);
+						f = usb_get_function(fi);
+						if (IS_ERR(f)) {
+							ret = PTR_ERR(f);
+							goto out;
+						}
+
+						/* stash the function until we bind it to the gadget */
+						list_add_tail(&f->list, &cfg->func_list);
+						gi->gsi_boot=1;
+					}
 					ret = 0;
 					goto out;
 				} else {
@@ -1676,9 +1655,6 @@ static void android_work(struct work_struct *data)
 #ifdef CONFIG_USB_NOTIFY_PROC_LOG
 		store_usblog_notify(NOTIFY_USBSTATE, (void *)connected[0], NULL);
 #endif
-#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
-		set_usb_enumeration_state(cdev->desc.bcdUSB);
-#endif
 	}
 
 	if (status[1]) {
@@ -2131,9 +2107,6 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 
 		usb_gadget_connect(gadget);
 		dev->enabled = true;
-#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
-		set_usb_enable_state();
-#endif
 	} else if (!enabled && dev->enabled) {
 		pr_info("usb: %s: Disconnect gadget: enabled=%d, dev->enabled=%d\n",
 				__func__, enabled, dev->enabled);
@@ -2309,6 +2282,7 @@ static struct config_group *gadgets_make(
 	gi->composite.resume = NULL;
 	gi->composite.max_speed = USB_SPEED_SUPER;
 
+	spin_lock_init(&gi->spinlock);
 	mutex_init(&gi->lock);
 	INIT_LIST_HEAD(&gi->string_list);
 	INIT_LIST_HEAD(&gi->available_func);

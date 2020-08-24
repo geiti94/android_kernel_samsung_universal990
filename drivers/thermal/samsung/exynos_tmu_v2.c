@@ -68,8 +68,6 @@
 #include <linux/sec_class.h>
 #endif
 
-static struct workqueue_struct *exynos_tmu_wq = NULL;
-
 #ifdef CONFIG_EXYNOS_ACPM_THERMAL
 static struct acpm_tmu_cap cap;
 static unsigned int num_of_devices, suspended_count;
@@ -481,10 +479,9 @@ static int exynos_tmu_set_emulation(void *drv_data, int temp)
 	{ return -EINVAL; }
 #endif /* CONFIG_THERMAL_EMULATION */
 
-static void exynos_tmu_work(struct work_struct *work)
+static irqreturn_t exynos_tmu_threaded_irq(int irq, void *id)
 {
-	struct exynos_tmu_data *data = container_of(work,
-			struct exynos_tmu_data, irq_work);
+	struct exynos_tmu_data *data = id;
 
 	exynos_report_trigger(data);
 	mutex_lock(&data->lock);
@@ -493,16 +490,15 @@ static void exynos_tmu_work(struct work_struct *work)
 
 	mutex_unlock(&data->lock);
 	enable_irq(data->irq);
+
+	return IRQ_HANDLED;
 }
 
 static irqreturn_t exynos_tmu_irq(int irq, void *id)
 {
-	struct exynos_tmu_data *data = id;
-
 	disable_irq_nosync(irq);
-	queue_work(exynos_tmu_wq, &data->irq_work);
 
-	return IRQ_HANDLED;
+	return IRQ_WAKE_THREAD;
 }
 
 #ifndef CONFIG_EXYNOS_ACPM_THERMAL
@@ -987,7 +983,6 @@ struct exynos_tmu_data *gpu_thermal_data;
 static int exynos_tmu_probe(struct platform_device *pdev)
 {
 	struct exynos_tmu_data *data;
-	struct workqueue_attrs attr;
 	int ret;
 
 	data = devm_kzalloc(&pdev->dev, sizeof(struct exynos_tmu_data),
@@ -1001,18 +996,6 @@ static int exynos_tmu_probe(struct platform_device *pdev)
 	ret = exynos_map_dt_data(pdev);
 	if (ret)
 		goto err_sensor;
-
-	if (!exynos_tmu_wq) {
-		attr.nice = -20;
-		attr.no_numa = true;
-		cpumask_copy(attr.cpumask, cpu_coregroup_mask(0));
-		exynos_tmu_wq = alloc_workqueue("%s", WQ_HIGHPRI | WQ_UNBOUND |\
-				WQ_MEM_RECLAIM | WQ_FREEZABLE,
-				0, "exynos_tmu_wq");
-		apply_workqueue_attrs(exynos_tmu_wq, &attr);
-	}
-
-	INIT_WORK(&data->irq_work, exynos_tmu_work);
 
 	/*
 	 * data->tzd must be registered before calling exynos_tmu_initialize(),
@@ -1054,7 +1037,7 @@ static int exynos_tmu_probe(struct platform_device *pdev)
 		goto err_thermal;
 	}
 
-	ret = devm_request_irq(&pdev->dev, data->irq, exynos_tmu_irq,
+	ret = devm_request_threaded_irq(&pdev->dev, data->irq, exynos_tmu_irq, exynos_tmu_threaded_irq,
 				IRQF_SHARED | IRQF_GIC_MULTI_TARGET, dev_name(&pdev->dev), data);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to request irq: %d\n", data->irq);

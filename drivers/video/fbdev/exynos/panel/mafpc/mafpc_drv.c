@@ -18,6 +18,10 @@
 #include "../panel_drv.h"
 #include "mafpc_drv.h"
 
+#ifdef PANEL_PR_TAG
+#undef PANEL_PR_TAG
+#define PANEL_PR_TAG	"mafpc"
+#endif
 
 static int mafpc_open(struct inode *inode, struct file *file)
 {
@@ -31,8 +35,6 @@ static int mafpc_open(struct inode *inode, struct file *file)
 	return ret;
 }
 
-
-
 static ssize_t mafpc_write(struct file *file, const char __user *buf,
 		  size_t count, loff_t *ppos)
 {	
@@ -45,30 +47,27 @@ static ssize_t mafpc_write(struct file *file, const char __user *buf,
 		mafpc->img_size;
 
 	if (count == write_size) {
-		panel_info("[mAFPC:INFO]:%s Write size: %d, without scale factor\n",
-			__func__, count);
+		panel_info("Write size: %ld, without scale factor\n", count);
 		scale_factor = false;
 	} else if (count == write_size + mafpc->scale_size) {
-		panel_info("[mAFPC:INFO]:%s Write size: %d, with scale factor\n",
-			__func__, count);
+		panel_info("Write size: %ld, with scale factor\n", count);
 		scale_factor = true;
 	} else {
-		panel_err("[mAFPC:ERR]:%s: undefined write size : %d:%d\n",
-			__func__, count);
+		panel_err("undefined write size : %ld\n", count);
 		goto err_write;
 	}
 
 	if (copy_from_user(temp, buf, MAFPC_HEADER_SIZE + MAFPC_CTRL_CMD_SIZE)) {
-		panel_err("[mAFPC:ERR]:%s: failed to get user's header\n", __func__);
+		panel_err("failed to get user's header\n");
 		goto err_write;
 	}
 
 	if (temp[0] != MAFPC_HEADER) {
-		panel_err("[mAFPC:ERR]%s: wrong header : %c\n", __func__);
+		panel_err("wrong header : %c\n", temp[0]);
 		goto err_write;
 	}
 
-	panel_info("[mAFPC:Info]:%s:header : %c\n", __func__, temp[0]);
+	panel_info("header : %c\n", temp[0]);
 	
 	memcpy(mafpc->ctrl_cmd, temp + MAFPC_HEADER_SIZE, MAFPC_CTRL_CMD_SIZE);
 	
@@ -76,15 +75,15 @@ static ssize_t mafpc_write(struct file *file, const char __user *buf,
 			mafpc->ctrl_cmd, MAFPC_CTRL_CMD_SIZE, false);
 
 	if (mafpc->img_buf == NULL) {
-		panel_err("[mAFPC:ERR]:%s: mafpc img buf is null\n", __func__);
+		panel_err("mafpc img buf is null\n");
 		goto err_write;
 	}
 
-	panel_info("[mAFPC:Info]:%s:img size : %d\n", __func__, mafpc->img_size);
+	panel_info("img size : %d\n", mafpc->img_size);
 
 	if (copy_from_user(mafpc->img_buf,
 			buf + MAFPC_HEADER_SIZE + MAFPC_CTRL_CMD_SIZE, mafpc->img_size)) {
-		panel_err("[mAFPC:ERR]%s: failed to get comp img\n", __func__);
+		panel_err("failed to get comp img\n");
 		goto err_write;
 	}
 	mafpc->written |= MAFPC_UPDATED_FROM_SVC;
@@ -93,16 +92,16 @@ static ssize_t mafpc_write(struct file *file, const char __user *buf,
 		goto err_write;
 
 	if (mafpc->scale_buf == NULL) {
-		panel_err("[mAFPC:ERR]:%s: mafpc img buf is null\n", __func__);
+		panel_err("mafpc img buf is null\n");
 		goto err_write;
 	}
 
-	panel_info("[mAFPC:Info]:%s:img size : %d\n", __func__, mafpc->scale_size);
+	panel_info("img size : %d\n", mafpc->scale_size);
 
 	if (copy_from_user(mafpc->scale_buf,
 			buf + MAFPC_HEADER_SIZE + MAFPC_CTRL_CMD_SIZE + mafpc->img_size,
 			mafpc->scale_size)) {
-		panel_err("[mAFPC:ERR]%s: failed to get comp img\n", __func__);
+		panel_err("failed to get comp img\n");
 		goto err_write;
 	}
 
@@ -119,36 +118,41 @@ static int mafpc_instant_on(struct mafpc_device *mafpc)
 	struct panel_device *panel = mafpc->panel;
 
 	if (panel == NULL) {
-		panel_err("mAFPC:ERR:%s:panel is null\n", __func__);
+		panel_err("panel is null\n");
 		return -EINVAL;
 	}
-	
+
+	mafpc->req_update = true;
 	mutex_lock(&mafpc->mafpc_lock);
 
 	if (!IS_PANEL_ACTIVE(panel)) {
-		panel_err("[mAFPC:ERR]:%s:panel is not active\n", __func__);
+		panel_err("panel is not active\n");
 		goto err;
 	}
 
 	if (panel->state.cur_state == PANEL_STATE_ALPM) {
-		panel_err("[mAFPC:ERR]:%s gct not supported on LPM\n", __func__);
+		panel_err("gct not supported on LPM\n");
 		goto err;
 	}
 
+/*mAFPC Instant_on consists of two stage. 
+  1. Send compensation image for mAFPC to DDI, as soon as transmitted the instant_on ioctl.
+  2. Send instant_on command to DDI, after frame done */
+
+	panel_err("++ PANEL_MAFPC_IMG_SEQ ++\n");
 	ret = panel_do_seqtbl_by_index(panel, PANEL_MAFPC_IMG_SEQ);
 	if (unlikely(ret < 0)) {
-		panel_err("mAFPC:ERR:%s, failed to write init seqtbl\n", __func__);
+		panel_err("failed to write init seqtbl\n");
 		goto err;
 	}
+	
 	mafpc->written |= MAFPC_UPDATED_TO_DEV;
-
-	ret = panel_do_seqtbl_by_index(panel, PANEL_MAFPC_ON_SEQ);
-	if (unlikely(ret < 0)) {
-		panel_err("mAFPC:ERR:%s, failed to write init seqtbl\n", __func__);
-	}
+	mafpc->req_instant_on = true;
 
 err:
+	panel_err("-- PANEL_MAFPC_IMG_SEQ -- \n");
 	mutex_unlock(&mafpc->mafpc_lock);
+	mafpc->req_update = false;
 	return ret;
 
 }
@@ -162,18 +166,18 @@ static int mafpc_instant_off(struct mafpc_device *mafpc)
 	mutex_lock(&mafpc->mafpc_lock);
 
 	if (!IS_PANEL_ACTIVE(panel)) {
-		panel_err("[mAFPC:ERR]:%s:panel is not active\n", __func__);
+		panel_err("panel is not active\n");
 		goto err;
 	}
 
 	if (panel->state.cur_state == PANEL_STATE_ALPM) {
-		panel_err("[mAFPC:ERR]:%s gct not supported on LPM\n", __func__);
+		panel_err("gct not supported on LPM\n");
 		goto err;
 	}
 
 	ret = panel_do_seqtbl_by_index(panel, PANEL_MAFPC_OFF_SEQ);
 	if (unlikely(ret < 0)) {
-		panel_err("mAFPC:ERR:%s, failed to write init seqtbl\n", __func__);
+		panel_err("failed to write init seqtbl\n");
 	}
 
 err:
@@ -189,29 +193,29 @@ static long mafpc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	switch(cmd) {
 		case IOCTL_MAFPC_ON:
-			panel_info("[mAFPC:INFO]:%s:mAFPC on\n", __func__);
+			panel_info("mAFPC on\n");
 			mafpc->enable = true;
 			break;
 		case IOCTL_MAFPC_ON_INSTANT:
-			panel_info("[mAFPC:INFO]:%s:mAFPC on instantly On\n", __func__);
+			panel_info("mAFPC on instantly On\n");
 			mafpc->enable = true;
 			ret = mafpc_instant_on(mafpc);
 			if (ret)
-				panel_info("[mAFPC:ERR]:%s: failed to instant on\n", __func__);
+				panel_info("failed to instant on\n");
 			break;
 		case IOCTL_MAFPC_OFF:
-			panel_info("[mAFPC:INFO]:%s:mAFPC off\n", __func__);
+			panel_info("mAFPC off\n");
 			mafpc->enable = false;
 			break;
 		case IOCTL_MAFPC_OFF_INSTANT:
-			panel_info("[mAFPC:INFO]:%s:mAFPC off instantly\n", __func__);
+			panel_info("mAFPC off instantly\n");
 			mafpc->enable = false;
 			ret = mafpc_instant_off(mafpc);
 			if (ret)
-				panel_info("[mAFPC:ERR]:%s: failed to instant off\n", __func__);
+				panel_info("failed to instant off\n");
 			break;
 		default:
-			panel_info("[mAFPC:ERR]:%s:Invalid Command\n", __func__);
+			panel_info("Invalid Command\n");
 			break;
 	}
 
@@ -223,8 +227,7 @@ static int mafpc_release(struct inode *inode, struct file *file)
 {
 	int ret = 0;
 
-	panel_info(
-"[mAFPC:Info]:%s was called\n", __func__);
+	panel_info("was called\n");
 	
 	return ret;
 }
@@ -250,20 +253,21 @@ static int transmit_mafpc_data(struct mafpc_device *mafpc)
 #if 0
 	ret = panel_do_seqtbl_by_index(panel, PANEL_MAFPC_IMG_SEQ);
 	if (unlikely(ret < 0)) {
-		panel_err("PANEL:ERR:%s, failed to write init seqtbl\n", __func__);
+		panel_err("failed to write init seqtbl\n");
 	}
 #endif
+
 #if 0
 	ret = panel_do_seqtbl_by_index(panel, PANEL_MAFPC_ON_SEQ);
 	if (unlikely(ret < 0)) {
-		panel_err("PANEL:ERR:%s, failed to write init seqtbl\n", __func__);
+		panel_err("failed to write init seqtbl\n");
 	}
 #endif	
 	decon_systrace(get_decon_drvdata(0), 'C', "mafpc", 0);
 
 	time_diff = ktime_to_us(ktime_sub(ktime_get(), timestamp));
 	panel->mafpc_write_time = time_diff;
-	panel_info("[mAFPC:INFO]:%s time for mAFPC : %llu \n", __func__, time_diff);
+	panel_info("time for mAFPC : %llu\n", time_diff);
 
 	return ret;
 }
@@ -277,7 +281,7 @@ static int mafpc_thread(void *data)
 	while (!kthread_should_stop()) {	
 		ret = wait_event_interruptible(mafpc->wq_wait, mafpc->req_update);
 		mutex_lock(&mafpc->mafpc_lock);
-		panel_info("mAFPC:INFO:%s:was called\n", __func__);
+		panel_info("was called\n");
 		transmit_mafpc_data(mafpc);
 		mafpc->req_update = false;
 		mutex_unlock(&mafpc->mafpc_lock);
@@ -292,100 +296,38 @@ static int mafpc_create_thread(struct mafpc_device *mafpc)
 
 	mafpc->thread = kthread_run(mafpc_thread, mafpc, "mafpc-thread");
 	if (IS_ERR_OR_NULL(mafpc->thread)) {
-		panel_err("mAFPC:ERR:%s: failed to create mafpc thread\n");
+		panel_err("failed to create mafpc thread\n");
 		return PTR_ERR(mafpc->thread);
 	}
 
 	return 0;
 }
 
-static int get_comp_img_buf(struct mafpc_device *mafpc)
-{
-	int ret = 0;
-
-	struct seqinfo *img_seqtbl = NULL;
-	struct pktinfo *img_pktinfo = NULL;
-	struct panel_device *panel = mafpc->panel;
-
-	img_seqtbl = find_panel_seqtbl(&panel->panel_data, "mafpc-img-seq");
-	if (img_seqtbl == NULL) {
-		panel_err("[mAFPC:ERR]:%s failed to find mafpc-img seqtbl\n", __func__);
-		ret = -EINVAL;
-		goto err_get_buf;
-	}
-
-	img_pktinfo = find_packet_suffix(img_seqtbl, "mafpc_default_img");
-	if (img_pktinfo == NULL) {
-		panel_err("[mAFPC:ERR]:%s failed to find mafpc-img pktinfo\n", __func__);
-		ret = -EINVAL;
-		goto err_get_buf;
-	}
-
-	mafpc->img_buf = img_pktinfo->data;
-	mafpc->img_size = img_pktinfo->dlen;
-
-	panel_info("[mAFPC:INFO]:%s comp img size : %d\n", __func__, mafpc->img_size);
-
-	return ret;
-
-err_get_buf:
-	return ret;
-}
-
-static int get_scale_factor_buf(struct mafpc_device *mafpc)
-{
-	int ret = 0;
-
-	struct seqinfo *scale_seqtbl = NULL;
-	struct pktinfo *scale_pktinfo = NULL;
-	struct panel_device *panel = mafpc->panel;
-
-	scale_seqtbl = find_panel_seqtbl(&panel->panel_data, "mafpc-scale-seq");
-	if (scale_seqtbl == NULL) {
-		panel_err("[mAFPC:ERR]:%s failed to find mafpc-img seqtbl\n", __func__);
-		ret = -EINVAL;
-		goto err_get_buf;
-	}
-
-	scale_pktinfo = find_packet_suffix(scale_seqtbl, "mafpc_scale_factor");
-	if (scale_pktinfo == NULL) {
-		panel_err("[mAFPC:ERR]:%s failed to find mafpc-img pktinfo\n", __func__);
-		ret = -EINVAL;
-		goto err_get_buf;
-	}
-
-	mafpc->scale_buf = scale_pktinfo->data;
-	mafpc->scale_size = scale_pktinfo->dlen;
-
-	panel_info("[mAFPC:INFO]:%s scale factor size : %d\n", __func__, mafpc->scale_size);
-
-	return ret;
-
-err_get_buf:
-	return ret;
-}
-
-
-
 static int mafpc_v4l2_probe(struct mafpc_device *mafpc, void *arg)
 {
 	int ret = 0;
-	
-	struct panel_device *panel = (struct panel_device *)arg;
+	struct mafpc_info *info = (struct mafpc_info *)arg;
 
-	mafpc->panel = panel;
-
-	ret = get_comp_img_buf(mafpc);
-	if (ret) {
-		panel_err("[mAFPC:ERR]:%s failed to get comp img buf info\n", __func__);
-		goto err_v4l2_probe; 
+	if (unlikely(!info)) {
+		panel_err("got null mafpc info\n");
+		ret = -EINVAL;
+		goto err_v4l2_probe;
 	}
 
-	ret = get_scale_factor_buf(mafpc);
-	if (ret) {
-		panel_err("[mAFPC:ERR]:%s failed to get scale factor buf info\n", __func__);
-		goto err_v4l2_probe; 
-	}
+	mafpc->img_buf = info->mafpc_img;
+	mafpc->img_size = info->mafpc_img_len;
+	panel_info("comp img size : %d\n", mafpc->img_size);
+
+	mafpc->scale_buf = info->mafpc_scale_factor;
+	mafpc->scale_size = info->mafpc_scale_factor_len;
+	panel_info("scale factor size : %d\n", mafpc->scale_size);
+
+	mafpc->factory_crc = info->mafpc_crc_value;
+	mafpc->factory_crc_len = info->mafpc_crc_value_len;
+
+	mafpc->scale_map_br_tbl = info->mafpc_scale_map_br_tbl;
+	mafpc->scale_map_br_tbl_len = info->mafpc_scale_map_br_tbl_len;
+	panel_info("scale map table size : %d\n", mafpc->scale_map_br_tbl_len);
 
 	mafpc_create_thread(mafpc);
 
@@ -399,13 +341,12 @@ err_v4l2_probe:
 static int mafpc_v4l2_update_req(struct mafpc_device *mafpc)
 {
 	int ret = 0;
-
-	return ret;
-
+#if defined(CONFIG_SUPPORT_MAFPC_PARALLEL_UPDATE)
 	if (mafpc->thread) {
 		mafpc->req_update = true;
 		wake_up_interruptible_all(&mafpc->wq_wait);
 	}
+#endif
 	return ret;
 }
 
@@ -422,6 +363,24 @@ static int mafpc_v4l2_write_complte(struct mafpc_device *mafpc)
 	return ret;
 }
 
+static int mafpc_v4l2_frame_done(struct mafpc_device *mafpc)
+{
+	int ret = 0;
+	struct panel_device *panel = mafpc->panel;
+
+	ret = panel_do_seqtbl_by_index(panel, PANEL_MAFPC_ON_SEQ);
+	if (unlikely(ret < 0)) {
+		panel_err("failed to write init seqtbl\n");
+	}
+
+	mafpc->req_instant_on = false;
+
+	return ret;
+}
+
+
+
+
 static long mafpc_core_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 {
 	int ret = 0;
@@ -429,30 +388,36 @@ static long mafpc_core_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg
 
 	switch(cmd) {
 		case V4L2_IOCTL_MAFPC_PROBE:
-			panel_info("[PANEL:INFO]:%s : V4L2_IOCTL_MAFPC_PROBE\n", __func__);
+			panel_info("V4L2_IOCTL_MAFPC_PROBE\n");
 			ret = mafpc_v4l2_probe(mafpc, arg);
 			break;
 		case V4L2_IOCTL_MAFPC_UDPATE_REQ:
-			panel_info("[PANEL:INFO]:%s : V4L2_IOCTL_MAFPC_UDPATE_REQ\n", __func__);
+			panel_info("V4L2_IOCTL_MAFPC_UDPATE_REQ\n");
 			ret = mafpc_v4l2_update_req(mafpc);
 			break;
 		case V4L2_IOCTL_MAFPC_WAIT_COMP:
-			panel_info("[PANEL:INFO]%s: V4L2_IOCTL_MAFPC_WAIT_COMP\n", __func__);
+			panel_info("V4L2_IOCTL_MAFPC_WAIT_COMP\n");
 			ret = mafpc_v4l2_write_complte(mafpc);
 			break;
 		case V4L2_IOCTL_MAFPC_GET_INFO:
 			v4l2_set_subdev_hostdata(sd, mafpc);
 			break;
 		case V4L2_IOCTL_MAFPC_PANEL_INIT:
-			panel_info("[PANEL:INFO]%s: V4L2_IOCTL_MAFPC_GET_INIT\n", __func__);
+			panel_info("V4L2_IOCTL_MAFPC_GET_INIT\n");
 			mafpc->written |= MAFPC_UPDATED_TO_DEV;
 			break;
 		case V4L2_IOCTL_MAFPC_PANEL_EXIT:
-			panel_info("[PANEL:INFO]%s: V4L2_IOCTL_MAFPC_GET_EXIT\n", __func__);
+			panel_info("V4L2_IOCTL_MAFPC_GET_EXIT\n");
 			mafpc->written &= ~(MAFPC_UPDATED_TO_DEV);
 			break;
+		case V4L2_IOCL_MAFPC_FRAME_DONE:
+			if (mafpc->req_instant_on) {
+				panel_info("V4L2_IOCL_MAFPC_FRAME_DONE\n");
+				ret = mafpc_v4l2_frame_done(mafpc);
+			}
+			break;
 		default:
-			panel_err("[mAFPC:ERR]:%s: invalid cmd\n", __func__);
+			panel_err("invalid cmd\n");
 	}
 
 	return ret;
@@ -478,7 +443,7 @@ static void mafpc_init_v4l2_subdev(struct mafpc_device *mafpc)
 	v4l2_set_subdevdata(sd, mafpc);
 }
 
-static int mfac_probe(struct platform_device *pdev)
+static int mafpc_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct device *dev = &pdev->dev;
@@ -497,12 +462,13 @@ static int mfac_probe(struct platform_device *pdev)
 	mafpc->miscdev.minor = MISC_DYNAMIC_MINOR;
 	mafpc->miscdev.fops = &mafpc_drv_fops;
 	mafpc->miscdev.name = MAFPC_DEV_NAME;
+	mafpc->req_instant_on = false;
 
 	mutex_init(&mafpc->mafpc_lock);
 
 	ret = misc_register(&mafpc->miscdev);
 	if (ret) {
-		panel_err("PANEL:ERR:%s:failed to register mafpc drv\n", __func__);
+		panel_err("failed to register mafpc drv\n");
 		goto probe_err;
 	}
 
@@ -510,10 +476,7 @@ static int mfac_probe(struct platform_device *pdev)
 
 	mafpc_init_v4l2_subdev(mafpc);
 
-	mafpc->factory_crc[0] = MAFPC_VALID_CRC_1;
-	mafpc->factory_crc[1] = MAFPC_VALID_CRC_2;
-
-	panel_info("[mAFPC:INFO]:%s: mAFPC proved: %d:\n", __func__, mafpc->id);
+	panel_info("mAFPC probed: %d:\n", mafpc->id);
 
 probe_err:
 	return ret;
@@ -526,7 +489,7 @@ static const struct of_device_id mafpc_drv_of_match_table[] = {
 MODULE_DEVICE_TABLE(of, mafpc_drv_of_match_table);
 
 static struct platform_driver mafpc_driver = {
-	.probe = mfac_probe,
+	.probe = mafpc_probe,
 	.driver = {
 		.name = MAFPC_DEV_NAME,
 		.owner = THIS_MODULE,

@@ -247,7 +247,6 @@ extern void pcie_sysmmu_disable(int ch_num);
 extern int pcie_iommu_map(int ch_num, unsigned long iova, phys_addr_t paddr,
 		size_t size, int prot);
 extern size_t pcie_iommu_unmap(int ch_num, unsigned long iova, size_t size);
-
 extern struct dma_map_ops exynos_pcie_dma_ops;
 #else
 extern struct dma_map_ops exynos_pcie_dma_ops;

@@ -13,6 +13,7 @@
 #include <linux/list.h>
 #include <linux/of.h>
 #include <linux/sec_debug.h>
+#include <linux/debug-snapshot.h>
 #include <soc/samsung/ect_parser.h>
 #include <soc/samsung/exynos-dm.h>
 
@@ -93,10 +94,10 @@ static void secdbg_print_all_skew_domain_info(void)
 static void secdbg_freq_set(int type, unsigned int freq)
 {
 	secdbg_freq_cur[type] = freq;
-	pr_debug("%s: type: %d, freq: %d\n", __func__, type, freq);
+	pr_debug("%s: type: %d, freq: %u\n", __func__, type, freq);
 }
 
-static void secdbg_freq_ac_print(unsigned int type, unsigned long index,
+static void secdbg_freq_ac_print(int type, unsigned long index,
 			unsigned int main_val, unsigned int sub_val,
 			unsigned int table_sub, struct secdbg_skew_domain *skew_domain)
 {
@@ -105,11 +106,14 @@ static void secdbg_freq_ac_print(unsigned int type, unsigned long index,
 	const char *sub_type = get_lower_name(skew_domain->slave_dss_id);
 
 	/* e.g. SKEW (mif, index): big 2106 mif 1014 < 1539 @  BIG-MIF table */
-	pr_auto(ASL1, "SKEW (%s, %d): %s %d %s %d < %d @ %s-%s table\n",
+	pr_auto(ASL1, "SKEW (%s, %lu): %s %u %s %u < %u @ %s-%s table\n",
 			freq_type, index, main_type, main_val/1000,
 			sub_type, sub_val/1000, table_sub,
 			get_freq_name(skew_domain->master_dss_id),
 			get_freq_name(skew_domain->slave_dss_id));
+
+	if (IS_ENABLED(CONFIG_SEC_DEBUG_FREQ_SKEW_PANIC))
+		BUG();
 }
 
 static struct table_domain *secdbg_get_suitable_freq_lb(unsigned int freq, int tsize, struct table_domain *table)
@@ -118,7 +122,7 @@ static struct table_domain *secdbg_get_suitable_freq_lb(unsigned int freq, int t
 	struct table_domain *eslot = table + tsize;
 
 	for (islot = table; islot < eslot; islot++) {
-		pr_debug("%s: [%d] freq: %u, table_main: %d, sub_val: %d\n",
+		pr_debug("%s: [%ld] freq: %u, table_main: %u, sub_val: %u\n",
 				__func__, islot - table, freq, islot->main_freq, islot->sub_freq);
 
 		/* table must be descending order */
@@ -129,14 +133,17 @@ static struct table_domain *secdbg_get_suitable_freq_lb(unsigned int freq, int t
 	return NULL;
 }
 
-static void secdbg_freq_main_sub(int type, unsigned long index, struct secdbg_skew_domain *domain)
+static void secdbg_freq_main_sub(int type, unsigned long index, unsigned int freq, struct secdbg_skew_domain *domain)
 {
-	unsigned int master_freq = get_cur_freq(domain->master_dss_id);
-	unsigned int slave_freq = get_cur_freq(domain->slave_dss_id);
+	unsigned int master_freq;
+	unsigned int slave_freq;
 	struct table_domain *freq_constraint;
 
+	master_freq = (domain->master_dss_id == type) ? freq : get_cur_freq(domain->master_dss_id);
+	slave_freq = (domain->slave_dss_id == type) ? freq : get_cur_freq(domain->slave_dss_id);
+
 	if (!master_freq || !slave_freq) {
-		pr_debug("%s: no cur freq: m_%d, s_%d\n", __func__, master_freq, slave_freq);
+		pr_debug("%s: no cur freq: m_%u, s_%u\n", __func__, master_freq, slave_freq);
 		return;
 	}
 
@@ -162,7 +169,7 @@ static void secdbg_freq_main_sub(int type, unsigned long index, struct secdbg_sk
 		secdbg_freq_ac_print(type, index, master_freq, slave_freq, freq_constraint->sub_freq, domain);
 }
 
-static void secdbg_freq_judge_skew(int type, unsigned long index)
+static void secdbg_freq_judge_skew(int type, unsigned long index, unsigned int freq)
 {
 	int i;
 	int count = secdbg_skew_ref_table[type]->count;
@@ -170,19 +177,19 @@ static void secdbg_freq_judge_skew(int type, unsigned long index)
 
 	for (i = 0; i < count; i++) {
 		domain = secdbg_skew_ref_table[type]->refs[i];
-		secdbg_freq_main_sub(type, index, domain);
+		secdbg_freq_main_sub(type, index, freq, domain);
 	}
 }
 
-void secdbg_freq_check(int type, unsigned long index, unsigned long freq)
+void secdbg_freq_check(int type, unsigned long index, unsigned long freq, int en)
 {
 	if (!secdbg_freq_initialized) {
-		pr_err_once("%s: not initialized, type(%d)\n", type);
+		pr_err_once("%s: not initialized, type(%d)\n", __func__, type);
 		return;
 	}
 
 	if (type < 0 || type >= MAX_FREQ_DOMAIN) {
-		pr_err("%s: type(%d) not in range\n", type);
+		pr_err("%s: type(%d) not in range\n", __func__, type);
 		return;
 	}
 
@@ -192,11 +199,19 @@ void secdbg_freq_check(int type, unsigned long index, unsigned long freq)
 
 	pr_debug("%s: start\n", __func__);
 
-	/* set freq. domain and target freq */
-	secdbg_freq_set(type, (unsigned int)freq);
+	if (en == DSS_FLAG_OUT) {
+		/* set freq. domain and target freq */
+		secdbg_freq_set(type, (unsigned int)freq);
+	} else if (en < 0) {
+		/* error case :
+		 * We cannot sure whether the frequency has been changed or not.
+		 */
+		secdbg_freq_set(type, 0);
+		return;
+	}
 
 	/* judge skew and ac print */
-	secdbg_freq_judge_skew(type, index);
+	secdbg_freq_judge_skew(type, index, (unsigned int)freq);
 }
 
 static void __init secdbg_set_domain_to_ref(struct secdbg_skew_domain *domain, struct secdbg_skew_ref **skew_ref)
@@ -245,25 +260,25 @@ static int __init secdbg_devfreq_init_domain(struct secdbg_skew_domain *domain,
 
 	ret = of_property_read_u32(dn, "dm-index", &domain->master_dm_id);
 	if (ret) {
-		pr_err("%s: no dm-index\n", __func__, ret);
+		pr_err("%s: no dm-index (%d)\n", __func__, ret);
 		return ret;
 	}
 
 	ret = of_property_read_string(dn, "devfreq_domain_name", &domain->ect_name);
 	if (ret) {
-		pr_err("%s: no devfreq_domain_name\n", __func__, ret);
+		pr_err("%s: no devfreq_domain_name (%d)\n", __func__, ret);
 		return ret;
 	}
 
 	ret = of_property_read_u32(child, "constraint_dm_type", &domain->slave_dm_id);
 	if (ret) {
-		pr_err("%s: no constraint_dm_type\n", __func__, ret);
+		pr_err("%s: no constraint_dm_type (%d)\n", __func__, ret);
 		return ret;
 	}
 
 	ret = of_property_read_u32(child, "constraint_type", &domain->constraint_type);
 	if (ret) {
-		pr_err("%s: no constraint_type\n", __func__, ret);
+		pr_err("%s: no constraint_type (%d)\n", __func__, ret);
 		return ret;
 	}
 
@@ -277,19 +292,19 @@ static int __init secdbg_cpufreq_init_domain(struct secdbg_skew_domain *domain,
 
 	ret = of_property_read_u32(dn, "const-type", &domain->constraint_type);
 	if (ret) {
-		pr_err("%s: [%u] no const-type(%d)\n", __func__, domain->master_dm_id, ret);
+		pr_err("%s: [%u] no const-type (%d)\n", __func__, domain->master_dm_id, ret);
 		return ret;
 	}
 
 	ret = of_property_read_u32(dn, "dm-type", &domain->slave_dm_id);
 	if (ret) {
-		pr_err("%s: [%u] no dm-type(%d)\n", __func__, domain->master_dm_id, ret);
+		pr_err("%s: [%u] no dm-type (%d)\n", __func__, domain->master_dm_id, ret);
 		return ret;
 	}
 
 	ret = of_property_read_string(dn, "ect-name", &domain->ect_name);
 	if (ret) {
-		pr_err("%s: [%u] no ect-name(%d)\n", __func__, domain->master_dm_id, ret);
+		pr_err("%s: [%u] no ect-name (%d)\n", __func__, domain->master_dm_id, ret);
 		return ret;
 	}
 
@@ -410,7 +425,7 @@ static void __init secdbg_freq_dt_init(void)
 	/* devfreq */
 	dp = of_find_compatible_node(NULL, NULL, "samsung,exynos-devfreq-root");
 	if (!dp) {
-		pr_notice("%s: no devfreq dt\n");
+		pr_notice("%s: no devfreq dt\n", __func__);
 		goto out;
 	}
 
@@ -460,20 +475,20 @@ static int __init secdbg_freq_mini_table(struct ect_minlock_domain *ect_domain, 
 	unsigned int i, j, k;
 
 	for (i = 0, j = 0; j < ect_domain->num_of_level - 1; j++) {
-		pr_debug("secdbg_freq: %s: i:%d, %d %d\n", ect_domain->domain_name, i, ect_domain->level[j].main_frequencies, ect_domain->level[j].sub_frequencies);
+		pr_debug("secdbg_freq: %s: i:%d, %u %u\n", ect_domain->domain_name, i, ect_domain->level[j].main_frequencies, ect_domain->level[j].sub_frequencies);
 		if (ect_domain->level[j].sub_frequencies != ect_domain->level[j+1].sub_frequencies) {
 			table[i].main_freq = ect_domain->level[j].main_frequencies;
 			table[i].sub_freq = ect_domain->level[j].sub_frequencies;
 			i++;
 		}
 	}
-	pr_debug("secdbg_freq: %s: i:%d, %d %d\n", ect_domain->domain_name, i, ect_domain->level[j].main_frequencies, ect_domain->level[j].sub_frequencies);
+	pr_debug("secdbg_freq: %s: i:%d, %u %u\n", ect_domain->domain_name, i, ect_domain->level[j].main_frequencies, ect_domain->level[j].sub_frequencies);
 	table[i].main_freq = ect_domain->level[ect_domain->num_of_level - 1].main_frequencies;
 	table[i].sub_freq = ect_domain->level[ect_domain->num_of_level - 1].sub_frequencies;
 	i++;
 
 	for (k = 0; k < i; k++)
-		pr_info("secdbg: %s: %d %d\n", ect_domain->domain_name, table[k].main_freq, table[k].sub_freq);
+		pr_info("secdbg: %s: %u %u\n", ect_domain->domain_name, table[k].main_freq, table[k].sub_freq);
 
 	return i;
 }
@@ -484,7 +499,7 @@ static void __init secdbg_freq_gen_table(struct secdbg_skew_domain *skew_domain,
 					  sizeof(struct table_domain),
 					  GFP_KERNEL);
 	if (!skew_domain->freq_table) {
-		pr_err("%s: [%d] failed to alloc table\n", __func__, skew_domain->master_dm_id);
+		pr_err("%s: [%u] failed to alloc table\n", __func__, skew_domain->master_dm_id);
 		return;
 	}
 

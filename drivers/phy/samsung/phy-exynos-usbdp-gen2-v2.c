@@ -1790,6 +1790,7 @@ static void phy_exynos_usbdp_g2_v2_pma_default_sfr_update(struct exynos_usbphy_i
 		reg |= USBDP_TRSV_REG0813_LN3_ANA_TX_RXD_VREF_SEL_SET(2);
 		usbdp_cal_reg_wr(reg, regs_base + EXYNOS_USBDP_TRSV_REG0813);
 
+
 		/* reduce Ux Exit time, Recovery.Active(TS1) n x REFCLK_PERIOD(38.4ns)
 		0x0CA8	0x00	ln0_rx_valid_rstn_delay_rise_sp__15_8=0
 		0x0CAC	0x04	ln0_rx_valid_rstn_delay_rise_sp__7_0=4
@@ -2824,7 +2825,7 @@ static void phy_exynos_usbdp_g2_v2_set_pcs(struct exynos_usbphy_info *info)
 		reg = usbdp_cal_reg_rd(regs_base + EXYNOS_USBDP_PCS_RX_EBUF_PARAM);
 		reg &= USBDP_PCS_RX_EBUF_PARAM_SKP_REMOVE_TH_EMPTY_MODE_CLR;
 		reg |= USBDP_PCS_RX_EBUF_PARAM_SKP_REMOVE_TH_EMPTY_MODE_SET(0x5);
-		usbdp_cal_reg_wr(reg, regs_base + EXYNOS_USBDP_PCS_RX_EBUF_PARAM); 
+		usbdp_cal_reg_wr(reg, regs_base + EXYNOS_USBDP_PCS_RX_EBUF_PARAM);
 	}
 
 	/* abnormal comman pattern mask */
@@ -3572,7 +3573,7 @@ static int phy_exynos_usbdp_g2_v2_pma_bist_en(struct exynos_usbphy_info *info)
 	reg |= USBDP_TRSV_REG06FF_LN2_BIST_AUTO_RUN_SET(1);
 	usbdp_cal_reg_wr(reg, regs_base + EXYNOS_USBDP_TRSV_REG06FF);
 
-//	mdelay(5);	// TODO: it is necessary experimentally
+//	usleep_range(5000, 5500);	// TODO: it is necessary experimentally
 
 	/*
 	ln0/2_ana_rx_slb_d_lane_sel
@@ -3687,7 +3688,7 @@ int phy_exynos_usbdp_g2_v2_internal_loopback(struct exynos_usbphy_info *info, u3
 		if (ret)
 			break;
 
-		mdelay(10);	// it is necessary experimentally
+		usleep_range(10000, 11000); // it is necessary experimentally
 
 		ret = phy_exynos_usbdp_g2_v2_pma_bist_en(info);
 		if (ret)
@@ -4398,7 +4399,7 @@ int phy_exynos_usbdp_g2_v2_enable(struct exynos_usbphy_info *info)
 		ret = phy_exynos_usbdp_g2_v2_pma_check_cdr_lock(info);
 	}
 
-	mdelay(10);
+	usleep_range(10000, 11000);
 
 	phy_exynos_usbdp_g2_v2_tune_late(info);
 	phy_exynos_usbdp_g2_v2_pma_check_offset_cal_code(info);

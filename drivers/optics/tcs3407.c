@@ -94,11 +94,6 @@ static int als_info;
 module_param(als_debug, int, S_IRUGO | S_IWUSR);
 module_param(als_info, int, S_IRUGO | S_IWUSR);
 
-static u8 irq_flush = 0;
-#define INT_FLUSH_OFF	0		/* INT_FLUSH end 	: tcs3407_irq_handler */
-#define INT_FLUSH_ON	1		/* INT_FLUSH start	: power_ctrl */
-#define WAIT_FLUSH_MAX	500		/* wait irq flushing max 5ms */
-
 static struct tcs3407_device_data *tcs3407_data;
 
 #define AMS_ROUND_SHFT_VAL				4
@@ -674,6 +669,7 @@ static int amsAlg_als_processData(amsAlsContext_t *ctx, amsAlsDataSet_t *inputDa
 		ctx->results.irrClear = ((inputData->datasetArray->clearADC * (AMS_ALS_Cc / CPU_FRIENDLY_FACTOR_1024))) / ctx->uvir_cpl;
 		ctx->results.irrBlue = ((inputData->datasetArray->blueADC * (AMS_ALS_Bc / CPU_FRIENDLY_FACTOR_1024))) / ctx->uvir_cpl;
 		ctx->results.irrGreen = ((inputData->datasetArray->greenADC * (AMS_ALS_Gc / CPU_FRIENDLY_FACTOR_1024))) / ctx->uvir_cpl;
+		ctx->results.irrWideband = (inputData->datasetArray->widebandADC * (AMS_ALS_Wbc / CPU_FRIENDLY_FACTOR_1024)) / ctx->uvir_cpl;
 
 		UVIR_Clear = (inputData->datasetArray->clearADC * (AMS_ALS_Cc / CPU_FRIENDLY_FACTOR_1024)) / ctx->uvir_cpl;
 		UVIR_wideband = (inputData->datasetArray->widebandADC * (AMS_ALS_Wbc / CPU_FRIENDLY_FACTOR_1024)) / ctx->uvir_cpl;
@@ -683,23 +679,23 @@ static int amsAlg_als_processData(amsAlsContext_t *ctx, amsAlsDataSet_t *inputDa
 			tempClear = (CLEAR_CONST * UVIR_Clear) >> 1;
 
 			if (tempWb < tempClear)
-				ctx->results.irrWideband = 0;
+				ctx->results.irrIR = 0;
 			else
-				ctx->results.irrWideband = tempWb - tempClear;
+				ctx->results.irrIR = tempWb - tempClear;
 		} else {
 			tempWb = (WIDEBAND_CONST * UVIR_wideband) * AMS_ALS_FACTOR;
 			tempClear = (1400 * UVIR_Clear);
 
 			if (tempWb < tempClear)
-				ctx->results.irrWideband = 0;
+				ctx->results.irrIR = 0;
 			else
-				ctx->results.irrWideband = (tempWb - tempClear) / AMS_ALS_FACTOR;
+				ctx->results.irrIR = (tempWb - tempClear) / AMS_ALS_FACTOR;
 		}
 	}
 
-	ALS_info("%s - cal: %d, %d, %d, %d, %d, %d, %d\n", __func__,
+	ALS_info("%s - cal: %d, %d, %d, %d, %d, %d, %d, %d\n", __func__,
 				ctx->results.irrClear, ctx->results.irrRed, ctx->results.irrGreen,
-				ctx->results.irrBlue, ctx->results.irrWideband,	UVIR_Clear,	UVIR_wideband);
+				ctx->results.irrBlue, ctx->results.irrIR, ctx->results.irrWideband, UVIR_Clear, UVIR_wideband);
 
 	return 0;
 }
@@ -1171,7 +1167,8 @@ static void ccb_alsGetResult(void *dcbCtx, ams_ccb_als_result_t *exportData)
 	exportData->red = ccbCtx->ctxAlgAls.results.irrRed;
 	exportData->green = ccbCtx->ctxAlgAls.results.irrGreen;
 	exportData->blue = ccbCtx->ctxAlgAls.results.irrBlue;
-	exportData->ir = ccbCtx->ctxAlgAls.results.irrWideband;
+	exportData->ir = ccbCtx->ctxAlgAls.results.irrIR;
+	exportData->wideband = ccbCtx->ctxAlgAls.results.irrWideband;
 	exportData->time_us = ccbCtx->ctxAlgAls.time_us;
 	exportData->gain = ccbCtx->ctxAlgAls.gain;
 	exportData->rawClear = ccbCtx->ctxAlgAls.results.rawClear;
@@ -1432,7 +1429,7 @@ static int amsAlg_als_getResult(amsAlsContext_t *ctx, amsAlsResult_t *outData)
 	outData->irrRed   = ctx->results.irrRed;
 	outData->irrWideband = ctx->results.irrWideband;
 	outData->mLux_ave  = ctx->results.mLux_ave / AMS_LUX_AVERAGE_COUNT;
-	outData->IR  = ctx->results.IR;
+	outData->irrIR  = ctx->results.irrIR;
 	outData->CCT = ctx->results.CCT;
 	outData->adaptive = ctx->results.adaptive;
 
@@ -1541,7 +1538,6 @@ static void tcs3407_irq_set_state(struct tcs3407_device_data *data, int irq_enab
 	ALS_dbg("%s - irq_enable : %d, irq_state : %d\n",
 		__func__, irq_enable, data->irq_state);
 
-	irq_flush = INT_FLUSH_OFF;		/* initialization */
 	if (irq_enable) {
 		if (data->irq_state++ == 0)
 			enable_irq(data->dev_irq);
@@ -1572,10 +1568,7 @@ static int tcs3407_power_ctrl(struct tcs3407_device_data *data, int onoff)
 			data->regulator_state++;
 			return 0;
 		}
-		data->regulator_state++;
-		data->pm_state = PM_RESUME;
 	} else {
-		irq_flush = INT_FLUSH_ON;
 		if (data->regulator_state == 0) {
 			ALS_dbg("%s - already off the regulator\n", __func__);
 			return 0;
@@ -1584,7 +1577,6 @@ static int tcs3407_power_ctrl(struct tcs3407_device_data *data, int onoff)
 			data->regulator_state--;
 			return 0;
 		}
-		data->regulator_state--;
 	}
 
 	if (data->i2c_1p8 != NULL) {
@@ -1630,9 +1622,11 @@ static int tcs3407_power_ctrl(struct tcs3407_device_data *data, int onoff)
 				goto gpio_direction_output_failed;
 			}
 		}
+		data->regulator_state++;
+		data->pm_state = PM_RESUME;
 
-		usleep_range(1000, 1100);
 	} else {
+		data->regulator_state--;
 		if (regulator_vdd_1p8 != NULL) {
 			rc = regulator_disable(regulator_vdd_1p8);
 			if (rc) {
@@ -1663,6 +1657,7 @@ static int tcs3407_power_ctrl(struct tcs3407_device_data *data, int onoff)
 #endif
 	}
 
+	usleep_range(1000, 1100);
 	goto done;
 
 gpio_direction_output_failed:
@@ -1691,6 +1686,8 @@ static void report_als(struct tcs3407_device_data *chip)
 {
 	ams_apiAls_t outData;
 	static unsigned int als_cnt;
+	static uint32_t dbg_wb[11] = { 0 };
+	static uint32_t dbg_cl[11] = { 0 };
 
 	if (chip->als_input_dev) {
 		ams_deviceGetAls(chip->deviceCtx, &outData);
@@ -1704,12 +1701,22 @@ static void report_als(struct tcs3407_device_data *chip)
 		input_sync(chip->als_input_dev);
 
 		if (als_cnt++ > 10) {
-			ALS_dbg("%s - I:%d, R:%d, G:%d, B:%d, C:%d TIME:%d, GAIN:%d\n", __func__,
-				outData.ir, outData.red, outData.green, outData.blue, outData.clear, outData.time_us, outData.gain);
+			ALS_dbg("%s - I:%d, R:%d, G:%d, B:%d, C:%d W:%d TIME:%d, GAIN:%d\n", __func__,
+				outData.ir, outData.red, outData.green, outData.blue, outData.clear, outData.wideband, outData.time_us, outData.gain);
+			if (outData.ir == 0) {
+				ALS_dbg("%s - rawWB:%d %d %d %d %d %d %d %d %d %d %d",	__func__,
+					dbg_wb[0],dbg_wb[1],dbg_wb[2],dbg_wb[3],dbg_wb[4],
+					dbg_wb[5],dbg_wb[6],dbg_wb[7],dbg_wb[8],dbg_wb[9],dbg_wb[10]);
+				ALS_dbg("%s - rawCL:%d %d %d %d %d %d %d %d %d %d %d",	__func__,
+					dbg_cl[0],dbg_cl[1],dbg_cl[2],dbg_cl[3],dbg_cl[4],
+					dbg_cl[5],dbg_cl[6],dbg_cl[7],dbg_cl[8],dbg_cl[9],dbg_cl[10]);
+			}
 			als_cnt = 0;
 		} else {
-			ALS_info("%s - I:%d, R:%d, G:%d, B:%d, C:%d TIME:%d, GAIN:%d\n", __func__,
-				outData.ir, outData.red, outData.green, outData.blue, outData.clear, outData.time_us, outData.gain);
+			ALS_info("%s - I:%d, R:%d, G:%d, B:%d, C:%d W:%d TIME:%d, GAIN:%d\n", __func__,
+				outData.ir, outData.red, outData.green, outData.blue, outData.clear, outData.wideband, outData.time_us, outData.gain);
+			dbg_wb[als_cnt - 1] = outData.rawWideband;
+			dbg_cl[als_cnt - 1] = outData.rawClear;
 		}
 
 		chip->user_ir_data = outData.ir;
@@ -1717,6 +1724,7 @@ static void report_als(struct tcs3407_device_data *chip)
 		if (chip->eol_enable && chip->eol_count >= EOL_SKIP_COUNT) {
 			chip->eol_awb += outData.ir;
 			chip->eol_clear += outData.clear;
+			chip->eol_wideband += outData.wideband;
 		}
 #endif
 	}
@@ -1811,6 +1819,17 @@ static ssize_t als_clear_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", outData.clear);
 }
 
+static ssize_t als_wideband_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	ams_apiAls_t outData;
+	struct tcs3407_device_data *chip = dev_get_drvdata(dev);
+
+	ams_deviceGetAls(chip->deviceCtx, &outData);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", outData.wideband);
+}
+
 static ssize_t als_raw_data_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -1843,6 +1862,7 @@ static size_t als_enable_set(struct tcs3407_device_data *chip, uint8_t valueToSe
 	}
 
 #endif
+	chip->enabled = (u8)valueToSet;
 	return 0;
 }
 
@@ -1876,6 +1896,9 @@ static ssize_t tcs3407_enable_show(struct device *dev,
 
 static int ams_deviceInit(ams_deviceCtx_t *ctx, AMS_PORT_portHndl *portHndl, ams_calibrationData_t *calibrationData);
 
+int tcs3407_stop(struct tcs3407_device_data *data);
+int tcs3407_start(struct tcs3407_device_data *data);
+
 static ssize_t tcs3407_enable_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -1888,75 +1911,89 @@ static ssize_t tcs3407_enable_store(struct device *dev,
 
 	ALS_dbg("%s - en : %d, c : %d\n", __func__, value, data->enabled);
 
+	if (value)
+		err = tcs3407_start(data);
+	else
+		err = tcs3407_stop(data);
+
+	if (err < 0)
+		ALS_dbg("%s - onoff fail(%d)",__func__, value);
+
+	return count;
+}
+
+int tcs3407_start(struct tcs3407_device_data *data)
+{
+	int err = 0;
+
+	ALS_dbg("%s",__func__);
 	mutex_lock(&data->activelock);
+	
+	tcs3407_irq_set_state(data, PWR_ON);
+	err = tcs3407_power_ctrl(data, PWR_ON);
+	if (err < 0) {
+		ALS_err("%s - als_regulator_on fail err = %d\n", __func__, err);
+		goto mutex_unlock;
+	}
 
-	if (value) {
-		tcs3407_irq_set_state(data, PWR_ON);
-
-		err = tcs3407_power_ctrl(data, PWR_ON);
-		if (err < 0)
-			ALS_err("%s - als_regulator_on fail err = %d\n",
-				__func__, err);
-
+	if (data->regulator_state == 1) {
 		err = ams_deviceInit(data->deviceCtx, data->client, NULL);
 		if (err < 0) {
 			ALS_err("%s - ams_deviceInit failed.\n", __func__);
 			goto err_device_init;
-		} else {
-			ALS_dbg("%s - ams_amsDeviceInit ok\n", __func__);
-		}
+		} 
+		ALS_dbg("%s - ams_amsDeviceInit ok\n", __func__);
 
 		err = als_enable_set(data, AMSDRIVER_ALS_ENABLE);
-
-		if (err == 0)
-			data->enabled = 1;
-
 		if (err < 0) {
 			input_report_rel(data->als_input_dev,
 				REL_RZ, -5 + 1); /* F_ERR_I2C -5 detected i2c error */
 			input_sync(data->als_input_dev);
 			ALS_err("%s - enable error %d\n", __func__, err);
+			goto err_device_init;
 		}
-
-		data->mode_cnt.amb_cnt++;
-	} else {
-		int retry_count = WAIT_FLUSH_MAX;
-
-		if (data->regulator_state == 0) {
-			ALS_dbg("%s - already power off - disable skip\n",
-				__func__);
-			goto err_already_off;
-		}
-
-		if(data->regulator_state == 1) {
-			err = als_enable_set(data, AMSDRIVER_ALS_DISABLE);
-			if (err != 0)
-				ALS_err("%s - disable err : %d\n", __func__, err);
-			data->enabled = 0;
-		}
-		err = tcs3407_power_ctrl(data, PWR_OFF);
-		if (err < 0)
-			ALS_err("%s - als_regulator_off fail err = %d\n",
-				__func__, err);
-
-		while(retry_count--){
-			if(irq_flush == INT_FLUSH_OFF){
-				ALS_dbg("%s - irq done", __func__);
-				break;
-			}
-			usleep_range(10,10);
-		}
-		ALS_info("%s - %d0usec", __func__, WAIT_FLUSH_MAX - retry_count);
-		if(retry_count <= 0)
-			ALS_err("%s - irq wait timeout", __func__);
-		tcs3407_irq_set_state(data, PWR_OFF);
 	}
 
+	data->mode_cnt.amb_cnt++;
+	goto done;
+
 err_device_init:
+	tcs3407_power_ctrl(data, PWR_OFF);
+mutex_unlock:
+done:
+	mutex_unlock(&data->activelock);
+
+	return err;
+}
+
+int tcs3407_stop(struct tcs3407_device_data *data)
+{
+	int err = 0;
+	
+	ALS_dbg("%s",__func__);
+	mutex_lock(&data->activelock);
+
+	if (data->regulator_state == 0) {
+		ALS_dbg("%s - already power off - disable skip\n",
+			__func__);
+		goto err_already_off;
+	} else if (data->regulator_state == 1) {
+		err = als_enable_set(data, AMSDRIVER_ALS_DISABLE);
+		if (err != 0)
+			ALS_err("%s - disable err : %d\n", __func__, err);
+	}
+
+	err = tcs3407_power_ctrl(data, PWR_OFF);
+	if (err < 0)
+		ALS_err("%s - als_regulator_off fail err = %d\n",
+			__func__, err);
+
+	tcs3407_irq_set_state(data, PWR_OFF);
+
 err_already_off:
 	mutex_unlock(&data->activelock);
 
-	return count;
+	return err;
 }
 
 static ssize_t tcs3407_poll_delay_show(struct device *dev,
@@ -2166,6 +2203,7 @@ static ssize_t tcs3407_debug_store(struct device *dev,
 	struct tcs3407_device_data *data = dev_get_drvdata(dev);
 	int err;
 	s32 mode;
+#ifdef CONFIG_AMS_OPTICAL_SENSOR_EOL_MODE
 	struct pwm_state state;
 	int period = 10000000; /* nano secs */
 	int period2 = 8333333; /* nano secs */
@@ -2181,6 +2219,7 @@ static ssize_t tcs3407_debug_store(struct device *dev,
 
 	state.duty_cycle = duty_cycle;
 	state.polarity = PWM_POLARITY_NORMAL; // should be default low
+#endif
 
 	mutex_lock(&data->activelock);
 	err = kstrtoint(buf, 10, &mode);
@@ -2199,6 +2238,7 @@ static ssize_t tcs3407_debug_store(struct device *dev,
 	case DEBUG_VAR:
 		tcs3407_debug_var(data);
 		break;
+#ifdef CONFIG_AMS_OPTICAL_SENSOR_EOL_MODE
 	case 3:
 		pinctrl_select_state(data->als_pinctrl,	data->pinctrl_pwm);
 		pwm_apply_state(data->pwm, &state);
@@ -2210,6 +2250,7 @@ static ssize_t tcs3407_debug_store(struct device *dev,
 	default:
 		debug_pwm_duty = data->debug_mode;
 		break;
+#endif
 	}
 	mutex_unlock(&data->activelock);
 
@@ -2354,30 +2395,46 @@ static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 	int period_100 = 10000000; /* nano secs */
 	int period_120 = 8333333; /* nano secs */
 	int duty = 20;
+	s32 pin_eol_en = 0, eol_led_mode;
 
 	data->eol_state = EOL_STATE_INIT;
 	data->eol_enable = 1;
 	data->eol_result_status = 1;
 
+	if (data->eol_flash_type == EOL_FLASH) {
+		ALS_dbg("%s - flash gpio", __func__);
+		pin_eol_en = data->pin_flash_en;
+		eol_led_mode = S2MPB02_FLASH_LED_1;
+	} else {
+		ALS_dbg("%s - torch gpio", __func__);
+		pin_eol_en = data->pin_torch_en;
+		eol_led_mode = S2MPB02_TORCH_LED_1;
+	}
+
 	if (data->pwm == NULL || debug_pwm_duty > period_100) {
-		ret = gpio_request(data->pin_led_en, NULL);
+		ret = gpio_request(pin_eol_en, NULL);
 		if (ret < 0)
 			return ret;
 
-		s2mpb02_led_en(S2MPB02_TORCH_LED_1, led_curr, S2MPB02_LED_TURN_WAY_GPIO);
-
-		switch (ctx->deviceId) {
-			case AMS_TCS3407:
-			case AMS_TCS3407_UNTRIM:
-				led_curr = S2MPB02_TORCH_OUT_I_100MA;
-				break;
-			case AMS_TCS3408:
-			case AMS_TCS3408_UNTRIM:
-				led_curr = S2MPB02_TORCH_OUT_I_20MA;
-				break;
-			default:
-				led_curr = S2MPB02_TORCH_OUT_I_20MA;
-				break;
+		s2mpb02_led_en(eol_led_mode, led_curr, S2MPB02_LED_TURN_WAY_GPIO);
+		
+		/* set min flash current */
+		if (data->eol_flash_type == EOL_FLASH) {
+			led_curr = S2MPB02_FLASH_OUT_I_150MA;
+		} else {
+			switch (ctx->deviceId) {
+				case AMS_TCS3407:
+				case AMS_TCS3407_UNTRIM:
+					led_curr = S2MPB02_TORCH_OUT_I_100MA;
+					break;
+				case AMS_TCS3408:
+				case AMS_TCS3408_UNTRIM:
+					led_curr = S2MPB02_TORCH_OUT_I_80MA;
+					break;
+				default:
+					led_curr = S2MPB02_TORCH_OUT_I_80MA;
+					break;
+			}
 		}
 
 		ALS_dbg("%s - eol_loop start",__func__);
@@ -2397,22 +2454,22 @@ static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 
 			if (data->eol_state >= EOL_STATE_100) {
 				if (curr_state != data->eol_state) {
-					s2mpb02_led_en(S2MPB02_TORCH_LED_1, led_curr, S2MPB02_LED_TURN_WAY_GPIO);
+					s2mpb02_led_en(eol_led_mode, led_curr, S2MPB02_LED_TURN_WAY_GPIO);
 					curr_state = data->eol_state;
 				} else
-					gpio_direction_output(data->pin_led_en, 1);
+					gpio_direction_output(pin_eol_en, 1);
 				
 				udelay(pulse_duty);
 
-				gpio_direction_output(data->pin_led_en, 0);
+				gpio_direction_output(pin_eol_en, 0);
 
 				data->eol_pulse_count++;
 			}
 			udelay(pulse_duty);
 		}
 		ALS_dbg("%s - eol loop end",__func__);
-		s2mpb02_led_en(S2MPB02_TORCH_LED_1, 0, S2MPB02_LED_TURN_WAY_GPIO);
-		gpio_free(data->pin_led_en);
+		s2mpb02_led_en(eol_led_mode, 0, S2MPB02_LED_TURN_WAY_GPIO);
+		gpio_free(pin_eol_en);
 	} else {
 		ALS_dbg("%s - PWM torch set 0x%x 0x%x\n", __func__, data->pinctrl_pwm, data->pinctrl_out);
 		pinctrl_select_state(data->als_pinctrl, data->pinctrl_pwm);
@@ -2476,8 +2533,8 @@ static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 			"%d, %s, %d, %s, %d, %s, %d, %s, %d, %s, %d, %s, %d, %s, %d, %s\n",
 			data->eol_flicker_awb[EOL_STATE_100][0], FREQ100_SPEC_IN(data->eol_flicker_awb[EOL_STATE_100][0]),
 			data->eol_flicker_awb[EOL_STATE_120][0], FREQ120_SPEC_IN(data->eol_flicker_awb[EOL_STATE_120][0]),
-			data->eol_flicker_awb[EOL_STATE_100][1], IR_SPEC_IN(data->eol_flicker_awb[EOL_STATE_100][1]),
-			data->eol_flicker_awb[EOL_STATE_120][1], IR_SPEC_IN(data->eol_flicker_awb[EOL_STATE_120][1]),
+			data->eol_flicker_awb[EOL_STATE_100][3], IR_SPEC_IN(data->eol_flicker_awb[EOL_STATE_100][3]),
+			data->eol_flicker_awb[EOL_STATE_120][3], IR_SPEC_IN(data->eol_flicker_awb[EOL_STATE_120][3]),
 			data->eol_flicker_awb[EOL_STATE_100][2], CLEAR_SPEC_IN(data->eol_flicker_awb[EOL_STATE_100][2]),
 			data->eol_flicker_awb[EOL_STATE_120][2], CLEAR_SPEC_IN(data->eol_flicker_awb[EOL_STATE_120][2]),
 			icRatio100, ICRATIO_SPEC_IN(icRatio100),
@@ -2523,13 +2580,14 @@ struct device_attribute *attr, const char *buf, size_t size)
 
 	int err = 0;
 	int mode = 0;
-	u8 preEnable = data->enabled;
 
 	err = kstrtoint(buf, 10, &mode);
 	if (err < 0) {
 		ALS_err("%s - kstrtoint failed.(%d)\n", __func__, err);
 		return err;
 	}
+
+	data->eol_flash_type = EOL_TORCH;
 
 	switch (mode) {
 	case 1:
@@ -2550,108 +2608,54 @@ struct device_attribute *attr, const char *buf, size_t size)
 		gSpec_icratio_max = data->eol_icratio_spec[3];
 		break;
 
+	case 100:
+		// USE OPEN SPEC
+		gSpec_ir_min = DEFAULT_IR_SPEC_MIN;
+		gSpec_ir_max = DEFAULT_IR_SPEC_MAX;
+		gSpec_clear_min = DEFAULT_IR_SPEC_MIN;
+		gSpec_clear_max = DEFAULT_IR_SPEC_MAX;
+		gSpec_icratio_min = DEFAULT_IC_SPEC_MIN;
+		gSpec_icratio_max = DEFAULT_IC_SPEC_MAX;
+
+		if (data->pin_flash_en >= 0) {
+			data->eol_flash_type = EOL_FLASH;
+			ALS_dbg("%s - use flash gpio", __func__);
+		} else {
+			ALS_dbg("%s - flash gpio not setted. use torch gpio", __func__);
+		}
+		break;
+
 	default:
 		break;
 	}
 
-	ALS_dbg("%s - mode = %d-%d, gSpec_ir = %d - %d, gSpec_clear = %d - %d, gSpec_icratio = %d - %d\n",	__func__, mode,
-		preEnable, gSpec_ir_min, gSpec_ir_max, gSpec_clear_min, gSpec_clear_max, gSpec_icratio_min, gSpec_icratio_max);
+	ALS_dbg("%s - mode = %d, gSpec_ir = %d - %d, gSpec_clear = %d - %d, gSpec_icratio = %d - %d eol_flash_type : %d\n",	__func__, mode,
+		gSpec_ir_min, gSpec_ir_max, gSpec_clear_min, gSpec_clear_max, gSpec_icratio_min, gSpec_icratio_max, data->eol_flash_type);
 
-	mutex_lock(&data->activelock);
+	err = tcs3407_start(data);
 
-	if (!preEnable) {
-		tcs3407_irq_set_state(data, PWR_ON);
-
-		err = tcs3407_power_ctrl(data, PWR_ON);
-		if (err < 0)
-			ALS_err("%s - als_regulator_on fail err = %d\n",
-				__func__, err);
-
-		err = ams_deviceInit(data->deviceCtx, data->client, NULL);
-		if (err < 0) {
-			ALS_err("%s - ams_deviceInit failed.\n", __func__);
-			goto err_device_init;
-		} else {
-			ALS_dbg("%s - ams_amsDeviceInit ok\n", __func__);
-		}
-
-		err = als_enable_set(data, AMSDRIVER_ALS_ENABLE);
-		if (err == 0) {
-			data->enabled = 1;
-		} else if (err < 0) {
-			input_report_rel(data->als_input_dev,
-				REL_Y, -5 + 1); /* F_ERR_I2C -5 detected i2c error */
-			input_sync(data->als_input_dev);
-			ALS_err("%s - enable error %d\n", __func__, err);
-		}
-	}
 	AMS_SET_ALS_AUTOGAIN(LOW, err);
 	AMS_SET_ALS_GAIN(EOL_GAIN, err);
+
 	if(err < 0){
 		ALS_err("%s - Set ALS GAIN fail", __func__);
-		goto err_device_init;
+		return 0;
 	}
-	ALS_dbg("%s - fixed ALS GAIN : %d\n", __func__, EOL_GAIN);
 
-	mutex_unlock(&data->activelock);
+	ALS_dbg("%s - fixed ALS GAIN : %d\n", __func__, EOL_GAIN);
 
 	tcs3407_eol_mode(data);
 
-	mutex_lock(&data->activelock);
-
-	if (data->regulator_state == 0) {
-		ALS_dbg("%s - already power off - disable skip\n",
-			__func__);
-		goto err_already_off;
+	AMS_SET_ALS_GAIN(ctx->ccbAlsCtx.initData.configData.gain, err);
+	AMS_SET_ALS_AUTOGAIN(HIGH, err);
+	if(err < 0){
+		ALS_err("%s - Set ALS GAIN fail", __func__);
+		return 0;
 	}
 
-	err = als_enable_set(data, AMSDRIVER_ALS_DISABLE);
-	if (err != 0)
-		ALS_err("%s - disable err : %d\n", __func__, err);
-
-	if (preEnable) {
-		err = ams_deviceInit(data->deviceCtx, data->client, NULL);
-		if (err < 0) {
-			ALS_err("%s - ams_deviceInit failed.\n", __func__);
-			goto err_device_init;
-		} else {
-			ALS_dbg("%s - ams_amsDeviceInit ok\n", __func__);
-		}
-
-		err = als_enable_set(data, AMSDRIVER_ALS_ENABLE);
-		if (err == 0) {
-			data->enabled = 1;
-		} else if (err < 0) {
-			input_report_rel(data->als_input_dev,
-				REL_Y, -5 + 1); /* F_ERR_I2C -5 detected i2c error */
-			input_sync(data->als_input_dev);
-			ALS_err("%s - enable error %d\n", __func__, err);
-		}
-	} else {
-		int retry_count = WAIT_FLUSH_MAX;
-
-		data->enabled = 0;
-
-		err = tcs3407_power_ctrl(data, PWR_OFF);
-		if (err < 0)
-			ALS_err("%s - als_regulator_off fail err = %d\n",
-				__func__, err);
-
-		while(retry_count--){
-			if(irq_flush == INT_FLUSH_OFF) {
-				ALS_dbg("%s - irq done", __func__);
-				break;
-			}
-			usleep_range(10,10);
-		}
-		ALS_info("%s - %d0usec", __func__, WAIT_FLUSH_MAX - retry_count);
-		if(retry_count <= 0)
-			ALS_err("%s - irq wait timeout", __func__);
-		tcs3407_irq_set_state(data, PWR_OFF);
-	}
-err_device_init:
-err_already_off:
-	mutex_unlock(&data->activelock);
+	err = tcs3407_stop(data);
+	if (err<0)
+		ALS_dbg("%s - err in stop", __func__);
 
 	return size;
 }
@@ -2695,6 +2699,7 @@ static DEVICE_ATTR(als_red, S_IRUGO, als_red_show, NULL);
 static DEVICE_ATTR(als_green, S_IRUGO, als_green_show, NULL);
 static DEVICE_ATTR(als_blue, S_IRUGO, als_blue_show, NULL);
 static DEVICE_ATTR(als_clear, S_IRUGO, als_clear_show, NULL);
+static DEVICE_ATTR(als_wideband, S_IRUGO, als_wideband_show, NULL);
 static DEVICE_ATTR(als_raw_data, S_IRUGO, als_raw_data_show, NULL);
 #ifdef CONFIG_AMS_OPTICAL_SENSOR_FLICKER
 static DEVICE_ATTR(flicker_data, S_IRUGO, flicker_data_show, NULL);
@@ -2725,6 +2730,7 @@ static struct device_attribute *tcs3407_sensor_attrs[] = {
 	&dev_attr_als_green,
 	&dev_attr_als_blue,
 	&dev_attr_als_clear,
+	&dev_attr_als_wideband,
 	&dev_attr_als_raw_data,
 #ifdef CONFIG_AMS_OPTICAL_SENSOR_FLICKER
 	&dev_attr_flicker_data,
@@ -2873,10 +2879,12 @@ static int tcs3407_eol_mode_handler(struct tcs3407_device_data *data)
 			data->eol_flicker_awb[i][0] = 0;
 			data->eol_flicker_awb[i][1] = 0;
 			data->eol_flicker_awb[i][2] = 0;
+			data->eol_flicker_awb[i][3] = 0;
 		}
 		data->eol_count = 0;
 		data->eol_awb = 0;
 		data->eol_clear = 0;
+		data->eol_wideband= 0;
 		data->eol_flicker = 0;
 		data->eol_flicker_count = 0;
 		data->eol_state = EOL_STATE_100;
@@ -2884,16 +2892,17 @@ static int tcs3407_eol_mode_handler(struct tcs3407_device_data *data)
 		break;
 	default:
 		data->eol_count++;
-		ALS_dbg("%s - %d, %d, %d, %d, %d\n", __func__,
-			data->eol_state, data->eol_count, data->eol_flicker, data->eol_awb, data->eol_clear);
-		ALS_dbg("%s - raw: %d, %d, %d, %d, %d\n", __func__, ctx->ccbAlsCtx.ctxAlgAls.uvir_cpl,
+		ALS_dbg("%s - %d, %d, %d, %d, %d, %d\n", __func__,
+			data->eol_state, data->eol_count, data->eol_flicker, data->eol_awb, data->eol_clear, data->eol_wideband);
+		ALS_dbg("%s - raw: %d, %d, %d, %d, %d, %d\n", __func__, ctx->ccbAlsCtx.ctxAlgAls.uvir_cpl,
 			ctx->ccbAlsCtx.ctxAlgAls.results.rawClear, ctx->ccbAlsCtx.ctxAlgAls.results.rawWideband,
-			ctx->ccbAlsCtx.ctxAlgAls.results.irrClear, ctx->ccbAlsCtx.ctxAlgAls.results.irrWideband);
+			ctx->ccbAlsCtx.ctxAlgAls.results.irrClear, ctx->ccbAlsCtx.ctxAlgAls.results.irrIR, ctx->ccbAlsCtx.ctxAlgAls.results.irrWideband);
 
 		if (data->eol_count >= (EOL_COUNT + EOL_SKIP_COUNT)) {
 			data->eol_flicker_awb[data->eol_state][0] = data->eol_flicker / data->eol_flicker_count;
 			data->eol_flicker_awb[data->eol_state][1] = data->eol_awb / EOL_COUNT;
 			data->eol_flicker_awb[data->eol_state][2] = data->eol_clear / EOL_COUNT;
+			data->eol_flicker_awb[data->eol_state][3] = data->eol_wideband / EOL_COUNT;
 
 			ALS_dbg("%s - eol_state = %d, pulse_duty = %d %d, pulse_count = %d\n",
 				__func__, data->eol_state, data->eol_pulse_duty[0], data->eol_pulse_duty[1], data->eol_pulse_count);
@@ -2901,6 +2910,7 @@ static int tcs3407_eol_mode_handler(struct tcs3407_device_data *data)
 			data->eol_count = 0;
 			data->eol_awb = 0;
 			data->eol_clear = 0;
+			data->eol_wideband = 0;
 			data->eol_flicker = 0;
 			data->eol_flicker_count = 0;
 			data->eol_pulse_count = 0;
@@ -2921,14 +2931,12 @@ irqreturn_t tcs3407_irq_handler(int dev_irq, void *device)
 
 	ALS_info("%s - als_irq = %d\n", __func__, dev_irq);
 
-	if(irq_flush){
-			ALS_dbg("%s - flushing irq (reg_state : %d, enabled : %d)", 
-					__func__, data->regulator_state, data->enabled);
-			irq_flush = INT_FLUSH_OFF;
-			return IRQ_HANDLED;
-	}
-	else if (data->regulator_state == 0 || data->enabled == 0) {
+	if (data->regulator_state == 0) {
 		ALS_dbg("%s - stop irq handler (reg_state : %d, enabled : %d)\n",
+				__func__, data->regulator_state, data->enabled);
+		return IRQ_HANDLED;
+	} else if (data->enabled == 0){
+		ALS_dbg("%s - ALS not enabled, clear irq (regulator_state : %d, enabled : %d)", 
 				__func__, data->regulator_state, data->enabled);
 		ams_setByte(data->client, DEVREG_STATUS, (AINT | ASAT_FDSAT));
 		return IRQ_HANDLED;
@@ -3004,12 +3012,12 @@ static void tcs3407_init_var(struct tcs3407_device_data *data)
 	data->sampling_period_ns = 0;
 	data->regulator_state = 0;
 	data->irq_state = 0;
+	data->suspend_cnt = 0;
 	data->reg_read_buf = 0;
 	data->pm_state = PM_RESUME;
 	data->i2c_err_cnt = 0;
 	data->user_ir_data = 0;
 	data->user_flicker_data = 0;
-	irq_flush = INT_FLUSH_OFF;
 #ifdef CONFIG_AMS_OPTICAL_SENSOR_EOL_MODE
 	data->eol_pulse_duty[0] = DEFAULT_DUTY_50HZ;
 	data->eol_pulse_duty[1] = DEFAULT_DUTY_60HZ;
@@ -3047,11 +3055,17 @@ static int tcs3407_parse_dt(struct tcs3407_device_data *data)
 		ALS_dbg("%s - get als_en failed\n", __func__);
 
 #ifdef CONFIG_AMS_OPTICAL_SENSOR_EOL_MODE
-	data->pin_led_en = of_get_named_gpio_flags(dNode,
+	data->pin_torch_en = of_get_named_gpio_flags(dNode,
 		"als_rear,led_en-gpio", 0, &flags);
-	if (data->pin_led_en < 0) {
-		ALS_err("%s - get pin_led_en error\n", __func__);
+	if (data->pin_torch_en < 0) {
+		ALS_err("%s - get pin_torch_en error\n", __func__);
 		return -ENODEV;
+	}
+
+	data->pin_flash_en = of_get_named_gpio_flags(dNode,
+		"als_rear,flash_en-gpio", 0, &flags);
+	if (data->pin_flash_en < 0) {
+		ALS_err("%s - get pin_flash_en error\n", __func__);
 	}
 #endif
 
@@ -3338,7 +3352,7 @@ static bool ams_deviceGetAls(ams_deviceCtx_t *ctx, ams_apiAls_t *exportData)
 	exportData->ir          = result.ir;
 	exportData->time_us		= result.time_us;
 	exportData->gain		= result.gain;
-//	exportData->wideband    = result.wideband;
+	exportData->wideband    = result.wideband;
 	exportData->rawClear    = result.rawClear;
 	exportData->rawRed      = result.rawRed;
 	exportData->rawGreen    = result.rawGreen;
@@ -3640,7 +3654,6 @@ int tcs3407_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	struct amsdriver_i2c_platform_data *pdata = dev->platform_data;
 	ams_deviceInfo_t amsDeviceInfo;
 	ams_deviceIdentifier_e deviceId;
-	int retry_count = WAIT_FLUSH_MAX;
 
 	ALS_dbg("%s - start\n", __func__);
 	/* check to make sure that the adapter supports I2C */
@@ -3822,16 +3835,6 @@ int tcs3407_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		goto dev_set_drvdata_failed;
 	}
 
-	while(retry_count--){
-		if(irq_flush == INT_FLUSH_OFF){
-			ALS_dbg("%s - irq done", __func__);
-			break;
-		}
-		usleep_range(10,10);
-	}
-	ALS_info("%s - %d0usec", __func__, WAIT_FLUSH_MAX - retry_count);
-	if(retry_count <= 0) 
-		ALS_err("%s - irq wait timeout", __func__);
 	tcs3407_irq_set_state(data, PWR_OFF);
 	ALS_dbg("%s - success\n", __func__);
 	goto done;
@@ -3945,21 +3948,27 @@ static int tcs3407_suspend(struct device *dev)
 	struct tcs3407_device_data *data = dev_get_drvdata(dev);
 	int err = 0;
 
-	ALS_dbg("%s - %d\n", __func__, data->enabled);
+	ALS_dbg("%s - %d\n", __func__, data->regulator_state);
 
-	if (data->enabled != 0 || data->regulator_state != 0) {
-		mutex_lock(&data->activelock);
-
-		als_enable_set(data, AMSDRIVER_ALS_DISABLE);
-
-		err = tcs3407_power_ctrl(data, PWR_OFF);
-		if (err < 0)
-			ALS_err("%s - als_regulator_off fail err = %d\n",
-				__func__, err);
-		tcs3407_irq_set_state(data, PWR_OFF);
-
-		mutex_unlock(&data->activelock);
+	if (data->enabled != 0 ) {
+		do {
+			err = tcs3407_stop(data);
+			if (err < 0) {
+				break;
+			}
+			data->suspend_cnt++;
+		} while (data->enabled);
+		data->enabled = 1;
+	} else if (data->regulator_state != 0) {
+		ALS_dbg("%s - abnormal state! als not enabled", __func__);
+		do {
+			err = tcs3407_stop(data);
+			if (err < 0) {
+				break;
+			}
+		} while (data->regulator_state != 0);
 	}
+
 	mutex_lock(&data->suspendlock);
 
 	data->pm_state = PM_SUSPEND;
@@ -3975,7 +3984,7 @@ static int tcs3407_resume(struct device *dev)
 	struct tcs3407_device_data *data = dev_get_drvdata(dev);
 	int err = 0;
 
-	ALS_dbg("%s - %d\n", __func__, data->enabled);
+	ALS_dbg("%s - %d\n", __func__, data->suspend_cnt);
 
 	mutex_lock(&data->suspendlock);
 
@@ -3986,26 +3995,12 @@ static int tcs3407_resume(struct device *dev)
 	mutex_unlock(&data->suspendlock);
 
 	if (data->enabled != 0) {
-		mutex_lock(&data->activelock);
-
-		tcs3407_irq_set_state(data, PWR_ON);
-
-		err = tcs3407_power_ctrl(data, PWR_ON);
-		if (err < 0)
-			ALS_err("%s - als_regulator_on fail err = %d\n",
-				__func__, err);
-
-		als_enable_set(data, AMSDRIVER_ALS_ENABLE);
-
-		if (err < 0) {
-			input_report_rel(data->als_input_dev,
-				REL_RZ, -5 + 1); /* F_ERR_I2C -5 detected i2c error */
-			input_sync(data->als_input_dev);
-			ALS_err("%s - awb mode enable error : %d\n", __func__, err);
-		}
-
-		mutex_unlock(&data->activelock);
+		do {
+			tcs3407_start(data);
+			data->suspend_cnt--;
+		} while(data->suspend_cnt > 0);
 	}
+
 	return err;
 }
 

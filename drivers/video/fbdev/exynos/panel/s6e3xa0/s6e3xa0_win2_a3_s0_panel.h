@@ -21,9 +21,11 @@
 #ifdef CONFIG_EXYNOS_DECON_MDNIE_LITE
 #include "s6e3xa0_win2_a3_s0_panel_mdnie.h"
 #endif
+/*
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
 #include "s6e3xa0_win2_a3_s0_panel_copr.h"
 #endif
+*/
 #ifdef CONFIG_SUPPORT_DDI_FLASH
 #include "s6e3xa0_win2_panel_poc.h"
 #endif
@@ -38,7 +40,9 @@
 #endif
 
 #include "s6e3xa0_win2_irc.h"
+#ifdef CONFIG_SUPPORT_DSU
 #include "s6e3xa0_win2_resol.h"
+#endif
 #ifdef CONFIG_SUPPORT_POC_SPI
 #include "../spi/w25q80_panel_spi.h"
 #include "../spi/mx25r4035_panel_spi.h"
@@ -1462,9 +1466,11 @@ static void *win2_a3_s0_init_cmdtbl[] = {
 	&PKTINFO(win2_a3_s0_tsp_hsync),
 	&KEYINFO(win2_a3_s0_level2_key_disable),
 	&SEQINFO(win2_a3_s0_seqtbl[PANEL_SET_BL_SEQ]),
+/*
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
 	&SEQINFO(win2_a3_s0_copr_seqtbl[COPR_SET_SEQ]),
 #endif
+*/
 };
 
 static void *win2_a3_s0_res_init_cmdtbl[] = {
@@ -1492,9 +1498,11 @@ static void *win2_a3_s0_res_init_cmdtbl[] = {
 	&KEYINFO(win2_a3_s0_level3_key_disable),
 	&KEYINFO(win2_a3_s0_level2_key_disable),
 	&KEYINFO(win2_a3_s0_level1_key_disable),
+/*
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
 	&SEQINFO(win2_a3_s0_copr_seqtbl[COPR_SET_SEQ]),
 #endif
+*/
 };
 
 #ifdef CONFIG_SUPPORT_DIM_FLASH
@@ -2180,10 +2188,12 @@ struct common_panel_info s6e3xa0_win2_a3_s0_default_panel_info = {
 	.ddi_props = {
 		.gpara = (DDI_SUPPORT_WRITE_GPARA | DDI_SUPPORT_POINT_GPARA),
 	},
+#ifdef CONFIG_SUPPORT_DSU
 	.mres = {
 		.nr_resol = ARRAY_SIZE(s6e3xa0_win2_resol),
 		.resol = s6e3xa0_win2_resol,
 	},
+#endif
 	.maptbl = win2_a3_s0_maptbl,
 	.nr_maptbl = ARRAY_SIZE(win2_a3_s0_maptbl),
 	.seqtbl = win2_a3_s0_seqtbl,
@@ -2198,17 +2208,19 @@ struct common_panel_info s6e3xa0_win2_a3_s0_default_panel_info = {
 	.mdnie_tune = &s6e3xa0_win2_a3_s0_mdnie_tune,
 #endif
 	.panel_dim_info = {
-		&s6e3xa0_win2_a3_s0_panel_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_DISP] = &s6e3xa0_win2_a3_s0_panel_dimming_info,
 #ifdef CONFIG_SUPPORT_HMD
-		&s6e3xa0_win2_a3_s0_panel_hmd_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_HMD] = &s6e3xa0_win2_a3_s0_panel_hmd_dimming_info,
 #endif
 #ifdef CONFIG_SUPPORT_AOD_BL
-		&s6e3xa0_win2_a3_s0_panel_aod_dimming_info,
+		[PANEL_BL_SUBDEV_TYPE_AOD] = &s6e3xa0_win2_a3_s0_panel_aod_dimming_info,
 #endif
 	},
+/*
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
 	.copr_data = &s6e3xa0_win2_a3_s0_copr_data,
 #endif
+*/
 #ifdef CONFIG_EXTEND_LIVE_CLOCK
 	.aod_tune = &s6e3xa0_win2_aod,
 #endif

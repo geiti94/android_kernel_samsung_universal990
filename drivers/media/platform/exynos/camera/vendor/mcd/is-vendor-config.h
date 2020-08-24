@@ -25,8 +25,12 @@
 #include "is-vendor-config_hst_v02.h"
 #elif defined(CONFIG_CAMERA_HST_V03)
 #include "is-vendor-config_hst_v03.h"
+#elif defined(CONFIG_CAMERA_CNT_V01)
+#include "is-vendor-config_cnt_v01.h"
 #elif defined(CONFIG_CAMERA_CNT_V02)
 #include "is-vendor-config_cnt_v02.h"
+#elif defined(CONFIG_CAMERA_RST_V08)
+#include "is-vendor-config_rst_v08.h"
 #else
 #include "is-vendor-config_hst_v02.h" /* Default */
 #endif

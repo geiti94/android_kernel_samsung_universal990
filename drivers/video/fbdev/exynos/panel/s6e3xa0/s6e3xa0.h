@@ -985,9 +985,7 @@ enum {
 
 struct panel_vrr S6E3XA0_VRR[] = {
 	[S6E3XA0_VRR_MODE_NORMAL] = {
-		.def_fps = 60,
-		.min_fps = 48,
-		.max_fps = 60,
+		.fps = 60,
 		.base_fps = 60,
 		.base_vactive = 3200,
 		.base_vfp = 16,
@@ -1050,9 +1048,11 @@ static void copy_stm_tune_maptbl(struct maptbl *tbl, u8 *dst);
 static void copy_isc_threshold_maptbl(struct maptbl *tbl, u8 *dst);
 #endif
 static void copy_gamma_inter_control_maptbl(struct maptbl *tbl, u8 *dst);
+/*
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
 static void copy_copr_maptbl(struct maptbl *, u8 *);
 #endif
+*/
 #ifdef CONFIG_SUPPORT_GRAM_CHECKSUM
 static int s6e3xa0_getidx_vddm_table(struct maptbl *);
 static int s6e3xa0_getidx_gram_img_pattern_table(struct maptbl *tbl);
